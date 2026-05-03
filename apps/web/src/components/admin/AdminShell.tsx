@@ -9,6 +9,12 @@ const NAV = [
   { href: "/admin/orders", label: "Orders" },
   { href: "/admin/orders/new", label: "New custom order" },
   { href: "/admin/products", label: "Products" },
+  { href: "/admin/inventory", label: "Inventory" },
+  { href: "/admin/customers", label: "Customers" },
+  { href: "/admin/coupons", label: "Coupons" },
+  { href: "/admin/reports", label: "Reports" },
+  { href: "/admin/staff", label: "Staff" },
+  { href: "/admin/notifications", label: "Notifications" },
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {

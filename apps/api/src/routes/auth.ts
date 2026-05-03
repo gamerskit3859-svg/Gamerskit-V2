@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { UserModel } from "../models/User.js";
+import { OrderModel } from "../models/Order.js";
 import { authRequired, comparePassword, hashPassword, signToken } from "../lib/auth.js";
 
 const router = Router();
@@ -8,6 +9,8 @@ const router = Router();
 const credSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
+  name: z.string().optional(),
+  phone: z.string().optional(),
 });
 
 router.post("/register", async (req, res) => {
@@ -26,10 +29,14 @@ router.post("/register", async (req, res) => {
     email: parsed.data.email,
     passwordHash,
     role: "customer",
-    name: req.body.name ?? "",
+    name: parsed.data.name ?? "",
+    phone: parsed.data.phone ?? "",
   });
   const token = signToken({ sub: String(user._id), email: user.email, role: user.role });
-  res.status(201).json({ token, user: { id: user._id, email: user.email, role: user.role } });
+  res.status(201).json({
+    token,
+    user: { id: user._id, email: user.email, role: user.role, name: user.name },
+  });
 });
 
 router.post("/login", async (req, res) => {
@@ -62,8 +69,26 @@ router.get("/me", authRequired, async (req, res) => {
       email: user.email,
       role: user.role,
       name: user.name,
+      phone: user.phone,
     },
   });
+});
+
+router.get("/orders", authRequired, async (req, res) => {
+  const user = await UserModel.findById(req.user?.sub).lean();
+  if (!user) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
+  // match by email or phone since orders aren't linked by user id today
+  const filter: Record<string, unknown> = {
+    $or: [
+      { "customer.email": user.email },
+      ...(user.phone ? [{ "customer.phone": user.phone }] : []),
+    ],
+  };
+  const items = await OrderModel.find(filter).sort({ createdAt: -1 }).limit(50).lean();
+  res.json({ items });
 });
 
 export default router;

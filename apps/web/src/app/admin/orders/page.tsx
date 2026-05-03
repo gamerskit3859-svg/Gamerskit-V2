@@ -4,6 +4,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDateTime } from "@/lib/format";
+import { ORDER_STATUSES } from "@gamerskit/shared";
 import {
   DateRangePicker,
   defaultRange,
@@ -148,7 +149,31 @@ export default function AdminOrdersPage() {
                         {o.source}
                       </span>
                     </td>
-                    <td className="py-3 px-4 capitalize">{o.status}</td>
+                    <td className="py-3 px-4">
+                      <select
+                        className="select !w-auto !py-1 !text-xs"
+                        value={o.status}
+                        onChange={async (e) => {
+                          const token = getAdminToken();
+                          if (!token) return;
+                          const newStatus = e.target.value;
+                          const r = await api.updateOrder(
+                            o._id,
+                            { status: newStatus as typeof o.status },
+                            token,
+                          );
+                          setItems((prev) =>
+                            prev.map((x) => (x._id === o._id ? r.order : x)),
+                          );
+                        }}
+                      >
+                        {ORDER_STATUSES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="py-3 px-4 text-[var(--fg-soft)]">
                       {formatDateTime(o.createdAt)}
                     </td>

@@ -140,3 +140,59 @@ export interface FbDataLayerPayload {
 }
 
 export const CURRENCY = "BDT" as const;
+
+export type UserRole = "customer" | "staff" | "admin";
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  role: UserRole;
+  name?: string;
+  phone?: string;
+}
+
+export interface AdminUserSummary {
+  _id: string;
+  email: string;
+  name?: string;
+  phone?: string;
+  role: UserRole;
+  createdAt: string;
+}
+
+export interface AdminCustomer {
+  _id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  city?: string;
+  orders: number;
+  revenue: number;
+  lastOrderAt: string;
+}
+
+export interface Coupon {
+  _id: string;
+  code: string;
+  type: "percent" | "fixed";
+  value: number;
+  minOrder?: number;
+  maxRedemptions?: number;
+  redeemed: number;
+  startsAt?: string;
+  endsAt?: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NotificationType = "order" | "low_stock" | "signup";
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  href?: string;
+  at: string;
+}
