@@ -2,7 +2,16 @@
  * Thin wrappers around the backend REST API. Both the storefront (Server
  * Components) and admin (Client Components) use these helpers.
  */
-import type { Order, Product } from "@gamerskit/shared";
+import type {
+  AdminCustomer,
+  AdminUserSummary,
+  AuthUser,
+  Coupon,
+  NotificationItem,
+  Order,
+  Product,
+  UserRole,
+} from "@gamerskit/shared";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? process.env.API_URL ?? "http://localhost:4000";
@@ -28,29 +37,56 @@ async function request<T>(
     }
     const message = `[api] ${init?.method ?? "GET"} ${path} → ${res.status}`;
     console.error(message, body);
-    throw new Error(message);
+    const err = new Error(message) as Error & { status?: number; body?: unknown };
+    err.status = res.status;
+    err.body = body;
+    throw err;
   }
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
+const qs = (params: Record<string, unknown>) => {
+  const u = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== "" && v !== null) u.set(k, String(v));
+  });
+  const s = u.toString();
+  return s ? `?${s}` : "";
+};
+
 export const api = {
-  listProducts: (params: { category?: string; q?: string; featured?: boolean } = {}) => {
-    const qs = new URLSearchParams();
-    if (params.category) qs.set("category", params.category);
-    if (params.q) qs.set("q", params.q);
-    if (params.featured) qs.set("featured", "true");
-    return request<{ items: Product[] }>(`/api/products?${qs.toString()}`);
-  },
-  getProduct: (slug: string) =>
-    request<{ item: Product }>(`/api/products/${slug}`),
+  // === Public ===
+  listProducts: (params: { category?: string; q?: string; featured?: boolean; limit?: number } = {}) =>
+    request<{ items: Product[] }>(`/api/products${qs(params)}`),
+  getProduct: (slug: string) => request<{ item: Product }>(`/api/products/${slug}`),
   createOrder: (body: unknown) =>
     request<{ order: Order; eventId: string }>(`/api/orders`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  getOrder: (orderNumber: string) =>
-    request<{ order: Order }>(`/api/orders/by-number/${orderNumber}`),
-  // admin
+  getOrder: (orderNumber: string) => request<{ order: Order }>(`/api/orders/by-number/${orderNumber}`),
+  validateCoupon: (code: string, subtotal: number) =>
+    request<{ coupon: { code: string; type: "percent" | "fixed"; value: number; discount: number } }>(
+      `/api/coupons/validate`,
+      { method: "POST", body: JSON.stringify({ code, subtotal }) },
+    ),
+
+  // === Customer auth ===
+  register: (body: { email: string; password: string; name?: string; phone?: string }) =>
+    request<{ token: string; user: AuthUser }>(`/api/auth/register`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  login: (email: string, password: string) =>
+    request<{ token: string; user: AuthUser }>(`/api/auth/login`, {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  me: (token: string) => request<{ user: AuthUser }>(`/api/auth/me`, { token }),
+  myOrders: (token: string) => request<{ items: Order[] }>(`/api/auth/orders`, { token }),
+
+  // === Admin ===
   listOrdersAdmin: (
     params: {
       from?: string;
@@ -62,46 +98,114 @@ export const api = {
       limit?: number;
     },
     token: string,
-  ) => {
-    const qs = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== "") qs.set(k, String(v));
-    });
-    return request<{ items: Order[]; total: number; page: number; limit: number }>(
-      `/api/orders?${qs.toString()}`,
+  ) =>
+    request<{ items: Order[]; total: number; page: number; limit: number }>(
+      `/api/orders${qs(params)}`,
       { token },
-    );
-  },
-  stats: (params: { from?: string; to?: string }, token: string) => {
-    const qs = new URLSearchParams();
-    if (params.from) qs.set("from", params.from);
-    if (params.to) qs.set("to", params.to);
-    return request<{
+    ),
+  getOrderAdmin: (id: string, token: string) =>
+    request<{ order: Order }>(`/api/orders/${id}`, { token }),
+  updateOrder: (id: string, body: Partial<Order>, token: string) =>
+    request<{ order: Order }>(`/api/orders/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      token,
+    }),
+
+  stats: (params: { from?: string; to?: string }, token: string) =>
+    request<{
       totalOrders: number;
       revenue: number;
       pendingOrders: number;
       deliveredOrders: number;
       productsSold: number;
       lowStockCount: number;
+      newCustomers: number;
       statusBreakdown: Record<string, number>;
       revenueByDay: Array<{ _id: string; total: number; orders: number }>;
-    }>(`/api/admin/stats?${qs.toString()}`, { token });
-  },
-  topProducts: (params: { from?: string; to?: string }, token: string) => {
-    const qs = new URLSearchParams();
-    if (params.from) qs.set("from", params.from);
-    if (params.to) qs.set("to", params.to);
-    return request<{ items: Array<{ _id: string; qty: number; revenue: number }> }>(
-      `/api/admin/top-products?${qs.toString()}`,
+    }>(`/api/admin/stats${qs(params)}`, { token }),
+  topProducts: (params: { from?: string; to?: string }, token: string) =>
+    request<{ items: Array<{ _id: string; qty: number; revenue: number }> }>(
+      `/api/admin/top-products${qs(params)}`,
       { token },
-    );
-  },
-  login: (email: string, password: string) =>
+    ),
+  reports: (params: { from?: string; to?: string }, token: string) =>
     request<{
-      token: string;
-      user: { id: string; email: string; role: string; name?: string };
-    }>(`/api/auth/login`, {
+      byCategory: Array<{ _id: string; qty: number; revenue: number }>;
+      byPayment: Array<{ _id: string; count: number; revenue: number }>;
+      bySource: Array<{ _id: string; count: number; revenue: number }>;
+      aov: number;
+      orderCount: number;
+      repeatBuyers: number;
+    }>(`/api/admin/reports${qs(params)}`, { token }),
+  recentOrders: (token: string) =>
+    request<{ items: Order[] }>(`/api/admin/recent-orders`, { token }),
+  notifications: (token: string) =>
+    request<{ items: NotificationItem[] }>(`/api/admin/notifications`, { token }),
+
+  // Inventory
+  adjustStock: (id: string, delta: number, token: string) =>
+    request<{ item: Product }>(`/api/admin/products/${id}/stock`, {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ delta }),
+      token,
     }),
+  updateProduct: (id: string, body: Partial<Product>, token: string) =>
+    request<{ item: Product }>(`/api/products/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      token,
+    }),
+  createProduct: (body: Partial<Product>, token: string) =>
+    request<{ item: Product }>(`/api/products`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      token,
+    }),
+  deleteProduct: (id: string, token: string) =>
+    request<void>(`/api/products/${id}`, { method: "DELETE", token }),
+
+  // Customers
+  customers: (params: { q?: string; page?: number; limit?: number }, token: string) =>
+    request<{ items: AdminCustomer[]; total: number }>(`/api/admin/customers${qs(params)}`, {
+      token,
+    }),
+
+  // Staff & users
+  users: (params: { role?: UserRole | "all"; q?: string }, token: string) =>
+    request<{ items: AdminUserSummary[] }>(`/api/admin/users${qs(params)}`, { token }),
+  createUser: (
+    body: { email: string; password: string; name?: string; phone?: string; role: "staff" | "admin" },
+    token: string,
+  ) =>
+    request<{ item: AdminUserSummary }>(`/api/admin/users`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      token,
+    }),
+  updateUser: (id: string, body: Partial<AdminUserSummary> & { password?: string }, token: string) =>
+    request<{ item: AdminUserSummary }>(`/api/admin/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      token,
+    }),
+  deleteUser: (id: string, token: string) =>
+    request<void>(`/api/admin/users/${id}`, { method: "DELETE", token }),
+
+  // Coupons
+  listCoupons: (token: string) => request<{ items: Coupon[] }>(`/api/admin/coupons`, { token }),
+  createCoupon: (body: Partial<Coupon>, token: string) =>
+    request<{ item: Coupon }>(`/api/admin/coupons`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      token,
+    }),
+  updateCoupon: (id: string, body: Partial<Coupon>, token: string) =>
+    request<{ item: Coupon }>(`/api/admin/coupons/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      token,
+    }),
+  deleteCoupon: (id: string, token: string) =>
+    request<void>(`/api/admin/coupons/${id}`, { method: "DELETE", token }),
 };

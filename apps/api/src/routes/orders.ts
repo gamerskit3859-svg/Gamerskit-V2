@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { OrderModel } from "../models/Order.js";
 import { ProductModel } from "../models/Product.js";
+import { CouponModel } from "../models/Coupon.js";
 import { adminRequired } from "../lib/auth.js";
 import { hashUserData, newEventId, sendCapiEvent } from "../lib/fb.js";
 
@@ -87,6 +88,14 @@ router.post("/", async (req, res) => {
         $inc: { stock: -line.quantity },
       }).catch(() => null);
     }
+  }
+
+  // increment coupon redemption count
+  if (data.couponCode) {
+    await CouponModel.findOneAndUpdate(
+      { code: data.couponCode.toUpperCase() },
+      { $inc: { redeemed: 1 } },
+    ).catch(() => null);
   }
 
   // Fire CAPI Purchase event (deduplicated with Pixel via eventId)

@@ -1,15 +1,20 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ShoppingBag, Search, Menu, X } from "lucide-react";
+import { ShoppingBag, Search, Menu, X, User } from "lucide-react";
 import { CATEGORIES } from "@gamerskit/shared";
 import { useCart } from "@/lib/cart";
+import { useAuth } from "@/lib/auth";
 
 export function Header() {
   const count = useCart((s) => s.lines.reduce((n, l) => n + l.quantity, 0));
+  const user = useAuth((s) => s.user);
+  const clear = useAuth((s) => s.clear);
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -17,6 +22,16 @@ export function Header() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    if (menuOpen) document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [menuOpen]);
 
   return (
     <header
@@ -42,22 +57,89 @@ export function Header() {
                 {c.label}
               </Link>
             ))}
-            <Link
-              href="/track"
-              className="hover:text-[var(--fg)] transition-colors"
-            >
+            <Link href="/track" className="hover:text-[var(--fg)] transition-colors">
               Track order
             </Link>
           </nav>
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href="/search"
+            href="/shop"
             className="p-2 rounded-full hover:bg-[var(--bg-soft)] transition-colors"
             aria-label="Search"
           >
             <Search size={16} />
           </Link>
+
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              className="hidden md:flex p-2 rounded-full hover:bg-[var(--bg-soft)] transition-colors items-center gap-1"
+              aria-label="Account"
+            >
+              <User size={16} />
+            </button>
+            <AnimatePresence>
+              {menuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 mt-2 w-56 glass-strong rounded-xl p-2 shadow-xl"
+                >
+                  {user ? (
+                    <div>
+                      <div className="px-3 py-2 text-xs text-[var(--fg-soft)] truncate">
+                        {user.email}
+                      </div>
+                      <Link
+                        href="/account"
+                        onClick={() => setMenuOpen(false)}
+                        className="block px-3 py-2 rounded-lg text-sm hover:bg-white/60"
+                      >
+                        My account
+                      </Link>
+                      <Link
+                        href="/account"
+                        onClick={() => setMenuOpen(false)}
+                        className="block px-3 py-2 rounded-lg text-sm hover:bg-white/60"
+                      >
+                        Order history
+                      </Link>
+                      <button
+                        onClick={() => {
+                          clear();
+                          setMenuOpen(false);
+                        }}
+                        className="block w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-white/60"
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <Link
+                        href="/account/login"
+                        onClick={() => setMenuOpen(false)}
+                        className="block px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/60"
+                      >
+                        Sign in
+                      </Link>
+                      <Link
+                        href="/account/register"
+                        onClick={() => setMenuOpen(false)}
+                        className="block px-3 py-2 rounded-lg text-sm hover:bg-white/60"
+                      >
+                        Create account
+                      </Link>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
           <Link
             href="/cart"
             className="relative p-2 rounded-full hover:bg-[var(--bg-soft)] transition-colors"
@@ -113,6 +195,32 @@ export function Header() {
               <Link href="/track" onClick={() => setOpen(false)}>
                 Track order
               </Link>
+              <div className="hairline-t pt-3 mt-2" />
+              {user ? (
+                <>
+                  <Link href="/account" onClick={() => setOpen(false)}>
+                    My account
+                  </Link>
+                  <button
+                    onClick={() => {
+                      clear();
+                      setOpen(false);
+                    }}
+                    className="text-left"
+                  >
+                    Sign out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link href="/account/login" onClick={() => setOpen(false)}>
+                    Sign in
+                  </Link>
+                  <Link href="/account/register" onClick={() => setOpen(false)}>
+                    Create account
+                  </Link>
+                </>
+              )}
             </nav>
           </motion.div>
         )}

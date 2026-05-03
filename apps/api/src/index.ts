@@ -13,6 +13,7 @@ import productsRouter from "./routes/products.js";
 import ordersRouter from "./routes/orders.js";
 import authRouter from "./routes/auth.js";
 import adminRouter from "./routes/admin.js";
+import couponsRouter from "./routes/coupons.js";
 import fbRouter from "./routes/fb.js";
 
 async function main() {
@@ -42,6 +43,7 @@ async function main() {
   app.use("/api/auth", authRouter);
   app.use("/api/products", productsRouter);
   app.use("/api/orders", ordersRouter);
+  app.use("/api/coupons", couponsRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/fb", fbRouter);
 
