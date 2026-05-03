@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: "npm"
+      - name: Install
+        run: npm ci
+      - name: Lint
+        run: npm run lint --workspaces --if-present
+      - name: Typecheck (api)
+        run: npm run typecheck --workspace apps/api
+      - name: Build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000
+        run: npm run build --workspaces --if-present
