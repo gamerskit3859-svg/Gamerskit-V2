@@ -5,6 +5,7 @@ import { OrderModel } from "../models/Order.js";
 import { ProductModel } from "../models/Product.js";
 import { UserModel } from "../models/User.js";
 import { CouponModel } from "../models/Coupon.js";
+import { AccountingOverrideModel } from "../models/AccountingOverride.js";
 import { adminRequired, hashPassword } from "../lib/auth.js";
 
 const router = Router();
@@ -155,7 +156,18 @@ router.get("/reports", async (req, res) => {
   const match: Record<string, unknown> = { status: { $nin: ["cancelled", "refunded"] } };
   if (dateFilter) match.createdAt = dateFilter;
 
-  const [byCategory, byPayment, bySource, aovAgg, repeatBuyers, grossAgg] = await Promise.all([
+  const transactionsMatch: Record<string, unknown> = {};
+  if (dateFilter) transactionsMatch.createdAt = dateFilter;
+
+  const [
+    byCategory,
+    byPayment,
+    bySource,
+    aovAgg,
+    repeatBuyers,
+    grossAgg,
+    transactions,
+  ] = await Promise.all([
     OrderModel.aggregate([
       { $match: match },
       { $unwind: "$items" },
@@ -224,6 +236,11 @@ router.get("/reports", async (req, res) => {
         },
       },
     ]),
+    OrderModel.find(transactionsMatch)
+      .sort({ createdAt: -1 })
+      .limit(15)
+      .select("orderNumber total status paymentMethod customer.name createdAt")
+      .lean(),
   ]);
 
   const grossRevenue = grossAgg[0]?.revenue ?? 0;
@@ -242,7 +259,76 @@ router.get("/reports", async (req, res) => {
     grossCost,
     grossProfit,
     grossMargin,
+    transactions,
   });
+});
+
+// === Accounting overrides (per-date-range manual entries) ===
+const accountingSchema = z.object({
+  shippingCharged: z.number().min(0).optional(),
+  refunds: z.number().min(0).optional(),
+  shippingExpense: z.number().min(0).optional(),
+  ads: z.number().min(0).optional(),
+  platformFees: z.number().min(0).optional(),
+  other: z.number().min(0).optional(),
+  notes: z.string().max(2000).optional(),
+});
+
+function rangeKey(from: string, to: string): string {
+  const f = new Date(from);
+  const t = new Date(to);
+  const fk = `${f.getUTCFullYear()}-${String(f.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    f.getUTCDate(),
+  ).padStart(2, "0")}`;
+  const tk = `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    t.getUTCDate(),
+  ).padStart(2, "0")}`;
+  return `${fk}..${tk}`;
+}
+
+router.get("/accounting", async (req, res) => {
+  const { from, to } = req.query as Record<string, string>;
+  if (!from || !to) {
+    res.status(400).json({ error: "from and to are required" });
+    return;
+  }
+  const key = rangeKey(from, to);
+  const doc = await AccountingOverrideModel.findOne({ rangeKey: key }).lean();
+  res.json({
+    item: {
+      rangeKey: key,
+      shippingCharged: doc?.shippingCharged ?? 0,
+      refunds: doc?.refunds ?? 0,
+      shippingExpense: doc?.shippingExpense ?? 0,
+      ads: doc?.ads ?? 0,
+      platformFees: doc?.platformFees ?? 0,
+      other: doc?.other ?? 0,
+      notes: doc?.notes ?? "",
+      updatedAt: doc?.updatedAt ?? null,
+    },
+  });
+});
+
+router.put("/accounting", async (req, res) => {
+  const parsed = accountingSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const { from, to } = req.query as Record<string, string>;
+  if (!from || !to) {
+    res.status(400).json({ error: "from and to query params required" });
+    return;
+  }
+  const key = rangeKey(from, to);
+  const doc = await AccountingOverrideModel.findOneAndUpdate(
+    { rangeKey: key },
+    {
+      $set: { ...parsed.data, from: new Date(from), to: new Date(to), rangeKey: key },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true },
+  ).lean();
+  res.json({ item: doc });
 });
 
 // === Customers ===
