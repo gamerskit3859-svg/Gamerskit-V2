@@ -57,7 +57,7 @@ export default function AdminDashboard() {
         <span className="eyebrow">Admin</span>
         <div className="flex flex-wrap items-end justify-between gap-4 mt-2">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">Overview</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
             <p className="text-sm text-[var(--fg-soft)] mt-1">
               {range.label} · {range.from} → {range.to}
             </p>
@@ -77,12 +77,12 @@ export default function AdminDashboard() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat label="Revenue" value={formatBDT(stats?.revenue ?? 0)} loading={loading} />
-        <Stat label="Orders" value={(stats?.totalOrders ?? 0).toString()} loading={loading} />
         <Stat
-          label="Pending"
-          value={(stats?.pendingOrders ?? 0).toString()}
+          label="Gross profit"
+          value={formatBDT(stats?.grossProfit ?? 0)}
           loading={loading}
         />
+        <Stat label="Orders" value={(stats?.totalOrders ?? 0).toString()} loading={loading} />
         <Stat
           label="Items sold"
           value={(stats?.productsSold ?? 0).toString()}

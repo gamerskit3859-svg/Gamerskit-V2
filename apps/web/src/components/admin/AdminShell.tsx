@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { clearAdminToken, getAdminToken } from "@/lib/admin-token";
 
 const NAV = [
-  { href: "/admin", label: "Overview" },
+  { href: "/admin", label: "Dashboard" },
   { href: "/admin/orders", label: "Orders" },
   { href: "/admin/orders/new", label: "New custom order" },
   { href: "/admin/products", label: "Products" },
@@ -42,7 +42,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="grid lg:grid-cols-[220px_1fr] min-h-[calc(100vh-48px)]">
+    <div className="grid lg:grid-cols-[220px_1fr] min-h-screen">
       <aside className="hairline-r bg-[var(--bg-soft)] hidden lg:flex flex-col">
         <div className="p-6">
           <Link href="/admin" className="font-semibold tracking-tight">

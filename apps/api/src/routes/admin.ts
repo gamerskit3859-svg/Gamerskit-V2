@@ -39,6 +39,7 @@ router.get("/stats", async (req, res) => {
     productsSoldAgg,
     lowStockCount,
     newCustomers,
+    grossAgg,
   ] = await Promise.all([
     OrderModel.countDocuments(orderMatch),
     OrderModel.aggregate([
@@ -72,7 +73,35 @@ router.get("/stats", async (req, res) => {
       role: "customer",
       ...(dateFilter ? { createdAt: dateFilter } : {}),
     }),
+    OrderModel.aggregate([
+      { $match: { ...orderMatch, status: { $nin: ["cancelled", "refunded"] } } },
+      { $unwind: "$items" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "items.productId",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      {
+        $addFields: {
+          buyingPrice: { $ifNull: [{ $arrayElemAt: ["$product.buyingPrice", 0] }, 0] },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          revenue: { $sum: { $multiply: ["$items.unitPrice", "$items.quantity"] } },
+          cost: { $sum: { $multiply: ["$buyingPrice", "$items.quantity"] } },
+        },
+      },
+    ]),
   ]);
+
+  const grossRevenue = grossAgg[0]?.revenue ?? 0;
+  const grossCost = grossAgg[0]?.cost ?? 0;
+  const grossProfit = grossRevenue - grossCost;
 
   res.json({
     range: { from: from ?? null, to: to ?? null },
@@ -83,6 +112,9 @@ router.get("/stats", async (req, res) => {
     productsSold: productsSoldAgg[0]?.qty ?? 0,
     lowStockCount,
     newCustomers,
+    grossRevenue,
+    grossCost,
+    grossProfit,
     statusBreakdown: Object.fromEntries(
       (statusBreakdown as Array<{ _id: string; count: number }>).map((r) => [r._id, r.count]),
     ),
@@ -123,7 +155,7 @@ router.get("/reports", async (req, res) => {
   const match: Record<string, unknown> = { status: { $nin: ["cancelled", "refunded"] } };
   if (dateFilter) match.createdAt = dateFilter;
 
-  const [byCategory, byPayment, bySource, aovAgg, repeatBuyers] = await Promise.all([
+  const [byCategory, byPayment, bySource, aovAgg, repeatBuyers, grossAgg] = await Promise.all([
     OrderModel.aggregate([
       { $match: match },
       { $unwind: "$items" },
@@ -163,7 +195,41 @@ router.get("/reports", async (req, res) => {
       { $match: { orders: { $gte: 2 } } },
       { $count: "buyers" },
     ]),
+    // Gross profit = sum over each line item of (unitPrice − product.buyingPrice) × quantity.
+    // Custom / ad-hoc lines (no productId or no matched product) contribute their full
+    // revenue as profit (no recorded cost).
+    OrderModel.aggregate([
+      { $match: match },
+      { $unwind: "$items" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "items.productId",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      {
+        $addFields: {
+          buyingPrice: {
+            $ifNull: [{ $arrayElemAt: ["$product.buyingPrice", 0] }, 0],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          revenue: { $sum: { $multiply: ["$items.unitPrice", "$items.quantity"] } },
+          cost: { $sum: { $multiply: ["$buyingPrice", "$items.quantity"] } },
+        },
+      },
+    ]),
   ]);
+
+  const grossRevenue = grossAgg[0]?.revenue ?? 0;
+  const grossCost = grossAgg[0]?.cost ?? 0;
+  const grossProfit = grossRevenue - grossCost;
+  const grossMargin = grossRevenue > 0 ? grossProfit / grossRevenue : 0;
 
   res.json({
     byCategory,
@@ -172,6 +238,10 @@ router.get("/reports", async (req, res) => {
     aov: aovAgg[0]?.avg ?? 0,
     orderCount: aovAgg[0]?.count ?? 0,
     repeatBuyers: repeatBuyers[0]?.buyers ?? 0,
+    grossRevenue,
+    grossCost,
+    grossProfit,
+    grossMargin,
   });
 });
 

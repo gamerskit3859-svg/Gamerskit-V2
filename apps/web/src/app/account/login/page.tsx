@@ -78,6 +78,12 @@ function LoginForm() {
           </Link>
         </p>
       </form>
+      <p className="text-center text-xs text-[var(--fg-muted)] mt-6">
+        Store admin?{" "}
+        <Link href="/admin/login" className="underline underline-offset-4 hover:text-[var(--fg)]">
+          Sign in to the admin dashboard
+        </Link>
+      </p>
     </motion.div>
   );
 }

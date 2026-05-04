@@ -1,6 +1,12 @@
+"use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export function Footer() {
+  const pathname = usePathname();
+  // Admin has its own layout — don't render the storefront footer on /admin/*
+  if (pathname?.startsWith("/admin")) return null;
+
   return (
     <footer className="hairline-t bg-[var(--bg-soft)] mt-24">
       <div className="mx-auto max-w-[1280px] px-5 lg:px-8 py-14 grid gap-10 md:grid-cols-4 text-[13px] text-[var(--fg-soft)]">

@@ -13,6 +13,10 @@ interface Reports {
   aov: number;
   orderCount: number;
   repeatBuyers: number;
+  grossRevenue: number;
+  grossCost: number;
+  grossProfit: number;
+  grossMargin: number;
 }
 
 function HBar({ value, max, color }: { value: number; max: number; color: string }) {
@@ -79,15 +83,23 @@ export default function ReportsPage() {
 
       <div className="grid sm:grid-cols-3 gap-4 mb-6">
         <div className="card-soft p-5">
-          <div className="text-xs uppercase tracking-wider text-[var(--fg-muted)]">Average order value</div>
+          <div className="text-xs uppercase tracking-wider text-[var(--fg-muted)]">Gross profit</div>
           <div className="text-3xl font-semibold tracking-tight mt-2">
-            {reports ? formatBDT(reports.aov) : "—"}
+            {reports ? formatBDT(reports.grossProfit) : "—"}
+          </div>
+          <div className="text-xs text-[var(--fg-muted)] mt-2">
+            {reports
+              ? `${(reports.grossMargin * 100).toFixed(1)}% margin · cost ${formatBDT(reports.grossCost)}`
+              : "Set buying price on products to compute."}
           </div>
         </div>
         <div className="card-soft p-5">
           <div className="text-xs uppercase tracking-wider text-[var(--fg-muted)]">Orders</div>
           <div className="text-3xl font-semibold tracking-tight mt-2">
             {reports?.orderCount ?? 0}
+          </div>
+          <div className="text-xs text-[var(--fg-muted)] mt-2">
+            AOV {reports ? formatBDT(reports.aov) : "—"}
           </div>
         </div>
         <div className="card-soft p-5">

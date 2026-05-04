@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ShoppingBag, Search, Menu, X, User } from "lucide-react";
@@ -8,6 +9,7 @@ import { useCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth";
 
 export function Header() {
+  const pathname = usePathname();
   const count = useCart((s) => s.lines.reduce((n, l) => n + l.quantity, 0));
   const user = useAuth((s) => s.user);
   const clear = useAuth((s) => s.clear);
@@ -33,10 +35,13 @@ export function Header() {
     return () => document.removeEventListener("mousedown", onClick);
   }, [menuOpen]);
 
+  // Admin has its own chrome (AdminShell) — hide the storefront header on /admin/*
+  if (pathname?.startsWith("/admin")) return null;
+
   return (
     <header
-      className={`sticky top-0 z-50 transition-colors ${
-        scrolled ? "glass" : "bg-transparent"
+      className={`sticky top-0 z-50 transition-all duration-300 glass ${
+        scrolled ? "shadow-[0_1px_0_rgba(0,0,0,0.04)]" : ""
       }`}
     >
       <div className="mx-auto max-w-[1280px] px-5 lg:px-8 h-12 flex items-center justify-between text-[13px]">
@@ -48,15 +53,6 @@ export function Header() {
             <Link href="/shop" className="hover:text-[var(--fg)] transition-colors">
               Shop
             </Link>
-            {CATEGORIES.slice(0, 5).map((c) => (
-              <Link
-                key={c.slug}
-                href={`/shop/${c.slug}`}
-                className="hover:text-[var(--fg)] transition-colors"
-              >
-                {c.label}
-              </Link>
-            ))}
             <Link href="/track" className="hover:text-[var(--fg)] transition-colors">
               Track order
             </Link>
