@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -40,25 +41,43 @@ export function Header() {
 
   return (
     <header
-      className={`sticky top-0 z-50 transition-all duration-300 glass ${
-        scrolled ? "shadow-[0_1px_0_rgba(0,0,0,0.04)]" : ""
+      className={`sticky top-0 z-50 transition-all duration-300 site-header ${
+        scrolled ? "site-header--scrolled" : ""
       }`}
     >
-      <div className="mx-auto max-w-[1280px] px-5 lg:px-8 h-12 flex items-center justify-between text-[13px]">
-        <div className="flex items-center gap-8">
-          <Link href="/" className="font-semibold tracking-tight text-[15px]">
-            GamersKit
+      <div className="mx-auto max-w-[1280px] px-5 lg:px-8 h-14 grid grid-cols-[1fr_auto_1fr] items-center text-[13px]">
+        <div className="flex items-center">
+          <Link href="/" className="flex items-center gap-2" aria-label="GamersKit home">
+            <Image
+              src="/brand/logo.png"
+              alt="GamersKit"
+              width={28}
+              height={28}
+              priority
+              className="h-7 w-7 object-contain"
+            />
+            <span className="hidden sm:inline font-semibold tracking-tight text-[15px]">
+              GamersKit
+            </span>
           </Link>
-          <nav className="hidden md:flex items-center gap-7 text-[var(--fg-soft)]">
-            <Link href="/shop" className="hover:text-[var(--fg)] transition-colors">
-              Shop
-            </Link>
-            <Link href="/track" className="hover:text-[var(--fg)] transition-colors">
-              Track order
-            </Link>
-          </nav>
         </div>
-        <div className="flex items-center gap-2">
+
+        <nav className="hidden md:flex items-center gap-8 text-[var(--fg-soft)] justify-self-center">
+          <Link
+            href="/shop"
+            className="hover:text-[var(--fg)] transition-colors font-medium"
+          >
+            Shop
+          </Link>
+          <Link
+            href="/track"
+            className="hover:text-[var(--fg)] transition-colors font-medium"
+          >
+            Track order
+          </Link>
+        </nav>
+
+        <div className="flex items-center gap-1.5 justify-self-end">
           <Link
             href="/shop"
             className="p-2 rounded-full hover:bg-[var(--bg-soft)] transition-colors"
@@ -165,8 +184,11 @@ export function Header() {
             exit={{ opacity: 0 }}
             className="md:hidden fixed inset-0 z-50 glass-strong"
           >
-            <div className="flex items-center justify-between px-5 h-12">
-              <span className="font-semibold">GamersKit</span>
+            <div className="flex items-center justify-between px-5 h-14">
+              <Link href="/" onClick={() => setOpen(false)} className="flex items-center gap-2">
+                <Image src="/brand/logo.png" alt="" width={28} height={28} className="h-7 w-7 object-contain" />
+                <span className="font-semibold">GamersKit</span>
+              </Link>
               <button
                 onClick={() => setOpen(false)}
                 className="p-2"

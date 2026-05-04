@@ -5,11 +5,12 @@ import { Suspense, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { setAdminToken } from "@/lib/admin-token";
 
 function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
-  const next = search.get("next") ?? "/account";
+  const nextParam = search.get("next");
   const setSession = useAuth((s) => s.setSession);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +24,14 @@ function LoginForm() {
     try {
       const r = await api.login(email, password);
       setSession({ token: r.token, user: r.user });
-      router.replace(next);
+      // Admins / staff get auto-routed into the dashboard so a single sign-in
+      // form works for both customer and admin accounts.
+      if (r.user.role === "admin" || r.user.role === "staff") {
+        setAdminToken(r.token);
+        router.replace(nextParam ?? "/admin");
+        return;
+      }
+      router.replace(nextParam ?? "/account");
     } catch (err) {
       const status = (err as { status?: number }).status;
       setError(status === 401 ? "Email or password is incorrect." : "Sign-in failed. Please try again.");
@@ -73,7 +81,7 @@ function LoginForm() {
         </button>
         <p className="text-center text-sm text-[var(--fg-soft)]">
           Don&rsquo;t have an account?{" "}
-          <Link href={`/account/register${next ? `?next=${encodeURIComponent(next)}` : ""}`} className="underline">
+          <Link href={`/account/register${nextParam ? `?next=${encodeURIComponent(nextParam)}` : ""}`} className="underline">
             Create one
           </Link>
         </p>

@@ -97,6 +97,21 @@ body {
   border: 1px solid var(--line);
 }
 
+/* Persistent translucent site header — modeled after apple.com's nav.
+ * Always visible, always frosted, with a slightly stronger tint + thin
+ * hairline once the user has scrolled past the top of the page. */
+.site-header {
+  background: rgba(255, 255, 255, 0.66);
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+}
+.site-header--scrolled {
+  background: rgba(255, 255, 255, 0.86);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: saturate(180%) blur(28px);
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
+}
+
 /* Hairline dividers à la macOS */
 .hairline-b {
   border-bottom: 1px solid var(--line);

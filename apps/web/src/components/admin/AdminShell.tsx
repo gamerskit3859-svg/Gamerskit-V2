@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearAdminToken, getAdminToken } from "@/lib/admin-token";
@@ -45,8 +46,18 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     <div className="grid lg:grid-cols-[220px_1fr] min-h-screen">
       <aside className="hairline-r bg-[var(--bg-soft)] hidden lg:flex flex-col">
         <div className="p-6">
-          <Link href="/admin" className="font-semibold tracking-tight">
-            GamersKit · Admin
+          <Link href="/admin" className="flex items-center gap-2 font-semibold tracking-tight">
+            <Image
+              src="/brand/logo.png"
+              alt=""
+              width={26}
+              height={26}
+              className="h-[26px] w-[26px] object-contain"
+            />
+            <span>
+              GamersKit
+              <span className="text-[var(--fg-muted)] font-normal"> · Admin</span>
+            </span>
           </Link>
         </div>
         <nav className="flex flex-col gap-1 px-2">

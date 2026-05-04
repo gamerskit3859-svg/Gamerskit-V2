@@ -61,8 +61,6 @@ export function ProductBuyPanel({ product }: { product: Product }) {
     router.push("/checkout");
   }
 
-  const inStock = product.stock > 0;
-
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -75,15 +73,6 @@ export function ProductBuyPanel({ product }: { product: Product }) {
               {formatBDT(product.compareAtPrice)}
             </span>
           )}
-          <span
-            className={`text-xs px-3 py-1 rounded-full border ${
-              inStock
-                ? "border-[var(--line)] text-[var(--fg)]"
-                : "border-[var(--line)] text-[var(--fg-muted)]"
-            }`}
-          >
-            {inStock ? `In stock · ${product.stock}` : "Out of stock"}
-          </span>
         </div>
       </div>
 
@@ -112,18 +101,10 @@ export function ProductBuyPanel({ product }: { product: Product }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <button
-          disabled={!inStock}
-          onClick={handleAdd}
-          className="btn btn-light disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+        <button onClick={handleAdd} className="btn btn-light">
           {added ? "Added" : "Add to bag"}
         </button>
-        <button
-          disabled={!inStock}
-          onClick={handleBuy}
-          className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+        <button onClick={handleBuy} className="btn btn-primary">
           Buy now
         </button>
       </div>
