@@ -23,16 +23,25 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
 
+  // The login page is part of /admin but should render full-bleed without the
+  // sidebar / dashboard chrome. Bypass the auth gate and the chrome entirely.
+  const isLogin = pathname === "/admin/login";
+
   useEffect(() => {
+    if (isLogin) return;
     void Promise.resolve().then(() => {
       const t = getAdminToken();
-      if (!t && pathname !== "/admin/login") {
+      if (!t) {
         router.replace("/admin/login");
         return;
       }
       setReady(true);
     });
-  }, [pathname, router]);
+  }, [isLogin, router]);
+
+  if (isLogin) {
+    return <div className="min-h-screen bg-[var(--bg)]">{children}</div>;
+  }
 
   if (!ready) {
     return (

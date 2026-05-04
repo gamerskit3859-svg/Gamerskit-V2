@@ -23,7 +23,7 @@ export function Hero() {
   }, []);
 
   return (
-    <section className="relative h-screen w-full overflow-hidden bg-black -mt-12">
+    <section className="relative h-screen w-full overflow-hidden bg-black -mt-[76px]">
       {HERO_IMAGES.map((src, i) => (
         <motion.div
           key={src}

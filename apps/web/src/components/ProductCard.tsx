@@ -16,12 +16,15 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
   const add = useCart((s) => s.add);
   const [added, setAdded] = useState(false);
 
-  const inStock = product.stock > 0;
+  // The storefront intentionally lets customers place orders even when a
+  // product is out of stock — it shows a "Sold out" badge as an informational
+  // cue, but Buy now / Add to cart still work. Inventory enforcement happens
+  // in /admin/inventory.
+  const soldOut = product.stock <= 0;
 
   function handleAddToCart(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (!inStock) return;
     add(product, 1);
     track({
       event: "AddToCart",
@@ -47,7 +50,6 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
   function handleBuyNow(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (!inStock) return;
     add(product, 1);
     router.push("/checkout");
   }
@@ -75,12 +77,12 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
               No image
             </div>
           )}
-          {!inStock && (
+          {soldOut && (
             <span className="absolute top-3 left-3 glass text-[10px] uppercase tracking-widest px-2 py-1 rounded-full">
               Sold out
             </span>
           )}
-          {product.featured && inStock && (
+          {product.featured && !soldOut && (
             <span className="absolute top-3 left-3 glass-dark text-white text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border-white/20">
               Featured
             </span>
@@ -104,18 +106,16 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
         <button
           type="button"
           onClick={handleBuyNow}
-          disabled={!inStock}
-          className="flex-1 inline-flex items-center justify-center h-9 rounded-full bg-black text-white text-[12px] font-medium tracking-tight hover:bg-[#1d1d1f] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex-1 inline-flex items-center justify-center h-9 rounded-full bg-black text-white text-[12px] font-medium tracking-tight hover:bg-[#1d1d1f] transition-colors"
         >
           Buy now
         </button>
         <button
           type="button"
           onClick={handleAddToCart}
-          disabled={!inStock}
           aria-label={added ? "Added to cart" : "Add to cart"}
           title={added ? "Added" : "Add to cart"}
-          className="inline-flex items-center justify-center h-9 w-9 rounded-full border border-[var(--line-strong)] bg-white text-[var(--fg)] hover:bg-[var(--bg-soft)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="inline-flex items-center justify-center h-9 w-9 rounded-full border border-[var(--line-strong)] bg-white text-[var(--fg)] hover:bg-[var(--bg-soft)] transition-colors"
         >
           <ShoppingBag size={15} className={added ? "scale-110 transition-transform" : ""} />
         </button>
