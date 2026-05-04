@@ -156,6 +156,10 @@ export default function AccountingPage() {
   const [overrides, setOverrides] = useState<Overrides>(ZERO_OVERRIDES);
   const [loading, setLoading] = useState(true);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  // Bumped each time overrides are fetched fresh from the DB. Used as part of
+  // the MoneyRow `key` so each input row remounts with the loaded value
+  // (otherwise the row's internal draft stays stuck at its initial 0).
+  const [loadVersion, setLoadVersion] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load both reports + accounting overrides whenever the range changes
@@ -181,6 +185,7 @@ export default function AccountingPage() {
           other: a.item.other,
         });
         setSavedAt(a.item.updatedAt);
+        setLoadVersion((v) => v + 1);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -213,9 +218,10 @@ export default function AccountingPage() {
   const grossCost = reports?.grossCost ?? 0;
   const grossRevenue = reports?.grossRevenue ?? 0;
 
-  // Money In = gross profit + shipping charged − refunds
+  // Money In = top-line gross sales + shipping charged − refunds.
+  // (Standard income-statement view: COGS is deducted on the Money Out side.)
   const moneyInTotal =
-    grossProfit + overrides.shippingCharged - overrides.refunds;
+    grossRevenue + overrides.shippingCharged - overrides.refunds;
 
   // Money Out = COGS + shipping out + ads + platform fees + other
   const expenseBreakdown = useMemo(
@@ -301,22 +307,22 @@ export default function AccountingPage() {
 
       {/* Money In / Money Out */}
       <div className="grid lg:grid-cols-2 gap-4 mb-6">
-        <Section title="Money In" subtitle="Gross profit and other inflows">
+        <Section title="Money In" subtitle="Gross sales and other inflows">
           <MoneyRow
-            key={`mi-gp-${range.from}-${range.to}-${grossProfit}`}
-            label="Gross profit"
-            value={grossProfit}
+            key={`mi-gs-${range.from}-${range.to}-${grossRevenue}`}
+            label="Gross sales"
+            value={grossRevenue}
             auto
-            hint="Revenue − cost of goods sold (auto from orders)"
+            hint="Top-line revenue from orders (auto)"
           />
           <MoneyRow
-            key={`mi-sc-${range.from}-${range.to}`}
+            key={`mi-sc-${range.from}-${range.to}-${loadVersion}`}
             label="Shipping charged"
             value={overrides.shippingCharged}
             onChange={(v) => patchOverride({ shippingCharged: v })}
           />
           <MoneyRow
-            key={`mi-rf-${range.from}-${range.to}`}
+            key={`mi-rf-${range.from}-${range.to}-${loadVersion}`}
             label="Refunds"
             value={overrides.refunds}
             sign={-1}
@@ -335,26 +341,26 @@ export default function AccountingPage() {
             hint="Sum of buyingPrice × qty across paid line items"
           />
           <MoneyRow
-            key={`mo-ship-${range.from}-${range.to}`}
+            key={`mo-ship-${range.from}-${range.to}-${loadVersion}`}
             label="Shipping"
             value={overrides.shippingExpense}
             onChange={(v) => patchOverride({ shippingExpense: v })}
           />
           <MoneyRow
-            key={`mo-ads-${range.from}-${range.to}`}
+            key={`mo-ads-${range.from}-${range.to}-${loadVersion}`}
             label="Ads"
             value={overrides.ads}
             onChange={(v) => patchOverride({ ads: v })}
             hint="Meta + Google + others"
           />
           <MoneyRow
-            key={`mo-pf-${range.from}-${range.to}`}
+            key={`mo-pf-${range.from}-${range.to}-${loadVersion}`}
             label="Platform fees"
             value={overrides.platformFees}
             onChange={(v) => patchOverride({ platformFees: v })}
           />
           <MoneyRow
-            key={`mo-ot-${range.from}-${range.to}`}
+            key={`mo-ot-${range.from}-${range.to}-${loadVersion}`}
             label="Other"
             value={overrides.other}
             onChange={(v) => patchOverride({ other: v })}
