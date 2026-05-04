@@ -17,11 +17,8 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
   const [added, setAdded] = useState(false);
 
   // The storefront intentionally lets customers place orders even when a
-  // product is out of stock — it shows a "Sold out" badge as an informational
-  // cue, but Buy now / Add to cart still work. Inventory enforcement happens
-  // in /admin/inventory.
-  const soldOut = product.stock <= 0;
-
+  // product is out of stock — Buy now / Add to cart always work. Inventory
+  // enforcement happens in /admin/inventory.
   function handleAddToCart(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -77,12 +74,7 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
               No image
             </div>
           )}
-          {soldOut && (
-            <span className="absolute top-3 left-3 glass text-[10px] uppercase tracking-widest px-2 py-1 rounded-full">
-              Sold out
-            </span>
-          )}
-          {product.featured && !soldOut && (
+          {product.featured && (
             <span className="absolute top-3 left-3 glass-dark text-white text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border-white/20">
               Featured
             </span>
