@@ -5,11 +5,51 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDate } from "@/lib/format";
-import {
-  DateRangePicker,
-  defaultRange,
-  type DateRange,
-} from "@/components/admin/DateRangePicker";
+
+type PeriodView = "monthly" | "yearly";
+interface Period {
+  view: PeriodView;
+  month: number; // 0-11
+  year: number;
+}
+
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+function defaultPeriod(): Period {
+  const now = new Date();
+  return { view: "monthly", month: now.getMonth(), year: now.getFullYear() };
+}
+
+function periodRange(p: Period): { from: string; to: string; label: string } {
+  if (p.view === "yearly") {
+    return {
+      from: `${p.year}-01-01`,
+      to: `${p.year}-12-31`,
+      label: String(p.year),
+    };
+  }
+  const mm = String(p.month + 1).padStart(2, "0");
+  const last = new Date(p.year, p.month + 1, 0).getDate();
+  const dd = String(last).padStart(2, "0");
+  return {
+    from: `${p.year}-${mm}-01`,
+    to: `${p.year}-${mm}-${dd}`,
+    label: `${MONTHS[p.month]} ${p.year}`,
+  };
+}
 
 interface Reports {
   byCategory: Array<{ _id: string; qty: number; revenue: number }>;
@@ -151,10 +191,16 @@ function MoneyRow({ label, value, sign = 1, auto, hint, onChange }: MoneyRowProp
 }
 
 export default function AccountingPage() {
-  const [range, setRange] = useState<DateRange>(defaultRange());
+  const [period, setPeriod] = useState<Period>(defaultPeriod);
+  const { from, to, label: periodLabel } = useMemo(() => periodRange(period), [period]);
   const [reports, setReports] = useState<Reports | null>(null);
   const [overrides, setOverrides] = useState<Overrides>(ZERO_OVERRIDES);
+  // Track pending edits so an explicit Save can flush them. Keyed only by
+  // dirty fields so we never overwrite a field the user didn't touch.
+  const pendingPatchRef = useRef<Partial<Overrides>>({});
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveFlash, setSaveFlash] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   // Bumped each time overrides are fetched fresh from the DB. Used as part of
   // the MoneyRow `key` so each input row remounts with the loaded value
@@ -162,7 +208,13 @@ export default function AccountingPage() {
   const [loadVersion, setLoadVersion] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load both reports + accounting overrides whenever the range changes
+  // Years offered in the picker — current year + 4 prior.
+  const yearOptions = useMemo(() => {
+    const current = new Date().getFullYear();
+    return Array.from({ length: 5 }, (_, i) => current - i);
+  }, []);
+
+  // Load both reports + accounting overrides whenever the period changes
   useEffect(() => {
     let cancelled = false;
     const token = getAdminToken();
@@ -171,8 +223,8 @@ export default function AccountingPage() {
       setLoading(true);
       try {
         const [r, a] = await Promise.all([
-          api.reports({ from: range.from, to: range.to }, token),
-          api.getAccounting({ from: range.from, to: range.to }, token),
+          api.reports({ from, to }, token),
+          api.getAccounting({ from, to }, token),
         ]);
         if (cancelled) return;
         setReports(r);
@@ -186,6 +238,7 @@ export default function AccountingPage() {
         });
         setSavedAt(a.item.updatedAt);
         setLoadVersion((v) => v + 1);
+        pendingPatchRef.current = {};
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -193,18 +246,21 @@ export default function AccountingPage() {
     return () => {
       cancelled = true;
     };
-  }, [range.from, range.to]);
+  }, [from, to]);
 
   // Debounced upsert whenever overrides change (after the initial load)
   function patchOverride(patch: Partial<Overrides>) {
     setOverrides((prev) => {
       const next = { ...prev, ...patch };
+      pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         const token = getAdminToken();
         if (!token) return;
+        const flush = pendingPatchRef.current;
+        pendingPatchRef.current = {};
         void api
-          .saveAccounting({ from: range.from, to: range.to }, patch, token)
+          .saveAccounting({ from, to }, flush, token)
           .then(() => setSavedAt(new Date().toISOString()))
           .catch(() => {
             /* surface errors silently — value still set in UI */
@@ -212,6 +268,33 @@ export default function AccountingPage() {
       }, 350);
       return next;
     });
+  }
+
+  async function saveNow() {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const token = getAdminToken();
+    if (!token) return;
+    const flush = { ...overrides, ...pendingPatchRef.current };
+    pendingPatchRef.current = {};
+    setSaving(true);
+    try {
+      await api.saveAccounting({ from, to }, flush, token);
+      setSavedAt(new Date().toISOString());
+      setSaveFlash(`Saved ${periodLabel}`);
+      setTimeout(() => setSaveFlash(null), 1800);
+    } catch {
+      setSaveFlash("Save failed");
+      setTimeout(() => setSaveFlash(null), 2400);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function downloadPdf() {
+    if (typeof window !== "undefined") window.print();
   }
 
   const grossProfit = reports?.grossProfit ?? 0;
@@ -268,18 +351,107 @@ export default function AccountingPage() {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
+      className="print-area"
     >
       <header className="mb-6">
-        <span className="eyebrow">Admin</span>
-        <h1 className="text-3xl font-semibold tracking-tight mt-2">Accounting</h1>
-        <p className="text-sm text-[var(--fg-soft)] mt-1">
-          {range.label.toLowerCase()} · live revenue + cost from orders, manual entries persist per range.
-        </p>
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <DateRangePicker value={range} onChange={setRange} />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <span className="eyebrow">Admin</span>
+            <h1 className="text-3xl font-semibold tracking-tight mt-2">Accounting</h1>
+            <p className="text-sm text-[var(--fg-soft)] mt-1">
+              {periodLabel} · live revenue + cost from orders, manual entries persist per period.
+            </p>
+          </div>
+          <div className="no-print flex items-center gap-2">
+            <button
+              type="button"
+              onClick={saveNow}
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-full bg-[var(--fg)] text-white text-sm font-medium px-4 h-9 disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={downloadPdf}
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-white text-[var(--fg)] text-sm font-medium px-4 h-9 hover:bg-[var(--bg-soft)]"
+            >
+              Download PDF
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 no-print flex flex-wrap items-center gap-3">
+          {/* View by toggle */}
+          <div
+            className="inline-flex p-1 rounded-full border border-[var(--line)] bg-[var(--bg-soft)]"
+            role="tablist"
+            aria-label="View by"
+          >
+            {(["monthly", "yearly"] as const).map((v) => {
+              const active = period.view === v;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setPeriod((p) => ({ ...p, view: v }))}
+                  className={`px-3 h-7 rounded-full text-xs font-medium transition-colors ${
+                    active ? "bg-[var(--fg)] text-white" : "text-[var(--fg-soft)] hover:text-[var(--fg)]"
+                  }`}
+                >
+                  {v === "monthly" ? "Monthly" : "Yearly"}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Month dropdown — only when monthly */}
+          {period.view === "monthly" && (
+            <label className="inline-flex items-center gap-2 text-xs text-[var(--fg-soft)]">
+              Month
+              <select
+                className="select h-9 py-0 text-sm"
+                value={period.month}
+                onChange={(e) =>
+                  setPeriod((p) => ({ ...p, month: Number(e.target.value) }))
+                }
+              >
+                {MONTHS.map((name, i) => (
+                  <option key={name} value={i}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <label className="inline-flex items-center gap-2 text-xs text-[var(--fg-soft)]">
+            Year
+            <select
+              className="select h-9 py-0 text-sm"
+              value={period.year}
+              onChange={(e) =>
+                setPeriod((p) => ({ ...p, year: Number(e.target.value) }))
+              }
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </label>
+
           {savedAt && (
             <span className="text-[11px] text-[var(--fg-muted)]">
               Saved · {new Date(savedAt).toLocaleString()}
+            </span>
+          )}
+          {saveFlash && (
+            <span className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+              {saveFlash}
             </span>
           )}
         </div>
@@ -309,20 +481,20 @@ export default function AccountingPage() {
       <div className="grid lg:grid-cols-2 gap-4 mb-6">
         <Section title="Money In" subtitle="Gross sales and other inflows">
           <MoneyRow
-            key={`mi-gs-${range.from}-${range.to}-${grossRevenue}`}
+            key={`mi-gs-${from}-${to}-${grossRevenue}`}
             label="Gross sales"
             value={grossRevenue}
             auto
             hint="Top-line revenue from orders (auto)"
           />
           <MoneyRow
-            key={`mi-sc-${range.from}-${range.to}-${loadVersion}`}
+            key={`mi-sc-${from}-${to}-${loadVersion}`}
             label="Shipping charged"
             value={overrides.shippingCharged}
             onChange={(v) => patchOverride({ shippingCharged: v })}
           />
           <MoneyRow
-            key={`mi-rf-${range.from}-${range.to}-${loadVersion}`}
+            key={`mi-rf-${from}-${to}-${loadVersion}`}
             label="Refunds"
             value={overrides.refunds}
             sign={-1}
@@ -334,33 +506,33 @@ export default function AccountingPage() {
 
         <Section title="Money Out" subtitle="COGS and operating expenses">
           <MoneyRow
-            key={`mo-cogs-${range.from}-${range.to}-${grossCost}`}
+            key={`mo-cogs-${from}-${to}-${grossCost}`}
             label="Cost of goods sold"
             value={grossCost}
             auto
             hint="Sum of buyingPrice × qty across paid line items"
           />
           <MoneyRow
-            key={`mo-ship-${range.from}-${range.to}-${loadVersion}`}
+            key={`mo-ship-${from}-${to}-${loadVersion}`}
             label="Shipping"
             value={overrides.shippingExpense}
             onChange={(v) => patchOverride({ shippingExpense: v })}
           />
           <MoneyRow
-            key={`mo-ads-${range.from}-${range.to}-${loadVersion}`}
+            key={`mo-ads-${from}-${to}-${loadVersion}`}
             label="Ads"
             value={overrides.ads}
             onChange={(v) => patchOverride({ ads: v })}
             hint="Meta + Google + others"
           />
           <MoneyRow
-            key={`mo-pf-${range.from}-${range.to}-${loadVersion}`}
+            key={`mo-pf-${from}-${to}-${loadVersion}`}
             label="Platform fees"
             value={overrides.platformFees}
             onChange={(v) => patchOverride({ platformFees: v })}
           />
           <MoneyRow
-            key={`mo-ot-${range.from}-${range.to}-${loadVersion}`}
+            key={`mo-ot-${from}-${to}-${loadVersion}`}
             label="Other"
             value={overrides.other}
             onChange={(v) => patchOverride({ other: v })}
@@ -461,7 +633,7 @@ export default function AccountingPage() {
             <div className="text-xs text-[var(--fg-muted)] py-6">Loading…</div>
           ) : !reports?.transactions?.length ? (
             <div className="text-xs text-[var(--fg-muted)] py-6">
-              No transactions in this range.
+              No transactions in this period.
             </div>
           ) : (
             <ul className="divide-y divide-[var(--line)]">

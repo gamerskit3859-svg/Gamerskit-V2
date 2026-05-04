@@ -440,3 +440,43 @@ body {
   border-color: var(--fg);
   box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.06);
 }
+
+/* Print styles for /admin/reports → Download PDF */
+@media print {
+  @page {
+    margin: 12mm 10mm;
+    size: A4;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  /* Hide every element by default… */
+  body * {
+    visibility: hidden;
+  }
+  /* …then show only the report content. */
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    padding: 0;
+  }
+  /* Inputs render as plain values when printing. */
+  .print-area input {
+    border: 0 !important;
+    background: transparent !important;
+    color: #000 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+  .no-print,
+  .no-print * {
+    display: none !important;
+  }
+}
