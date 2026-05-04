@@ -162,8 +162,9 @@ export const api = {
         refunds: number;
         shippingExpense: number;
         ads: number;
-        platformFees: number;
+        salaries: number;
         other: number;
+        customExpenses: Array<{ id: string; label: string; value: number }>;
         notes: string;
         updatedAt: string | null;
       };
@@ -175,8 +176,9 @@ export const api = {
       refunds: number;
       shippingExpense: number;
       ads: number;
-      platformFees: number;
+      salaries: number;
       other: number;
+      customExpenses: Array<{ id: string; label: string; value: number }>;
       notes: string;
     }>,
     token: string,

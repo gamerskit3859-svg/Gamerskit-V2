@@ -264,13 +264,19 @@ router.get("/reports", async (req, res) => {
 });
 
 // === Accounting overrides (per-date-range manual entries) ===
+const customExpenseSchema = z.object({
+  id: z.string().min(1).max(64),
+  label: z.string().max(120).default(""),
+  value: z.number().min(0).default(0),
+});
 const accountingSchema = z.object({
   shippingCharged: z.number().min(0).optional(),
   refunds: z.number().min(0).optional(),
   shippingExpense: z.number().min(0).optional(),
   ads: z.number().min(0).optional(),
-  platformFees: z.number().min(0).optional(),
+  salaries: z.number().min(0).optional(),
   other: z.number().min(0).optional(),
+  customExpenses: z.array(customExpenseSchema).max(50).optional(),
   notes: z.string().max(2000).optional(),
 });
 
@@ -301,8 +307,9 @@ router.get("/accounting", async (req, res) => {
       refunds: doc?.refunds ?? 0,
       shippingExpense: doc?.shippingExpense ?? 0,
       ads: doc?.ads ?? 0,
-      platformFees: doc?.platformFees ?? 0,
+      salaries: doc?.salaries ?? 0,
       other: doc?.other ?? 0,
+      customExpenses: doc?.customExpenses ?? [],
       notes: doc?.notes ?? "",
       updatedAt: doc?.updatedAt ?? null,
     },

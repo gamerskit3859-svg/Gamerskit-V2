@@ -73,13 +73,20 @@ interface Reports {
   }>;
 }
 
+interface CustomExpense {
+  id: string;
+  label: string;
+  value: number;
+}
+
 interface Overrides {
   shippingCharged: number;
   refunds: number;
   shippingExpense: number;
   ads: number;
-  platformFees: number;
+  salaries: number;
   other: number;
+  customExpenses: CustomExpense[];
 }
 
 const ZERO_OVERRIDES: Overrides = {
@@ -87,9 +94,20 @@ const ZERO_OVERRIDES: Overrides = {
   refunds: 0,
   shippingExpense: 0,
   ads: 0,
-  platformFees: 0,
+  salaries: 0,
   other: 0,
+  customExpenses: [],
 };
+
+function newId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `ce_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// Stable color cycle for custom expense bars (matches Tailwind violet/teal/rose tones).
+const CUSTOM_COLORS = ["#8b5cf6", "#14b8a6", "#f43f5e", "#22c55e", "#eab308"];
 
 function pct(num: number, denom: number): number {
   return denom > 0 ? num / denom : 0;
@@ -190,6 +208,81 @@ function MoneyRow({ label, value, sign = 1, auto, hint, onChange }: MoneyRowProp
   );
 }
 
+interface CustomMoneyRowProps {
+  initialLabel: string;
+  initialValue: number;
+  onLabelChange: (next: string) => void;
+  onValueChange: (next: number) => void;
+  onRemove: () => void;
+}
+
+function CustomMoneyRow({
+  initialLabel,
+  initialValue,
+  onLabelChange,
+  onValueChange,
+  onRemove,
+}: CustomMoneyRowProps) {
+  const [label, setLabel] = useState<string>(initialLabel);
+  const [valueDraft, setValueDraft] = useState<string>(() => String(Math.round(initialValue)));
+
+  function commitLabel() {
+    const trimmed = label.replace(/\s+/g, " ").trim();
+    if (trimmed !== initialLabel) onLabelChange(trimmed);
+    setLabel(trimmed);
+  }
+
+  function commitValue() {
+    const n = Number(valueDraft.replace(/[^0-9.-]/g, ""));
+    const safe = Number.isFinite(n) && n >= 0 ? n : 0;
+    if (safe !== initialValue) onValueChange(safe);
+    setValueDraft(String(Math.round(safe)));
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 py-3 hairline-b last:border-b-0">
+      <div className="flex-1 min-w-0">
+        <input
+          type="text"
+          value={label}
+          placeholder="Expense name"
+          onChange={(e) => setLabel(e.target.value)}
+          onBlur={commitLabel}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          className="w-full bg-transparent outline-none text-sm font-medium text-[var(--fg)] placeholder:text-[var(--fg-muted)] border-b border-transparent focus:border-[var(--fg)] transition-colors"
+          maxLength={120}
+        />
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 rounded-lg border border-[var(--line)] bg-white px-2.5 h-9 focus-within:border-[var(--fg)] transition-colors">
+          <span className="text-[var(--fg-muted)] text-sm">৳</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={valueDraft}
+            onChange={(e) => setValueDraft(e.target.value)}
+            onBlur={commitValue}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+            className="w-24 bg-transparent outline-none text-sm font-medium text-right tabular-nums"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Remove expense"
+          className="no-print h-9 w-9 inline-flex items-center justify-center rounded-lg border border-transparent text-[var(--fg-muted)] hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AccountingPage() {
   const [period, setPeriod] = useState<Period>(defaultPeriod);
   const { from, to, label: periodLabel } = useMemo(() => periodRange(period), [period]);
@@ -233,8 +326,9 @@ export default function AccountingPage() {
           refunds: a.item.refunds,
           shippingExpense: a.item.shippingExpense,
           ads: a.item.ads,
-          platformFees: a.item.platformFees,
+          salaries: a.item.salaries,
           other: a.item.other,
+          customExpenses: a.item.customExpenses ?? [],
         });
         setSavedAt(a.item.updatedAt);
         setLoadVersion((v) => v + 1);
@@ -248,9 +342,17 @@ export default function AccountingPage() {
     };
   }, [from, to]);
 
-  // Debounced upsert whenever overrides change (after the initial load)
-  function patchOverride(patch: Partial<Overrides>) {
+  // Debounced upsert. Accepts a flat patch or a producer function that derives
+  // the patch from the previous overrides — the producer form is race-safe for
+  // helpers that depend on the current customExpenses array.
+  function patchOverride(
+    patchOrProducer:
+      | Partial<Overrides>
+      | ((prev: Overrides) => Partial<Overrides>),
+  ) {
     setOverrides((prev) => {
+      const patch =
+        typeof patchOrProducer === "function" ? patchOrProducer(prev) : patchOrProducer;
       const next = { ...prev, ...patch };
       pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -268,6 +370,29 @@ export default function AccountingPage() {
       }, 350);
       return next;
     });
+  }
+
+  function addCustomExpense() {
+    patchOverride((prev) => ({
+      customExpenses: [...prev.customExpenses, { id: newId(), label: "", value: 0 }],
+    }));
+  }
+
+  function updateCustomExpense(
+    id: string,
+    patch: Partial<Pick<CustomExpense, "label" | "value">>,
+  ) {
+    patchOverride((prev) => ({
+      customExpenses: prev.customExpenses.map((e) =>
+        e.id === id ? { ...e, ...patch } : e,
+      ),
+    }));
+  }
+
+  function removeCustomExpense(id: string) {
+    patchOverride((prev) => ({
+      customExpenses: prev.customExpenses.filter((e) => e.id !== id),
+    }));
   }
 
   async function saveNow() {
@@ -306,7 +431,7 @@ export default function AccountingPage() {
   const moneyInTotal =
     grossRevenue + overrides.shippingCharged - overrides.refunds;
 
-  // Money Out = COGS + shipping out + ads + platform fees + other
+  // Money Out = COGS + shipping out + ads + salaries + other + (custom expenses)
   const expenseBreakdown = useMemo(
     () => [
       { key: "cogs", label: "Cost of goods sold", value: grossCost, color: "#0f172a" },
@@ -318,12 +443,18 @@ export default function AccountingPage() {
       },
       { key: "ads", label: "Ads", value: overrides.ads, color: "#0ea5e9" },
       {
-        key: "platformFees",
-        label: "Platform fees",
-        value: overrides.platformFees,
+        key: "salaries",
+        label: "Salaries",
+        value: overrides.salaries,
         color: "#f59e0b",
       },
       { key: "other", label: "Other", value: overrides.other, color: "#a3a3a3" },
+      ...overrides.customExpenses.map((e, i) => ({
+        key: `custom:${e.id}`,
+        label: e.label.trim() || "Untitled",
+        value: e.value,
+        color: CUSTOM_COLORS[i % CUSTOM_COLORS.length],
+      })),
     ],
     [grossCost, overrides],
   );
@@ -526,10 +657,10 @@ export default function AccountingPage() {
             hint="Meta + Google + others"
           />
           <MoneyRow
-            key={`mo-pf-${from}-${to}-${loadVersion}`}
-            label="Platform fees"
-            value={overrides.platformFees}
-            onChange={(v) => patchOverride({ platformFees: v })}
+            key={`mo-sal-${from}-${to}-${loadVersion}`}
+            label="Salaries"
+            value={overrides.salaries}
+            onChange={(v) => patchOverride({ salaries: v })}
           />
           <MoneyRow
             key={`mo-ot-${from}-${to}-${loadVersion}`}
@@ -537,6 +668,23 @@ export default function AccountingPage() {
             value={overrides.other}
             onChange={(v) => patchOverride({ other: v })}
           />
+          {overrides.customExpenses.map((e) => (
+            <CustomMoneyRow
+              key={`mo-custom-${e.id}-${loadVersion}`}
+              initialLabel={e.label}
+              initialValue={e.value}
+              onLabelChange={(label) => updateCustomExpense(e.id, { label })}
+              onValueChange={(value) => updateCustomExpense(e.id, { value })}
+              onRemove={() => removeCustomExpense(e.id)}
+            />
+          ))}
+          <button
+            type="button"
+            onClick={addCustomExpense}
+            className="no-print mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--fg-soft)] hover:text-[var(--fg)] border border-dashed border-[var(--line)] hover:border-[var(--fg)] rounded-lg px-3 h-8 transition-colors"
+          >
+            <span aria-hidden="true">+</span> Add expense
+          </button>
           <TotalRow label="Total money out" value={moneyOutTotal} />
         </Section>
       </div>
