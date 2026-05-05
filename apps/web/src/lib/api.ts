@@ -121,6 +121,9 @@ export const api = {
       productsSold: number;
       lowStockCount: number;
       newCustomers: number;
+      grossRevenue: number;
+      grossCost: number;
+      grossProfit: number;
       statusBreakdown: Record<string, number>;
       revenueByDay: Array<{ _id: string; total: number; orders: number }>;
     }>(`/api/admin/stats${qs(params)}`, { token }),
@@ -137,7 +140,54 @@ export const api = {
       aov: number;
       orderCount: number;
       repeatBuyers: number;
+      grossRevenue: number;
+      grossCost: number;
+      grossProfit: number;
+      grossMargin: number;
+      transactions: Array<{
+        _id: string;
+        orderNumber: string;
+        total: number;
+        status: string;
+        paymentMethod: string;
+        customer?: { name?: string };
+        createdAt: string;
+      }>;
     }>(`/api/admin/reports${qs(params)}`, { token }),
+  getAccounting: (params: { from: string; to: string }, token: string) =>
+    request<{
+      item: {
+        rangeKey: string;
+        shippingCharged: number;
+        refunds: number;
+        shippingExpense: number;
+        ads: number;
+        salaries: number;
+        other: number;
+        customExpenses: Array<{ id: string; label: string; value: number }>;
+        notes: string;
+        updatedAt: string | null;
+      };
+    }>(`/api/admin/accounting${qs(params)}`, { token }),
+  saveAccounting: (
+    params: { from: string; to: string },
+    body: Partial<{
+      shippingCharged: number;
+      refunds: number;
+      shippingExpense: number;
+      ads: number;
+      salaries: number;
+      other: number;
+      customExpenses: Array<{ id: string; label: string; value: number }>;
+      notes: string;
+    }>,
+    token: string,
+  ) =>
+    request<{ item: unknown }>(`/api/admin/accounting${qs(params)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+      token,
+    }),
   recentOrders: (token: string) =>
     request<{ items: Order[] }>(`/api/admin/recent-orders`, { token }),
   notifications: (token: string) =>

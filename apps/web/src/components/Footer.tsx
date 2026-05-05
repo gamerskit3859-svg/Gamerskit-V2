@@ -1,11 +1,19 @@
+"use client";
 import Link from "next/link";
+import Image from "next/image";
+import { usePathname } from "next/navigation";
 
 export function Footer() {
+  const pathname = usePathname();
+  // Admin has its own layout — don't render the storefront footer on /admin/*
+  if (pathname?.startsWith("/admin")) return null;
+
   return (
     <footer className="hairline-t bg-[var(--bg-soft)] mt-24">
       <div className="mx-auto max-w-[1280px] px-5 lg:px-8 py-14 grid gap-10 md:grid-cols-4 text-[13px] text-[var(--fg-soft)]">
         <div>
-          <div className="text-[var(--fg)] font-semibold text-[15px] tracking-tight">
+          <div className="flex items-center gap-2 text-[var(--fg)] font-semibold text-[15px] tracking-tight">
+            <Image src="/brand/logo.png" alt="" width={24} height={24} className="h-6 w-6 object-contain" />
             GamersKit
           </div>
           <p className="mt-2 leading-relaxed">

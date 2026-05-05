@@ -18,6 +18,7 @@ const ProductSchema = new Schema(
     price: { type: Number, required: true, min: 0 },
     compareAtPrice: { type: Number },
     cost: { type: Number },
+    buyingPrice: { type: Number, default: 0, min: 0 },
     stock: { type: Number, default: 0 },
     images: { type: [String], default: [] },
     variants: { type: [VariantSchema], default: [] },

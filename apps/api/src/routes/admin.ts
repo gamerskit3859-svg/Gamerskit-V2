@@ -5,6 +5,7 @@ import { OrderModel } from "../models/Order.js";
 import { ProductModel } from "../models/Product.js";
 import { UserModel } from "../models/User.js";
 import { CouponModel } from "../models/Coupon.js";
+import { AccountingOverrideModel } from "../models/AccountingOverride.js";
 import { adminRequired, hashPassword } from "../lib/auth.js";
 
 const router = Router();
@@ -39,6 +40,7 @@ router.get("/stats", async (req, res) => {
     productsSoldAgg,
     lowStockCount,
     newCustomers,
+    grossAgg,
   ] = await Promise.all([
     OrderModel.countDocuments(orderMatch),
     OrderModel.aggregate([
@@ -72,7 +74,35 @@ router.get("/stats", async (req, res) => {
       role: "customer",
       ...(dateFilter ? { createdAt: dateFilter } : {}),
     }),
+    OrderModel.aggregate([
+      { $match: { ...orderMatch, status: { $nin: ["cancelled", "refunded"] } } },
+      { $unwind: "$items" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "items.productId",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      {
+        $addFields: {
+          buyingPrice: { $ifNull: [{ $arrayElemAt: ["$product.buyingPrice", 0] }, 0] },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          revenue: { $sum: { $multiply: ["$items.unitPrice", "$items.quantity"] } },
+          cost: { $sum: { $multiply: ["$buyingPrice", "$items.quantity"] } },
+        },
+      },
+    ]),
   ]);
+
+  const grossRevenue = grossAgg[0]?.revenue ?? 0;
+  const grossCost = grossAgg[0]?.cost ?? 0;
+  const grossProfit = grossRevenue - grossCost;
 
   res.json({
     range: { from: from ?? null, to: to ?? null },
@@ -83,6 +113,9 @@ router.get("/stats", async (req, res) => {
     productsSold: productsSoldAgg[0]?.qty ?? 0,
     lowStockCount,
     newCustomers,
+    grossRevenue,
+    grossCost,
+    grossProfit,
     statusBreakdown: Object.fromEntries(
       (statusBreakdown as Array<{ _id: string; count: number }>).map((r) => [r._id, r.count]),
     ),
@@ -123,7 +156,18 @@ router.get("/reports", async (req, res) => {
   const match: Record<string, unknown> = { status: { $nin: ["cancelled", "refunded"] } };
   if (dateFilter) match.createdAt = dateFilter;
 
-  const [byCategory, byPayment, bySource, aovAgg, repeatBuyers] = await Promise.all([
+  const transactionsMatch: Record<string, unknown> = {};
+  if (dateFilter) transactionsMatch.createdAt = dateFilter;
+
+  const [
+    byCategory,
+    byPayment,
+    bySource,
+    aovAgg,
+    repeatBuyers,
+    grossAgg,
+    transactions,
+  ] = await Promise.all([
     OrderModel.aggregate([
       { $match: match },
       { $unwind: "$items" },
@@ -163,7 +207,46 @@ router.get("/reports", async (req, res) => {
       { $match: { orders: { $gte: 2 } } },
       { $count: "buyers" },
     ]),
+    // Gross profit = sum over each line item of (unitPrice − product.buyingPrice) × quantity.
+    // Custom / ad-hoc lines (no productId or no matched product) contribute their full
+    // revenue as profit (no recorded cost).
+    OrderModel.aggregate([
+      { $match: match },
+      { $unwind: "$items" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "items.productId",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      {
+        $addFields: {
+          buyingPrice: {
+            $ifNull: [{ $arrayElemAt: ["$product.buyingPrice", 0] }, 0],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          revenue: { $sum: { $multiply: ["$items.unitPrice", "$items.quantity"] } },
+          cost: { $sum: { $multiply: ["$buyingPrice", "$items.quantity"] } },
+        },
+      },
+    ]),
+    OrderModel.find(transactionsMatch)
+      .sort({ createdAt: -1 })
+      .limit(15)
+      .select("orderNumber total status paymentMethod customer.name createdAt")
+      .lean(),
   ]);
+
+  const grossRevenue = grossAgg[0]?.revenue ?? 0;
+  const grossCost = grossAgg[0]?.cost ?? 0;
+  const grossProfit = grossRevenue - grossCost;
+  const grossMargin = grossRevenue > 0 ? grossProfit / grossRevenue : 0;
 
   res.json({
     byCategory,
@@ -172,7 +255,87 @@ router.get("/reports", async (req, res) => {
     aov: aovAgg[0]?.avg ?? 0,
     orderCount: aovAgg[0]?.count ?? 0,
     repeatBuyers: repeatBuyers[0]?.buyers ?? 0,
+    grossRevenue,
+    grossCost,
+    grossProfit,
+    grossMargin,
+    transactions,
   });
+});
+
+// === Accounting overrides (per-date-range manual entries) ===
+const customExpenseSchema = z.object({
+  id: z.string().min(1).max(64),
+  label: z.string().max(120).default(""),
+  value: z.number().min(0).default(0),
+});
+const accountingSchema = z.object({
+  shippingCharged: z.number().min(0).optional(),
+  refunds: z.number().min(0).optional(),
+  shippingExpense: z.number().min(0).optional(),
+  ads: z.number().min(0).optional(),
+  salaries: z.number().min(0).optional(),
+  other: z.number().min(0).optional(),
+  customExpenses: z.array(customExpenseSchema).max(50).optional(),
+  notes: z.string().max(2000).optional(),
+});
+
+function rangeKey(from: string, to: string): string {
+  const f = new Date(from);
+  const t = new Date(to);
+  const fk = `${f.getUTCFullYear()}-${String(f.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    f.getUTCDate(),
+  ).padStart(2, "0")}`;
+  const tk = `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    t.getUTCDate(),
+  ).padStart(2, "0")}`;
+  return `${fk}..${tk}`;
+}
+
+router.get("/accounting", async (req, res) => {
+  const { from, to } = req.query as Record<string, string>;
+  if (!from || !to) {
+    res.status(400).json({ error: "from and to are required" });
+    return;
+  }
+  const key = rangeKey(from, to);
+  const doc = await AccountingOverrideModel.findOne({ rangeKey: key }).lean();
+  res.json({
+    item: {
+      rangeKey: key,
+      shippingCharged: doc?.shippingCharged ?? 0,
+      refunds: doc?.refunds ?? 0,
+      shippingExpense: doc?.shippingExpense ?? 0,
+      ads: doc?.ads ?? 0,
+      salaries: doc?.salaries ?? 0,
+      other: doc?.other ?? 0,
+      customExpenses: doc?.customExpenses ?? [],
+      notes: doc?.notes ?? "",
+      updatedAt: doc?.updatedAt ?? null,
+    },
+  });
+});
+
+router.put("/accounting", async (req, res) => {
+  const parsed = accountingSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const { from, to } = req.query as Record<string, string>;
+  if (!from || !to) {
+    res.status(400).json({ error: "from and to query params required" });
+    return;
+  }
+  const key = rangeKey(from, to);
+  const doc = await AccountingOverrideModel.findOneAndUpdate(
+    { rangeKey: key },
+    {
+      $set: { ...parsed.data, from: new Date(from), to: new Date(to), rangeKey: key },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true },
+  ).lean();
+  res.json({ item: doc });
 });
 
 // === Customers ===

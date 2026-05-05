@@ -97,6 +97,216 @@ body {
   border: 1px solid var(--line);
 }
 
+/* Liquid-glass floating navbar — see components/Header.tsx.
+ * Inspired by Apple's visionOS / Liquid Glass language: a centered pill
+ * floating over the page content with thick blur, saturate, brightness
+ * and inset highlights to imitate refracted glass.
+ *
+ * The hover indicator (.lg-pill) is positioned absolutely behind the link
+ * being hovered and slides between items with a springy ease. */
+.lg-navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  padding: 12px 16px;
+  pointer-events: none;
+  transition: padding 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.lg-navbar.scrolled {
+  padding: 8px 16px;
+}
+.lg-inner {
+  pointer-events: auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 980px;
+  padding: 0 16px;
+  height: 52px;
+  border-radius: 22px;
+  transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(40px) saturate(200%) brightness(1.08);
+  -webkit-backdrop-filter: blur(40px) saturate(200%) brightness(1.08);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 2px 20px rgba(0, 0, 0, 0.08),
+    0 1px 0px rgba(255, 255, 255, 0.5) inset,
+    0 -1px 0px rgba(0, 0, 0, 0.06) inset;
+}
+.lg-navbar.scrolled .lg-inner {
+  height: 48px;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 4px 32px rgba(0, 0, 0, 0.12),
+    0 1px 0px rgba(255, 255, 255, 0.6) inset,
+    0 -1px 0px rgba(0, 0, 0, 0.08) inset;
+}
+.lg-inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 22px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0.08) 30%,
+    transparent 60%
+  );
+  pointer-events: none;
+}
+.lg-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(0, 0, 0, 0.85);
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: opacity 0.2s;
+  position: relative;
+  z-index: 2;
+}
+.lg-logo:hover {
+  opacity: 0.7;
+}
+.lg-links {
+  position: relative;
+  display: flex;
+  list-style: none;
+  gap: 0;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+}
+.lg-pill {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 32px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 1px 8px rgba(0, 0, 0, 0.08),
+    0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  pointer-events: none;
+  transition:
+    left 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+    width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.2s ease;
+  opacity: 0;
+}
+.lg-pill.visible {
+  opacity: 1;
+}
+.lg-links li {
+  position: relative;
+  list-style: none;
+}
+.lg-links a {
+  display: block;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: rgba(0, 0, 0, 0.78);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.2s ease;
+  position: relative;
+  z-index: 1;
+}
+.lg-links a:hover {
+  color: rgba(0, 0, 0, 0.95);
+}
+.lg-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+.lg-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.78);
+  transition: all 0.2s ease;
+  position: relative;
+}
+.lg-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: rgba(0, 0, 0, 0.95);
+  box-shadow:
+    0 1px 6px rgba(0, 0, 0, 0.08),
+    0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+.lg-cart-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #000;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.lg-mobile-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  padding: 80px 24px 24px;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(60px) saturate(200%);
+  -webkit-backdrop-filter: blur(60px) saturate(200%);
+}
+.lg-mobile-menu a,
+.lg-mobile-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 18px 0;
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  color: rgba(0, 0, 0, 0.85);
+  text-decoration: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  transition: color 0.2s, padding-left 0.2s;
+}
+.lg-mobile-menu a:hover,
+.lg-mobile-menu button:hover {
+  color: var(--fg);
+  padding-left: 6px;
+}
+
 /* Hairline dividers à la macOS */
 .hairline-b {
   border-bottom: 1px solid var(--line);
@@ -229,4 +439,44 @@ body {
   outline: none;
   border-color: var(--fg);
   box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.06);
+}
+
+/* Print styles for /admin/reports → Download PDF */
+@media print {
+  @page {
+    margin: 12mm 10mm;
+    size: A4;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  /* Hide every element by default… */
+  body * {
+    visibility: hidden;
+  }
+  /* …then show only the report content. */
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    padding: 0;
+  }
+  /* Inputs render as plain values when printing. */
+  .print-area input {
+    border: 0 !important;
+    background: transparent !important;
+    color: #000 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+  .no-print,
+  .no-print * {
+    display: none !important;
+  }
 }

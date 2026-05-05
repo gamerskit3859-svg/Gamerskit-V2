@@ -45,6 +45,8 @@ export interface Product {
   price: number;
   compareAtPrice?: number;
   cost?: number;
+  /** Buying / wholesale price per unit, used for gross profit calculations. */
+  buyingPrice?: number;
   stock: number;
   images: string[];
   variants?: ProductVariant[];

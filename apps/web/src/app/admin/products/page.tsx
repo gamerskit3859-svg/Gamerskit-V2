@@ -13,6 +13,7 @@ interface DraftProduct {
   slug: string;
   category: string;
   price: number;
+  buyingPrice: number;
   stock: number;
   description: string;
   images: string;
@@ -24,6 +25,7 @@ const blank = (): DraftProduct => ({
   slug: "",
   category: CATEGORIES[0]?.slug ?? "rc-car",
   price: 0,
+  buyingPrice: 0,
   stock: 0,
   description: "",
   images: "",
@@ -36,6 +38,7 @@ function fromProduct(p: Product): DraftProduct {
     slug: p.slug,
     category: p.category,
     price: p.price,
+    buyingPrice: p.buyingPrice ?? 0,
     stock: p.stock,
     description: p.description ?? "",
     images: p.images.join("\n"),
@@ -100,6 +103,7 @@ export default function AdminProductsPage() {
       slug: draft.slug.trim() || draft.title.trim().toLowerCase().replace(/\s+/g, "-"),
       category: draft.category as CategorySlug,
       price: Number(draft.price),
+      buyingPrice: Number(draft.buyingPrice) || 0,
       stock: Number(draft.stock),
       description: draft.description,
       images: draft.images
@@ -302,15 +306,28 @@ export default function AdminProductsPage() {
                     </select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="eyebrow">Price (৳)</label>
+                    <label className="eyebrow">Selling price (৳)</label>
                     <input
                       type="number"
                       className="input mt-1"
                       value={draft.price}
                       onChange={(e) => setDraft({ ...draft, price: Number(e.target.value) })}
                     />
+                  </div>
+                  <div>
+                    <label className="eyebrow">Buying price (৳)</label>
+                    <input
+                      type="number"
+                      className="input mt-1"
+                      value={draft.buyingPrice}
+                      onChange={(e) => setDraft({ ...draft, buyingPrice: Number(e.target.value) })}
+                      placeholder="0"
+                    />
+                    <p className="text-[11px] text-[var(--fg-muted)] mt-1">
+                      Wholesale cost per unit. Used to compute gross profit in reports.
+                    </p>
                   </div>
                   <div>
                     <label className="eyebrow">Stock</label>
