@@ -57,9 +57,13 @@ const qs = (params: Record<string, unknown>) => {
 
 export const api = {
   // === Public ===
-  listProducts: (params: { category?: string; q?: string; featured?: boolean; limit?: number } = {}) =>
-    request<{ items: Product[] }>(`/api/products${qs(params)}`),
+  listProducts: (params: { category?: string; q?: string; featured?: boolean; page?: number; limit?: number } = {}) =>
+    request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(`/api/products${qs(params)}`),
   getProduct: (slug: string) => request<{ item: Product }>(`/api/products/${slug}`),
+  listCategories: () =>
+    request<{ items: any[] }>(`/api/categories`),
+  getCategory: (idOrSlug: string) =>
+    request<{ item: any }>(`/api/categories/${idOrSlug}`),
   createOrder: (body: unknown) =>
     request<{ order: Order; eventId: string }>(`/api/orders`, {
       method: "POST",
@@ -82,6 +86,16 @@ export const api = {
     request<{ token: string; user: AuthUser }>(`/api/auth/login`, {
       method: "POST",
       body: JSON.stringify({ email, password }),
+    }),
+  loginGoogle: (body: { email: string; name: string; avatar?: string; providerId: string }) =>
+    request<{ token: string; user: AuthUser }>(`/api/auth/oauth/google`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  loginFacebook: (body: { email: string; name: string; avatar?: string; providerId: string }) =>
+    request<{ token: string; user: AuthUser }>(`/api/auth/oauth/facebook`, {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
   me: (token: string) => request<{ user: AuthUser }>(`/api/auth/me`, { token }),
   myOrders: (token: string) => request<{ items: Order[] }>(`/api/auth/orders`, { token }),
@@ -215,6 +229,22 @@ export const api = {
   deleteProduct: (id: string, token: string) =>
     request<void>(`/api/products/${id}`, { method: "DELETE", token }),
 
+  // Categories
+  createCategory: (body: Partial<any>, token: string) =>
+    request<{ item: any }>(`/api/categories`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      token,
+    }),
+  updateCategory: (id: string, body: Partial<any>, token: string) =>
+    request<{ item: any }>(`/api/categories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      token,
+    }),
+  deleteCategory: (id: string, token: string) =>
+    request<void>(`/api/categories/${id}`, { method: "DELETE", token }),
+
   // Customers
   customers: (params: { q?: string; page?: number; limit?: number }, token: string) =>
     request<{ items: AdminCustomer[]; total: number }>(`/api/admin/customers${qs(params)}`, {
@@ -258,4 +288,39 @@ export const api = {
     }),
   deleteCoupon: (id: string, token: string) =>
     request<void>(`/api/admin/coupons/${id}`, { method: "DELETE", token }),
+
+  // Hero Images
+  getHeroImages: () => request<{ items: any[] }>(`/api/hero-images`),
+  listHeroImagesAdmin: (token: string) =>
+    request<{ items: any[] }>(`/api/hero-images/admin/all`, { token }),
+  createHeroImage: (
+    body: { imageUrl: string; publicId: string; order?: number; isActive?: boolean; title?: string; subtitle?: string; link?: string },
+    token: string,
+  ) =>
+    request<{ item: any }>(`/api/hero-images`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      token,
+    }),
+  updateHeroImage: (
+    id: string,
+    body: Partial<{ imageUrl: string; order: number; isActive: boolean; title: string; subtitle: string; link: string }>,
+    token: string,
+  ) =>
+    request<{ item: any }>(`/api/hero-images/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      token,
+    }),
+  deleteHeroImage: (id: string, token: string) =>
+    request<void>(`/api/hero-images/${id}`, { method: "DELETE", token }),
+  reorderHeroImages: (
+    order: Array<{ id: string; order: number }>,
+    token: string,
+  ) =>
+    request<{ items: any[] }>(`/api/hero-images/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ order }),
+      token,
+    }),
 };

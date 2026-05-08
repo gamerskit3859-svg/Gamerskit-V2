@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { UserModel } from "../models/User.js";
 import { OrderModel } from "../models/Order.js";
-import { authRequired, comparePassword, hashPassword, signToken } from "../lib/auth.js";
+import { authRequired, comparePassword, hashPassword, signToken, adminOnlyRequired } from "../lib/auth.js";
 
 const router = Router();
 
@@ -11,6 +11,14 @@ const credSchema = z.object({
   password: z.string().min(6),
   name: z.string().optional(),
   phone: z.string().optional(),
+});
+
+const oauthSchema = z.object({
+  email: z.string().email(),
+  name: z.string(),
+  avatar: z.string().optional(),
+  provider: z.enum(["google", "facebook"]),
+  providerId: z.string(),
 });
 
 router.post("/register", async (req, res) => {
@@ -46,10 +54,83 @@ router.post("/login", async (req, res) => {
     return;
   }
   const user = await UserModel.findOne({ email: parsed.data.email });
-  if (!user || !(await comparePassword(parsed.data.password, user.passwordHash))) {
+  if (!user || !user.passwordHash || !(await comparePassword(parsed.data.password, user.passwordHash))) {
     res.status(401).json({ error: "invalid credentials" });
     return;
   }
+  const token = signToken({ sub: String(user._id), email: user.email, role: user.role });
+  res.json({
+    token,
+    user: { id: user._id, email: user.email, role: user.role, name: user.name },
+  });
+});
+
+// OAuth endpoints
+router.post("/oauth/google", async (req, res) => {
+  const parsed = oauthSchema.safeParse({ ...req.body, provider: "google" });
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  let user = await UserModel.findOne({ googleId: parsed.data.providerId });
+  
+  if (!user) {
+    // Try to find by email
+    user = await UserModel.findOne({ email: parsed.data.email });
+    if (user) {
+      // Link Google account to existing user
+      user.googleId = parsed.data.providerId;
+      if (!user.avatar) user.avatar = parsed.data.avatar ?? "";
+      await user.save();
+    } else {
+      // Create new user
+      user = await UserModel.create({
+        email: parsed.data.email,
+        name: parsed.data.name,
+        avatar: parsed.data.avatar ?? "",
+        googleId: parsed.data.providerId,
+        role: "customer",
+      });
+    }
+  }
+
+  const token = signToken({ sub: String(user._id), email: user.email, role: user.role });
+  res.json({
+    token,
+    user: { id: user._id, email: user.email, role: user.role, name: user.name },
+  });
+});
+
+router.post("/oauth/facebook", async (req, res) => {
+  const parsed = oauthSchema.safeParse({ ...req.body, provider: "facebook" });
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  let user = await UserModel.findOne({ facebookId: parsed.data.providerId });
+  
+  if (!user) {
+    // Try to find by email
+    user = await UserModel.findOne({ email: parsed.data.email });
+    if (user) {
+      // Link Facebook account to existing user
+      user.facebookId = parsed.data.providerId;
+      if (!user.avatar) user.avatar = parsed.data.avatar ?? "";
+      await user.save();
+    } else {
+      // Create new user
+      user = await UserModel.create({
+        email: parsed.data.email,
+        name: parsed.data.name,
+        avatar: parsed.data.avatar ?? "",
+        facebookId: parsed.data.providerId,
+        role: "customer",
+      });
+    }
+  }
+
   const token = signToken({ sub: String(user._id), email: user.email, role: user.role });
   res.json({
     token,
@@ -70,6 +151,7 @@ router.get("/me", authRequired, async (req, res) => {
       role: user.role,
       name: user.name,
       phone: user.phone,
+      avatar: user.avatar,
     },
   });
 });

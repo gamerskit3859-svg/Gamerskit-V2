@@ -14,11 +14,19 @@ import type { Order } from "@gamerskit/shared";
 
 type Stats = Awaited<ReturnType<typeof api.stats>>;
 
+interface Category {
+  _id: string;
+  slug: string;
+  name: string;
+  productCount: number;
+}
+
 export default function AdminDashboard() {
   const [range, setRange] = useState<DateRange>(defaultRange());
   const [stats, setStats] = useState<Stats | null>(null);
   const [recent, setRecent] = useState<Order[]>([]);
   const [top, setTop] = useState<Array<{ _id: string; qty: number; revenue: number }>>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,15 +38,17 @@ export default function AdminDashboard() {
       setLoading(true);
       setError(null);
       try {
-        const [s, t, recentRes] = await Promise.all([
+        const [s, t, recentRes, catsRes] = await Promise.all([
           api.stats({ from: range.from, to: range.to }, token),
           api.topProducts({ from: range.from, to: range.to }, token),
           api.listOrdersAdmin({ from: range.from, to: range.to, limit: 8 }, token),
+          api.listCategories(),
         ]);
         if (cancelled) return;
         setStats(s);
         setTop(t.items);
         setRecent(recentRes.items);
+        setCategories(catsRes.items || []);
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -114,6 +124,35 @@ export default function AdminDashboard() {
           )}
         </Card>
       </div>
+
+      <Card title="Categories" className="mt-5">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {categories.length === 0 ? (
+            <Empty />
+          ) : (
+            categories.slice(0, 8).map((cat) => (
+              <Link
+                key={cat._id}
+                href={`/admin/categories`}
+                className="p-4 rounded-lg border border-[var(--line-strong)] hover:border-black transition-colors"
+              >
+                <div className="font-semibold text-sm">{cat.name}</div>
+                <div className="text-xs text-[var(--fg-soft)] mt-1">
+                  {cat.productCount} products
+                </div>
+              </Link>
+            ))
+          )}
+          {categories.length > 8 && (
+            <Link
+              href="/admin/categories"
+              className="p-4 rounded-lg border border-dashed border-[var(--line-strong)] hover:border-black transition-colors flex items-center justify-center"
+            >
+              <span className="text-sm font-semibold">View all →</span>
+            </Link>
+          )}
+        </div>
+      </Card>
 
       <Card title="Recent orders" className="mt-5">
         {recent.length === 0 ? (

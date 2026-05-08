@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { Suspense } from "react";
 import "./globals.css";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { AuthProviders } from "@/components/AuthProviders";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://gamerskit.example.com"),
@@ -43,32 +45,36 @@ export default function RootLayout({
         )}
       </head>
       <body className="min-h-full flex flex-col bg-[var(--bg)] text-[var(--fg)]">
-        {GTM_ID && (
-          <noscript>
-            <iframe
-              src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}
-              height="0"
-              width="0"
-              style={{ display: "none", visibility: "hidden" }}
-              title="gtm-noscript"
-            />
-          </noscript>
-        )}
-        {PIXEL_ID && (
-          <noscript>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              height="1"
-              width="1"
-              style={{ display: "none" }}
-              src={`https://www.facebook.com/tr?id=${PIXEL_ID}&ev=PageView&noscript=1`}
-              alt=""
-            />
-          </noscript>
-        )}
-        <Header />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        <AuthProviders>
+          {GTM_ID && (
+            <noscript>
+              <iframe
+                src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}
+                height="0"
+                width="0"
+                style={{ display: "none", visibility: "hidden" }}
+                title="gtm-noscript"
+              />
+            </noscript>
+          )}
+          {PIXEL_ID && (
+            <noscript>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                height="1"
+                width="1"
+                style={{ display: "none" }}
+                src={`https://www.facebook.com/tr?id=${PIXEL_ID}&ev=PageView&noscript=1`}
+                alt=""
+              />
+            </noscript>
+          )}
+          <Suspense fallback={<div className="h-[76px]" />}>
+            <Header />
+          </Suspense>
+          <main className="flex-1">{children}</main>
+          <Footer />
+        </AuthProviders>
       </body>
     </html>
   );

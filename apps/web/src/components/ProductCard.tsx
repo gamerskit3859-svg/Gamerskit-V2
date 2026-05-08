@@ -89,9 +89,6 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
               {formatBDT(product.price)}
             </span>
           </div>
-          <span className="text-[12px] text-[var(--fg-muted)] capitalize">
-            {product.category.replace(/-/g, " ")}
-          </span>
         </div>
       </Link>
       <div className="px-4 pb-4 pt-3 mt-auto flex items-center gap-2">

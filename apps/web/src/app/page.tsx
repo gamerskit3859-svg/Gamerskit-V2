@@ -17,9 +17,7 @@ export default async function Home() {
       api.listProducts({}),
     ]);
     featured = f.items.slice(0, 4);
-    bestSellers = all.items
-      .filter((p) => p.stock > 0)
-      .slice(0, 8);
+    bestSellers = all.items.filter((p) => p.stock > 0).slice(0, 8);
   } catch {
     // API not yet seeded — render empty states gracefully
   }
@@ -37,8 +35,7 @@ export default async function Home() {
           </div>
           <Link
             href="/shop"
-            className="text-sm font-medium underline underline-offset-4 hidden md:inline"
-          >
+            className="text-sm font-medium underline underline-offset-4 hidden md:inline">
             All products →
           </Link>
         </div>
@@ -97,8 +94,9 @@ function EmptyState() {
   return (
     <div className="card-soft p-10 text-center text-[var(--fg-soft)]">
       <p className="text-sm">
-        No products yet. Run <code className="text-[var(--fg)]">npm run seed</code> to
-        import 34 live products from gamerskitbd.com.
+        No products yet. Run{" "}
+        <code className="text-[var(--fg)]">npm run seed</code> to import 34 live
+        products from gamerskitbd.com.
       </p>
     </div>
   );
