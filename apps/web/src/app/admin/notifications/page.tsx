@@ -7,6 +7,8 @@ import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatDateTime } from "@/lib/format";
 import type { NotificationItem, NotificationType } from "@gamerskit/shared";
+import { Button, Card } from "@/components/ui";
+import { cn } from "@/lib/cn";
 
 const TYPES: Array<{ key: NotificationType | "all"; label: string }> = [
   { key: "all", label: "All" },
@@ -20,7 +22,9 @@ const READ_KEY = "gk-notif-read";
 function getReadIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
-    return new Set(JSON.parse(localStorage.getItem(READ_KEY) ?? "[]") as string[]);
+    return new Set(
+      JSON.parse(localStorage.getItem(READ_KEY) ?? "[]") as string[],
+    );
   } catch {
     return new Set();
   }
@@ -36,6 +40,12 @@ function iconFor(type: NotificationType) {
   if (type === "low_stock") return <Box size={16} />;
   if (type === "signup") return <UserPlus size={16} />;
   return <Bell size={16} />;
+}
+
+function iconBg(type: NotificationType): string {
+  if (type === "low_stock") return "bg-yellow-100 text-yellow-700";
+  if (type === "signup") return "bg-green-100 text-green-700";
+  return "bg-bg-soft";
 }
 
 export default function NotificationsPage() {
@@ -78,10 +88,10 @@ export default function NotificationsPage() {
     () => items.filter((n) => filter === "all" || n.type === filter),
     [items, filter],
   );
-  const unreadCount = useMemo(() => items.filter((n) => !readIds.has(n.id)).length, [
-    items,
-    readIds,
-  ]);
+  const unreadCount = useMemo(
+    () => items.filter((n) => !readIds.has(n.id)).length,
+    [items, readIds],
+  );
 
   function markRead(id: string) {
     const next = new Set(readIds);
@@ -104,41 +114,48 @@ export default function NotificationsPage() {
     >
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <span className="eyebrow">Admin</span>
-          <h1 className="text-3xl font-semibold tracking-tight mt-2">Notifications</h1>
-          <p className="text-sm text-[var(--fg-soft)] mt-1">
+          <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+            Admin
+          </span>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+            Notifications
+          </h1>
+          <p className="mt-1 text-sm text-fg-soft">
             {items.length} events · {unreadCount} unread (last 14 days).
           </p>
         </div>
         <div className="flex gap-2">
-          <button onClick={reload} className="btn btn-ghost">
+          <Button variant="ghost" onClick={reload}>
             Refresh
-          </button>
-          <button onClick={markAllRead} className="btn btn-primary" disabled={unreadCount === 0}>
+          </Button>
+          <Button onClick={markAllRead} disabled={unreadCount === 0}>
             Mark all read
-          </button>
+          </Button>
         </div>
       </header>
 
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="mb-4 flex flex-wrap gap-2">
         {TYPES.map((t) => (
-          <button
+          <Button
             key={t.key}
+            size="sm"
+            variant={filter === t.key ? "primary" : "ghost"}
             onClick={() => setFilter(t.key)}
-            className={`btn !py-2 !px-4 text-xs ${
-              filter === t.key ? "btn-primary" : "btn-ghost"
-            }`}
           >
             {t.label}
-          </button>
+          </Button>
         ))}
       </div>
 
-      <div className="card-soft divide-y divide-[var(--line)] overflow-hidden">
+      <Card
+        tone="soft"
+        padding="none"
+        className="divide-y divide-line overflow-hidden"
+      >
         {loading ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)]">Loading…</div>
+          <div className="p-8 text-sm text-fg-muted">Loading…</div>
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)] text-center">
+          <div className="p-8 text-center text-sm text-fg-muted">
             Nothing here. You&rsquo;re all caught up.
           </div>
         ) : (
@@ -147,33 +164,37 @@ export default function NotificationsPage() {
             const body = (
               <div className="flex items-start gap-4 p-4">
                 <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    n.type === "low_stock"
-                      ? "bg-yellow-100 text-yellow-700"
-                      : n.type === "signup"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-[var(--bg-soft)]"
-                  }`}
+                  className={cn(
+                    "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full",
+                    iconBg(n.type),
+                  )}
                 >
                   {iconFor(n.type)}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className={`text-sm ${isRead ? "text-[var(--fg-soft)]" : "font-medium"}`}>
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={cn(
+                      "text-sm",
+                      isRead ? "text-fg-soft" : "font-medium",
+                    )}
+                  >
                     {n.title}
                   </div>
-                  <div className="text-xs text-[var(--fg-muted)] mt-0.5">{n.body}</div>
+                  <div className="mt-0.5 text-xs text-fg-muted">{n.body}</div>
                 </div>
-                <div className="text-xs text-[var(--fg-muted)] flex-shrink-0">
+                <div className="flex-shrink-0 text-xs text-fg-muted">
                   {formatDateTime(n.at)}
                 </div>
-                {!isRead && <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0" />}
+                {!isRead && (
+                  <div className="mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-blue-500" />
+                )}
               </div>
             );
             return n.href ? (
               <Link
                 key={n.id}
                 href={n.href}
-                className="block bg-white hover:bg-[var(--bg-soft)] transition-colors"
+                className="block bg-white transition-colors hover:bg-bg-soft"
                 onClick={() => markRead(n.id)}
               >
                 {body}
@@ -181,15 +202,16 @@ export default function NotificationsPage() {
             ) : (
               <button
                 key={n.id}
+                type="button"
                 onClick={() => markRead(n.id)}
-                className="w-full text-left bg-white hover:bg-[var(--bg-soft)] transition-colors"
+                className="w-full bg-white text-left transition-colors hover:bg-bg-soft"
               >
                 {body}
               </button>
             );
           })
         )}
-      </div>
+      </Card>
     </motion.div>
   );
 }

@@ -12,6 +12,8 @@ export interface StatCardProps {
   className?: string;
   /** Tone for the value text. `negative` flips it to red for losses. */
   tone?: "default" | "negative" | "positive";
+  /** Show a placeholder while the value is loading. */
+  loading?: boolean;
 }
 
 /**
@@ -25,23 +27,24 @@ export function StatCard({
   badge,
   className,
   tone = "default",
+  loading,
 }: StatCardProps) {
   return (
     <Card padding="md" className={cn("flex flex-col gap-1.5", className)}>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium tracking-wide text-fg-soft uppercase">
+        <p className="text-xs font-medium uppercase tracking-wide text-fg-soft">
           {label}
         </p>
         {badge}
       </div>
       <p
         className={cn(
-          "text-2xl md:text-3xl font-semibold tracking-tight",
+          "text-2xl font-semibold tracking-tight md:text-3xl tabular-nums",
           tone === "negative" && "text-red-600",
           tone === "positive" && "text-emerald-600",
         )}
       >
-        {value}
+        {loading ? "…" : value}
       </p>
       {hint && <p className="text-xs text-fg-muted">{hint}</p>}
     </Card>

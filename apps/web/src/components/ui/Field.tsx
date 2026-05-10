@@ -51,30 +51,61 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
 interface FieldLabelProps {
   htmlFor?: string;
   children: React.ReactNode;
+  label?: React.ReactNode;
   hint?: string;
   required?: boolean;
   className?: string;
 }
 
+const labelClasses =
+  "block text-xs font-medium tracking-wide text-fg-soft uppercase mb-1.5";
+
 /**
  * Pairs with `Input`/`Textarea`/`Select` to give consistent label styling.
- * Compose like:
+ *
+ * Two usage styles:
  *
  *   <FieldLabel htmlFor="email">Email</FieldLabel>
  *   <Input id="email" type="email" />
+ *
+ *   <FieldLabel label="Email">
+ *     <Input type="email" />
+ *   </FieldLabel>
  */
-export function FieldLabel({ htmlFor, children, hint, required, className }: FieldLabelProps) {
+export function FieldLabel({
+  htmlFor,
+  children,
+  label,
+  hint,
+  required,
+  className,
+}: FieldLabelProps) {
+  if (label !== undefined) {
+    return (
+      <label htmlFor={htmlFor} className={cn("block", className)}>
+        <span className={labelClasses}>
+          {label}
+          {required && <span className="ml-0.5 text-red-600">*</span>}
+          {hint && (
+            <span className="ml-2 normal-case tracking-normal text-fg-muted">
+              ({hint})
+            </span>
+          )}
+        </span>
+        {children}
+      </label>
+    );
+  }
+
   return (
-    <label
-      htmlFor={htmlFor}
-      className={cn(
-        "block text-xs font-medium tracking-wide text-fg-soft uppercase mb-1.5",
-        className,
-      )}
-    >
+    <label htmlFor={htmlFor} className={cn(labelClasses, className)}>
       {children}
-      {required && <span className="text-red-600 ml-0.5">*</span>}
-      {hint && <span className="ml-2 normal-case tracking-normal text-fg-muted">({hint})</span>}
+      {required && <span className="ml-0.5 text-red-600">*</span>}
+      {hint && (
+        <span className="ml-2 normal-case tracking-normal text-fg-muted">
+          ({hint})
+        </span>
+      )}
     </label>
   );
 }
