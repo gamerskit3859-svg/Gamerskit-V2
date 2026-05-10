@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/cn";
 
 interface Category {
   _id: string;
@@ -10,6 +11,12 @@ interface Category {
   name: string;
   subcategories?: Category[];
 }
+
+const chipBase =
+  "whitespace-nowrap rounded-full px-4 py-1.5 text-[13px] transition-colors";
+const chipActive = "bg-black text-white";
+const chipIdle =
+  "border border-line-strong text-fg-soft hover:text-foreground";
 
 export function CategoryNav({ activeSlug }: { activeSlug?: string }) {
   const searchParams = useSearchParams();
@@ -34,25 +41,18 @@ export function CategoryNav({ activeSlug }: { activeSlug?: string }) {
 
   if (loading) {
     return (
-      <div className="sticky top-12 z-40 glass-strong hairline-b">
-        <div className="mx-auto max-w-[1280px] px-5 lg:px-8 py-3 flex gap-2 overflow-x-auto">
-          <div className="px-4 py-1.5 rounded-full text-[13px] bg-gray-200 animate-pulse w-12 h-6" />
+      <div className="glass-strong sticky top-12 z-40 border-b border-line">
+        <div className="mx-auto flex max-w-[1280px] gap-2 overflow-x-auto px-5 py-3 lg:px-8">
+          <div className="h-6 w-12 animate-pulse rounded-full bg-gray-200 px-4 py-1.5 text-[13px]" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="sticky top-12 z-40 glass-strong hairline-b">
-      <div className="mx-auto max-w-[1280px] px-5 lg:px-8 py-3 flex gap-2 overflow-x-auto">
-        <Link
-          href="/shop"
-          className={`px-4 py-1.5 rounded-full text-[13px] whitespace-nowrap transition-colors ${
-            isAll
-              ? "bg-black text-white"
-              : "border border-[var(--line-strong)] text-[var(--fg-soft)] hover:text-[var(--fg)]"
-          }`}
-        >
+    <div className="glass-strong sticky top-12 z-40 border-b border-line">
+      <div className="mx-auto flex max-w-[1280px] gap-2 overflow-x-auto px-5 py-3 lg:px-8">
+        <Link href="/shop" className={cn(chipBase, isAll ? chipActive : chipIdle)}>
           All
         </Link>
         {categories.map((c) => {
@@ -61,11 +61,7 @@ export function CategoryNav({ activeSlug }: { activeSlug?: string }) {
             <Link
               key={c._id}
               href={`/shop?category=${c.slug}`}
-              className={`px-4 py-1.5 rounded-full text-[13px] whitespace-nowrap transition-colors ${
-                active
-                  ? "bg-black text-white"
-                  : "border border-[var(--line-strong)] text-[var(--fg-soft)] hover:text-[var(--fg)]"
-              }`}
+              className={cn(chipBase, active ? chipActive : chipIdle)}
             >
               {c.name}
             </Link>
