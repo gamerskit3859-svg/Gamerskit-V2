@@ -41,7 +41,8 @@ export interface Product {
   slug: string;
   title: string;
   description: string;
-  category: CategorySlug;
+  /** Category ID (Mongo ObjectId) or, for legacy data, a {@link CategorySlug}. */
+  category: string;
   price: number;
   compareAtPrice?: number;
   cost?: number;
