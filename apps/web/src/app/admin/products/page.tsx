@@ -7,6 +7,15 @@ import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
 import type { Product } from "@gamerskit/shared";
+import {
+  Button,
+  Card,
+  FieldLabel,
+  Input,
+  Select,
+  Textarea,
+} from "@/components/ui";
+import { cn } from "@/lib/cn";
 
 interface Category {
   _id: string;
@@ -52,11 +61,17 @@ function fromProduct(p: Product): DraftProduct {
   };
 }
 
+function stockColor(stock: number): string {
+  if (stock > 5) return "text-foreground";
+  if (stock > 0) return "text-yellow-700";
+  return "text-red-600";
+}
+
 export default function AdminProductsPage() {
   const [items, setItems] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [, setCategoriesLoading] = useState(true);
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("all");
   const [draft, setDraft] = useState<DraftProduct>(blank());
@@ -65,15 +80,15 @@ export default function AdminProductsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load categories on mount
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const result = await api.listCategories();
         if (!cancelled) {
-          // Filter top-level categories
-          const topLevel = (result.items as any[]).filter((c) => !c.parentId);
+          const topLevel = (result.items as Category[]).filter(
+            (c: Category & { parentId?: string | null }) => !c.parentId,
+          );
           setCategories(topLevel);
           if (topLevel.length > 0) {
             setDraft(blank(topLevel[0].slug));
@@ -132,8 +147,7 @@ export default function AdminProductsPage() {
     if (!token) return;
     setBusy(true);
     setError(null);
-    
-    // Find the category ID by slug
+
     const selectedCategory = categories.find((c) => c.slug === draft.category);
     if (!selectedCategory) {
       setError("Please select a valid category");
@@ -143,7 +157,9 @@ export default function AdminProductsPage() {
 
     const body: Partial<Product> = {
       title: draft.title.trim(),
-      slug: draft.slug.trim() || draft.title.trim().toLowerCase().replace(/\s+/g, "-"),
+      slug:
+        draft.slug.trim() ||
+        draft.title.trim().toLowerCase().replace(/\s+/g, "-"),
       category: selectedCategory._id,
       price: Number(draft.price),
       buyingPrice: Number(draft.buyingPrice) || 0,
@@ -158,7 +174,9 @@ export default function AdminProductsPage() {
     try {
       if (editing) {
         const r = await api.updateProduct(editing._id, body, token);
-        setItems((prev) => prev.map((p) => (p._id === editing._id ? r.item : p)));
+        setItems((prev) =>
+          prev.map((p) => (p._id === editing._id ? r.item : p)),
+        );
       } else {
         const r = await api.createProduct(body, token);
         setItems((prev) => [r.item, ...prev]);
@@ -187,26 +205,29 @@ export default function AdminProductsPage() {
     >
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <span className="eyebrow">Admin</span>
-          <h1 className="text-3xl font-semibold tracking-tight mt-2">Products</h1>
-          <p className="text-sm text-[var(--fg-soft)] mt-1">
-            {items.length} products. Use <code>npm run seed</code> to import 34 from gamerskitbd.com.
+          <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+            Admin
+          </span>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+            Products
+          </h1>
+          <p className="mt-1 text-sm text-fg-soft">
+            {items.length} products. Use <code>npm run seed</code> to import 34
+            from gamerskitbd.com.
           </p>
         </div>
-        <button onClick={startCreate} className="btn btn-primary">
-          + New product
-        </button>
+        <Button onClick={startCreate}>+ New product</Button>
       </header>
 
-      <div className="mt-3 mb-5 flex flex-wrap gap-3">
-        <input
-          className="input !w-72"
+      <div className="mb-5 mt-3 flex flex-wrap gap-3">
+        <Input
+          className="!w-72"
           placeholder="Search…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <select
-          className="select !w-auto"
+        <Select
+          className="!w-auto"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
         >
@@ -216,62 +237,70 @@ export default function AdminProductsPage() {
               {c.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
-      <div className="card-soft p-0 overflow-hidden">
+      <Card tone="soft" padding="none" className="overflow-hidden">
         {loading ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)]">Loading…</div>
+          <div className="p-8 text-sm text-fg-muted">Loading…</div>
         ) : items.length === 0 ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)] text-center">
+          <div className="p-8 text-center text-sm text-fg-muted">
             No products. Create one or run <code>npm run seed</code>.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-white text-xs text-[var(--fg-soft)] text-left">
+              <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
-                  <th className="py-3 px-4">Product</th>
-                  <th className="py-3 px-4">Category</th>
-                  <th className="py-3 px-4">Price</th>
-                  <th className="py-3 px-4">Stock</th>
-                  <th className="py-3 px-4">Featured</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="px-4 py-3">Product</th>
+                  <th className="px-4 py-3">Category</th>
+                  <th className="px-4 py-3">Price</th>
+                  <th className="px-4 py-3">Stock</th>
+                  <th className="px-4 py-3">Featured</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((p) => (
-                  <tr key={p._id} className="hairline-t bg-white hover:bg-[var(--bg-soft)]">
-                    <td className="py-3 px-4 flex items-center gap-3">
-                      <div className="relative w-10 h-10 bg-[var(--bg-soft)] rounded overflow-hidden flex-shrink-0">
+                  <tr
+                    key={p._id}
+                    className="border-t border-line bg-white hover:bg-bg-soft"
+                  >
+                    <td className="flex items-center gap-3 px-4 py-3">
+                      <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-bg-soft">
                         {p.images[0] && (
-                          <Image src={p.images[0]} alt="" fill sizes="40px" className="object-cover" />
+                          <Image
+                            src={p.images[0]}
+                            alt=""
+                            fill
+                            sizes="40px"
+                            className="object-cover"
+                          />
                         )}
                       </div>
                       <div>
                         <div className="font-medium">{p.title}</div>
-                        <div className="text-xs text-[var(--fg-muted)] font-mono">{p.slug}</div>
+                        <div className="font-mono text-xs text-fg-muted">
+                          {p.slug}
+                        </div>
                       </div>
                     </td>
-                    <td className="py-3 px-4 capitalize">
-                      {categories.find((c) => c._id === p.category)?.name || "Unknown"}
+                    <td className="px-4 py-3 capitalize">
+                      {categories.find((c) => c._id === p.category)?.name ||
+                        "Unknown"}
                     </td>
-                    <td className="py-3 px-4 font-medium">{formatBDT(p.price)}</td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`text-xs ${
-                          p.stock > 5
-                            ? "text-[var(--fg)]"
-                            : p.stock > 0
-                              ? "text-yellow-700"
-                              : "text-red-600"
-                        }`}
-                      >
+                    <td className="px-4 py-3 font-medium">
+                      {formatBDT(p.price)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn("text-xs", stockColor(p.stock))}>
                         {p.stock}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-xs">{p.featured ? "Yes" : "—"}</td>
-                    <td className="py-3 px-4 text-right space-x-3 whitespace-nowrap">
+                    <td className="px-4 py-3 text-xs">
+                      {p.featured ? "Yes" : "—"}
+                    </td>
+                    <td className="space-x-3 whitespace-nowrap px-4 py-3 text-right">
                       <Link
                         href={`/product/${p.slug}`}
                         target="_blank"
@@ -279,12 +308,17 @@ export default function AdminProductsPage() {
                       >
                         Open ↗
                       </Link>
-                      <button onClick={() => startEdit(p)} className="text-xs underline">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(p)}
+                        className="text-xs underline"
+                      >
                         Edit
                       </button>
                       <button
+                        type="button"
                         onClick={() => remove(p)}
-                        className="text-xs underline text-red-600"
+                        className="text-xs text-red-600 underline"
                       >
                         Delete
                       </button>
@@ -295,7 +329,7 @@ export default function AdminProductsPage() {
             </table>
           </div>
         )}
-      </div>
+      </Card>
 
       <AnimatePresence>
         {open && (
@@ -303,7 +337,7 @@ export default function AdminProductsPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
             onClick={() => !busy && setOpen(false)}
           >
             <motion.div
@@ -312,115 +346,124 @@ export default function AdminProductsPage() {
               exit={{ y: 20, opacity: 0 }}
               transition={{ type: "spring", damping: 24 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl w-full max-w-xl p-6 shadow-xl"
+              className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl"
             >
-              <h2 className="text-xl font-semibold mb-4">
+              <h2 className="mb-4 text-xl font-semibold">
                 {editing ? `Edit ${editing.title}` : "New product"}
               </h2>
               <div className="space-y-3">
-                <div>
-                  <label className="eyebrow">Title</label>
-                  <input
-                    className="input mt-1"
+                <FieldLabel label="Title">
+                  <Input
                     value={draft.title}
-                    onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, title: e.target.value })
+                    }
                   />
-                </div>
+                </FieldLabel>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="eyebrow">Slug</label>
-                    <input
-                      className="input mt-1 font-mono"
+                  <FieldLabel label="Slug">
+                    <Input
+                      className="font-mono"
                       value={draft.slug}
-                      onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
+                      onChange={(e) =>
+                        setDraft({ ...draft, slug: e.target.value })
+                      }
                       placeholder="auto from title"
                     />
-                  </div>
-                  <div>
-                    <label className="eyebrow">Category</label>
-                    <select
-                      className="select mt-1"
+                  </FieldLabel>
+                  <FieldLabel label="Category">
+                    <Select
                       value={draft.category}
-                      onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+                      onChange={(e) =>
+                        setDraft({ ...draft, category: e.target.value })
+                      }
                     >
                       {categories.map((c) => (
                         <option key={c._id} value={c.slug}>
                           {c.name}
                         </option>
                       ))}
-                    </select>
-                  </div>
+                    </Select>
+                  </FieldLabel>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="eyebrow">Selling price (৳)</label>
-                    <input
+                  <FieldLabel label="Selling price (৳)">
+                    <Input
                       type="number"
-                      className="input mt-1"
                       value={draft.price}
-                      onChange={(e) => setDraft({ ...draft, price: Number(e.target.value) })}
+                      onChange={(e) =>
+                        setDraft({ ...draft, price: Number(e.target.value) })
+                      }
                     />
-                  </div>
-                  <div>
-                    <label className="eyebrow">Buying price (৳)</label>
-                    <input
+                  </FieldLabel>
+                  <FieldLabel label="Buying price (৳)">
+                    <Input
                       type="number"
-                      className="input mt-1"
                       value={draft.buyingPrice}
-                      onChange={(e) => setDraft({ ...draft, buyingPrice: Number(e.target.value) })}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          buyingPrice: Number(e.target.value),
+                        })
+                      }
                       placeholder="0"
                     />
-                    <p className="text-[11px] text-[var(--fg-muted)] mt-1">
-                      Wholesale cost per unit. Used to compute gross profit in reports.
+                    <p className="mt-1 text-[11px] text-fg-muted">
+                      Wholesale cost per unit. Used to compute gross profit in
+                      reports.
                     </p>
-                  </div>
-                  <div>
-                    <label className="eyebrow">Stock</label>
-                    <input
+                  </FieldLabel>
+                  <FieldLabel label="Stock">
+                    <Input
                       type="number"
-                      className="input mt-1"
                       value={draft.stock}
-                      onChange={(e) => setDraft({ ...draft, stock: Number(e.target.value) })}
+                      onChange={(e) =>
+                        setDraft({ ...draft, stock: Number(e.target.value) })
+                      }
                     />
-                  </div>
+                  </FieldLabel>
                 </div>
-                <div>
-                  <label className="eyebrow">Image URLs (one per line)</label>
-                  <textarea
-                    className="textarea mt-1 h-20 font-mono text-xs"
+                <FieldLabel label="Image URLs (one per line)">
+                  <Textarea
+                    className="h-20 font-mono text-xs"
                     value={draft.images}
-                    onChange={(e) => setDraft({ ...draft, images: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, images: e.target.value })
+                    }
                   />
-                </div>
-                <div>
-                  <label className="eyebrow">Description</label>
-                  <textarea
-                    className="textarea mt-1 h-20"
+                </FieldLabel>
+                <FieldLabel label="Description">
+                  <Textarea
+                    className="h-20"
                     value={draft.description}
-                    onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, description: e.target.value })
+                    }
                   />
-                </div>
+                </FieldLabel>
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={draft.featured}
-                    onChange={(e) => setDraft({ ...draft, featured: e.target.checked })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, featured: e.target.checked })
+                    }
                   />
                   Featured on landing page
                 </label>
                 {error && <p className="text-sm text-red-600">{error}</p>}
               </div>
               <div className="mt-6 flex justify-end gap-2">
-                <button onClick={() => setOpen(false)} className="btn btn-ghost" disabled={busy}>
-                  Cancel
-                </button>
-                <button
-                  onClick={save}
-                  className="btn btn-primary"
-                  disabled={busy || !draft.title}
+                <Button
+                  variant="ghost"
+                  onClick={() => setOpen(false)}
+                  disabled={busy}
                 >
+                  Cancel
+                </Button>
+                <Button onClick={save} disabled={busy || !draft.title}>
                   {busy ? "Saving…" : editing ? "Save changes" : "Create"}
-                </button>
+                </Button>
               </div>
             </motion.div>
           </motion.div>
