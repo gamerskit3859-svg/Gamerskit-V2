@@ -7,6 +7,24 @@ import { Trash2, Plus, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatBDT } from "@/lib/format";
 import type { Product } from "@gamerskit/shared";
+import {
+  Button,
+  Card,
+  Input,
+  Select,
+  Textarea,
+} from "@/components/ui";
+import { cn } from "@/lib/cn";
+
+type PaymentMethod = "cod" | "bkash" | "nagad" | "card" | "manual";
+
+const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
+  { value: "cod", label: "Cash on Delivery" },
+  { value: "bkash", label: "bKash" },
+  { value: "nagad", label: "Nagad" },
+  { value: "card", label: "Card" },
+  { value: "manual", label: "Manual / other" },
+];
 
 type Line = {
   key: string;
@@ -23,6 +41,9 @@ type Line = {
 let nextKey = 1;
 const k = () => `l_${nextKey++}`;
 
+const eyebrow =
+  "text-[10px] uppercase tracking-widest text-fg-muted";
+
 export default function CustomOrderPage() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
@@ -32,9 +53,7 @@ export default function CustomOrderPage() {
   const [shippingFee, setShippingFee] = useState(0);
   const [discount, setDiscount] = useState(0);
   const [advance, setAdvance] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState<
-    "cod" | "bkash" | "nagad" | "card" | "manual"
-  >("cod");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [customer, setCustomer] = useState({
     name: "",
     phone: "",
@@ -157,39 +176,38 @@ export default function CustomOrderPage() {
   return (
     <div>
       <header className="mb-6">
-        <span className="eyebrow">Admin</span>
-        <h1 className="text-3xl font-semibold tracking-tight mt-2">
+        <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+          Admin
+        </span>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
           New custom order
         </h1>
-        <p className="text-sm text-[var(--fg-soft)] mt-1">
+        <p className="mt-1 text-sm text-fg-soft">
           Build a manual order with custom prices, ad-hoc line items, and
           flexible payment. Fires a Purchase event with the final value.
         </p>
       </header>
 
-      <div className="grid lg:grid-cols-[1fr_360px] gap-6 items-start">
-        {/* lines builder */}
-        <div className="card-soft p-5">
-          <div className="flex items-center justify-between mb-4">
+      <div className="grid items-start gap-6 lg:grid-cols-[1fr_360px]">
+        <Card tone="soft" padding="md">
+          <div className="mb-4 flex items-center justify-between">
             <h2 className="font-semibold">Items</h2>
             <div className="flex gap-2">
-              <button
-                className="btn btn-ghost !py-1.5 !px-3 !text-xs"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={addCustomLine}
               >
                 <Plus size={12} /> Custom item
-              </button>
-              <button
-                className="btn btn-primary !py-1.5 !px-3 !text-xs"
-                onClick={() => setShowSearch(true)}
-              >
+              </Button>
+              <Button size="sm" onClick={() => setShowSearch(true)}>
                 <Plus size={12} /> Add product
-              </button>
+              </Button>
             </div>
           </div>
 
           {lines.length === 0 ? (
-            <div className="text-sm text-[var(--fg-muted)] py-12 text-center">
+            <div className="py-12 text-center text-sm text-fg-muted">
               No items yet. Add a product or a custom line.
             </div>
           ) : (
@@ -202,9 +220,9 @@ export default function CustomOrderPage() {
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
-                    className="bg-white rounded-lg p-3 border border-[var(--line)] flex flex-wrap items-center gap-3"
+                    className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-white p-3"
                   >
-                    <div className="relative w-12 h-12 bg-[var(--bg-soft)] rounded overflow-hidden flex-shrink-0">
+                    <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded bg-bg-soft">
                       {l.image && (
                         <Image
                           src={l.image}
@@ -215,8 +233,8 @@ export default function CustomOrderPage() {
                         />
                       )}
                     </div>
-                    <input
-                      className="input flex-1 min-w-[140px]"
+                    <Input
+                      className="min-w-[140px] flex-1"
                       value={l.title}
                       onChange={(e) =>
                         update(l.key, { title: e.target.value })
@@ -224,11 +242,9 @@ export default function CustomOrderPage() {
                       readOnly={!l.custom}
                     />
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-[10px] text-[var(--fg-muted)] uppercase tracking-widest">
-                        Price
-                      </span>
-                      <input
-                        className="input !w-24 !py-1.5 text-right"
+                      <span className={eyebrow}>Price</span>
+                      <Input
+                        className="!w-24 !py-1.5 text-right"
                         type="number"
                         min={0}
                         value={l.unitPrice}
@@ -240,17 +256,15 @@ export default function CustomOrderPage() {
                       />
                       {l.originalPrice !== undefined &&
                         l.originalPrice !== l.unitPrice && (
-                          <span className="text-[10px] text-[var(--fg-muted)] line-through">
+                          <span className="text-[10px] text-fg-muted line-through">
                             {formatBDT(l.originalPrice)}
                           </span>
                         )}
                     </div>
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-[10px] text-[var(--fg-muted)] uppercase tracking-widest">
-                        Qty
-                      </span>
-                      <input
-                        className="input !w-16 !py-1.5 text-right"
+                      <span className={eyebrow}>Qty</span>
+                      <Input
+                        className="!w-16 !py-1.5 text-right"
                         type="number"
                         min={1}
                         value={l.quantity}
@@ -261,12 +275,13 @@ export default function CustomOrderPage() {
                         }
                       />
                     </div>
-                    <div className="font-semibold whitespace-nowrap min-w-[80px] text-right">
+                    <div className="min-w-[80px] whitespace-nowrap text-right font-semibold">
                       {formatBDT(l.unitPrice * l.quantity)}
                     </div>
                     <button
+                      type="button"
                       onClick={() => removeLine(l.key)}
-                      className="p-2 hover:bg-[var(--bg-soft)] rounded-full"
+                      className="rounded-full p-2 hover:bg-bg-soft"
                       aria-label="Remove"
                     >
                       <Trash2 size={14} />
@@ -277,8 +292,7 @@ export default function CustomOrderPage() {
             </ul>
           )}
 
-          {/* totals row */}
-          <div className="hairline-t mt-5 pt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="mt-5 grid grid-cols-2 gap-3 border-t border-line pt-4 lg:grid-cols-4">
             <NumField
               label="Shipping fee"
               value={shippingFee}
@@ -287,57 +301,49 @@ export default function CustomOrderPage() {
             <NumField label="Discount" value={discount} onChange={setDiscount} />
             <NumField label="Advance paid" value={advance} onChange={setAdvance} />
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-[var(--fg-muted)] uppercase tracking-widest">
-                Payment
-              </span>
-              <select
-                className="select"
+              <span className={eyebrow}>Payment</span>
+              <Select
                 value={paymentMethod}
                 onChange={(e) =>
-                  setPaymentMethod(e.target.value as typeof paymentMethod)
+                  setPaymentMethod(e.target.value as PaymentMethod)
                 }
               >
-                <option value="cod">Cash on Delivery</option>
-                <option value="bkash">bKash</option>
-                <option value="nagad">Nagad</option>
-                <option value="card">Card</option>
-                <option value="manual">Manual / other</option>
-              </select>
+                {PAYMENT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </Select>
             </div>
           </div>
-        </div>
+        </Card>
 
-        {/* customer + summary */}
         <aside className="flex flex-col gap-4">
-          <div className="card-soft p-5">
-            <h2 className="font-semibold mb-3">Customer</h2>
+          <Card tone="soft" padding="md">
+            <h2 className="mb-3 font-semibold">Customer</h2>
             <div className="grid gap-2">
-              <input
-                className="input"
+              <Input
                 placeholder="Full name"
                 value={customer.name}
                 onChange={(e) =>
                   setCustomer({ ...customer, name: e.target.value })
                 }
               />
-              <input
-                className="input"
+              <Input
                 placeholder="Phone"
                 value={customer.phone}
                 onChange={(e) =>
                   setCustomer({ ...customer, phone: e.target.value })
                 }
               />
-              <input
-                className="input"
+              <Input
                 placeholder="Email (optional)"
                 value={customer.email}
                 onChange={(e) =>
                   setCustomer({ ...customer, email: e.target.value })
                 }
               />
-              <textarea
-                className="textarea"
+              <Textarea
                 placeholder="Address"
                 value={customer.address}
                 onChange={(e) =>
@@ -345,16 +351,14 @@ export default function CustomOrderPage() {
                 }
               />
               <div className="grid grid-cols-2 gap-2">
-                <input
-                  className="input"
+                <Input
                   placeholder="City"
                   value={customer.city}
                   onChange={(e) =>
                     setCustomer({ ...customer, city: e.target.value })
                   }
                 />
-                <input
-                  className="input"
+                <Input
                   placeholder="Area"
                   value={customer.area}
                   onChange={(e) =>
@@ -362,35 +366,32 @@ export default function CustomOrderPage() {
                   }
                 />
               </div>
-              <textarea
-                className="textarea"
+              <Textarea
                 placeholder="Internal notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
             </div>
-          </div>
+          </Card>
 
-          <div className="glass-strong rounded-[var(--radius-lg)] p-5 sticky top-24">
-            <h2 className="font-semibold mb-3">Summary</h2>
+          <div className="glass-strong sticky top-24 rounded-2xl p-5">
+            <h2 className="mb-3 font-semibold">Summary</h2>
             <Row label="Subtotal" value={subtotal} />
             <Row label="Shipping" value={shippingFee} />
             <Row label="Discount" value={-discount} />
             <Row label="Advance" value={-advance} />
-            <div className="hairline-t pt-2 mt-2">
+            <div className="mt-2 border-t border-line pt-2">
               <Row label="Total" value={total} bold />
               <Row label="Remaining" value={remaining} bold />
             </div>
-            {error && (
-              <div className="text-sm text-red-600 mt-3">{error}</div>
-            )}
-            <button
+            {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
+            <Button
               onClick={submit}
               disabled={submitting}
-              className="btn btn-primary w-full mt-4"
+              className="mt-4 w-full justify-center"
             >
               {submitting ? "Saving…" : `Create order · ${formatBDT(total)}`}
-            </button>
+            </Button>
           </div>
         </aside>
       </div>
@@ -401,7 +402,7 @@ export default function CustomOrderPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-24"
+            className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
             onClick={() => setShowSearch(false)}
           >
             <motion.div
@@ -410,19 +411,20 @@ export default function CustomOrderPage() {
               exit={{ opacity: 0, y: -8, scale: 0.98 }}
               transition={{ duration: 0.25 }}
               onClick={(e) => e.stopPropagation()}
-              className="glass-strong rounded-[var(--radius-lg)] p-4 w-full max-w-xl mx-4"
+              className="glass-strong mx-4 w-full max-w-xl rounded-2xl p-4"
             >
               <div className="flex items-center gap-2">
-                <input
+                <Input
                   autoFocus
-                  className="input flex-1"
+                  className="flex-1"
                   placeholder="Search products…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
                 <button
+                  type="button"
                   onClick={() => setShowSearch(false)}
-                  className="p-2 rounded-full hover:bg-[var(--bg-soft)]"
+                  className="rounded-full p-2 hover:bg-bg-soft"
                 >
                   <X size={16} />
                 </button>
@@ -431,10 +433,10 @@ export default function CustomOrderPage() {
                 {filtered.map((p) => (
                   <li
                     key={p._id}
-                    className="p-2 hover:bg-[var(--bg-soft)] rounded-lg flex items-center gap-3 cursor-pointer"
+                    className="flex cursor-pointer items-center gap-3 rounded-lg p-2 hover:bg-bg-soft"
                     onClick={() => addProduct(p)}
                   >
-                    <div className="relative w-10 h-10 bg-white rounded overflow-hidden flex-shrink-0">
+                    <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-white">
                       {p.images[0] && (
                         <Image
                           src={p.images[0]}
@@ -445,18 +447,18 @@ export default function CustomOrderPage() {
                         />
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium line-clamp-1">
+                    <div className="min-w-0 flex-1">
+                      <div className="line-clamp-1 text-sm font-medium">
                         {p.title}
                       </div>
-                      <div className="text-xs text-[var(--fg-muted)] capitalize">
+                      <div className="text-xs capitalize text-fg-muted">
                         {p.category.replace(/-/g, " ")} · {formatBDT(p.price)}
                       </div>
                     </div>
                   </li>
                 ))}
                 {filtered.length === 0 && (
-                  <li className="p-4 text-sm text-[var(--fg-muted)] text-center">
+                  <li className="p-4 text-center text-sm text-fg-muted">
                     No products found.
                   </li>
                 )}
@@ -480,11 +482,9 @@ function NumField({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] text-[var(--fg-muted)] uppercase tracking-widest">
-        {label}
-      </span>
-      <input
-        className="input text-right"
+      <span className={eyebrow}>{label}</span>
+      <Input
+        className="text-right"
         type="number"
         min={0}
         value={value}
@@ -505,11 +505,12 @@ function Row({
 }) {
   return (
     <div
-      className={`flex justify-between text-sm py-0.5 ${
-        bold ? "font-semibold" : ""
-      }`}
+      className={cn(
+        "flex justify-between py-0.5 text-sm",
+        bold && "font-semibold",
+      )}
     >
-      <span className={bold ? "" : "text-[var(--fg-soft)]"}>{label}</span>
+      <span className={bold ? "" : "text-fg-soft"}>{label}</span>
       <span className="tabular-nums">{formatBDT(value)}</span>
     </div>
   );
