@@ -146,6 +146,18 @@ router.get("/by-number/:orderNumber", async (req, res) => {
   res.json({ order });
 });
 
+router.get("/by-phone/:phone", async (req, res) => {
+  const orders = await OrderModel.find({ "customer.phone": req.params.phone })
+    .sort({ createdAt: -1 })
+    .limit(10)
+    .lean();
+  if (orders.length === 0) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
+  res.json({ orders });
+});
+
 // Admin endpoints
 router.get("/", adminRequired, async (req, res) => {
   const {

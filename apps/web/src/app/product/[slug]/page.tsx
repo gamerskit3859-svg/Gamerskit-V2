@@ -44,14 +44,14 @@ export default async function ProductPage({
   } catch {}
 
   return (
-    <article className="px-5 lg:px-8 max-w-[1280px] mx-auto pt-10 pb-20">
+    <article className="px-5 lg:px-8 max-w-[1280px] mx-auto py-10 md:py-16">
       <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-start">
         <ProductGallery images={item!.images} alt={item!.title} />
         <ProductBuyPanel product={item!} />
       </div>
 
       {related.length > 0 && (
-        <section className="mt-24 hairline-t pt-16">
+        <section className="py-10 mt-10 md:py-16 hairline-t">
           <h2 className="display-2">You may also like.</h2>
           <div className="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-12">
             {related.map((p, i) => (

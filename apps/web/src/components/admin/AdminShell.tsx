@@ -10,10 +10,13 @@ const NAV = [
   { href: "/admin/orders", label: "Orders" },
   { href: "/admin/orders/new", label: "New custom order" },
   { href: "/admin/products", label: "Products" },
+  { href: "/admin/hero", label: "Hero Section" },
+  { href: "/admin/categories", label: "Categories" },
   { href: "/admin/inventory", label: "Inventory" },
   { href: "/admin/customers", label: "Customers" },
   { href: "/admin/coupons", label: "Coupons" },
   { href: "/admin/reports", label: "Accounting" },
+  { href: "/admin/users", label: "Users & Roles" },
   { href: "/admin/staff", label: "Staff" },
   { href: "/admin/notifications", label: "Notifications" },
 ];

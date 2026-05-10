@@ -6,7 +6,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
-import { CATEGORIES, type CategorySlug, type Product } from "@gamerskit/shared";
+import type { Product } from "@gamerskit/shared";
+
+interface Category {
+  _id: string;
+  slug: string;
+  name: string;
+}
 
 interface DraftProduct {
   title: string;
@@ -20,10 +26,10 @@ interface DraftProduct {
   featured: boolean;
 }
 
-const blank = (): DraftProduct => ({
+const blank = (firstCategorySlug?: string): DraftProduct => ({
   title: "",
   slug: "",
-  category: CATEGORIES[0]?.slug ?? "rc-car",
+  category: firstCategorySlug ?? "",
   price: 0,
   buyingPrice: 0,
   stock: 0,
@@ -48,7 +54,9 @@ function fromProduct(p: Product): DraftProduct {
 
 export default function AdminProductsPage() {
   const [items, setItems] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("all");
   const [draft, setDraft] = useState<DraftProduct>(blank());
@@ -56,6 +64,32 @@ export default function AdminProductsPage() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Load categories on mount
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await api.listCategories();
+        if (!cancelled) {
+          // Filter top-level categories
+          const topLevel = (result.items as any[]).filter((c) => !c.parentId);
+          setCategories(topLevel);
+          if (topLevel.length > 0) {
+            setDraft(blank(topLevel[0].slug));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load categories:", err);
+        if (!cancelled) setCategories([]);
+      } finally {
+        if (!cancelled) setCategoriesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,7 +115,7 @@ export default function AdminProductsPage() {
 
   function startCreate() {
     setEditing(null);
-    setDraft(blank());
+    setDraft(blank(categories.length > 0 ? categories[0].slug : ""));
     setError(null);
     setOpen(true);
   }
@@ -98,10 +132,19 @@ export default function AdminProductsPage() {
     if (!token) return;
     setBusy(true);
     setError(null);
+    
+    // Find the category ID by slug
+    const selectedCategory = categories.find((c) => c.slug === draft.category);
+    if (!selectedCategory) {
+      setError("Please select a valid category");
+      setBusy(false);
+      return;
+    }
+
     const body: Partial<Product> = {
       title: draft.title.trim(),
       slug: draft.slug.trim() || draft.title.trim().toLowerCase().replace(/\s+/g, "-"),
-      category: draft.category as CategorySlug,
+      category: selectedCategory._id,
       price: Number(draft.price),
       buyingPrice: Number(draft.buyingPrice) || 0,
       stock: Number(draft.stock),
@@ -168,9 +211,9 @@ export default function AdminProductsPage() {
           onChange={(e) => setCategory(e.target.value)}
         >
           <option value="all">All categories</option>
-          {CATEGORIES.map((c) => (
-            <option key={c.slug} value={c.slug}>
-              {c.label}
+          {categories.map((c) => (
+            <option key={c._id} value={c.slug}>
+              {c.name}
             </option>
           ))}
         </select>
@@ -210,7 +253,9 @@ export default function AdminProductsPage() {
                         <div className="text-xs text-[var(--fg-muted)] font-mono">{p.slug}</div>
                       </div>
                     </td>
-                    <td className="py-3 px-4 capitalize">{p.category.replace(/-/g, " ")}</td>
+                    <td className="py-3 px-4 capitalize">
+                      {categories.find((c) => c._id === p.category)?.name || "Unknown"}
+                    </td>
                     <td className="py-3 px-4 font-medium">{formatBDT(p.price)}</td>
                     <td className="py-3 px-4">
                       <span
@@ -298,9 +343,9 @@ export default function AdminProductsPage() {
                       value={draft.category}
                       onChange={(e) => setDraft({ ...draft, category: e.target.value })}
                     >
-                      {CATEGORIES.map((c) => (
-                        <option key={c.slug} value={c.slug}>
-                          {c.label}
+                      {categories.map((c) => (
+                        <option key={c._id} value={c.slug}>
+                          {c.name}
                         </option>
                       ))}
                     </select>

@@ -10,7 +10,13 @@ import { formatBDT } from "@/lib/format";
 import { useCart } from "@/lib/cart";
 import { track } from "@/lib/fb-pixel";
 
-export function ProductCard({ product, index = 0 }: { product: Product; index?: number }) {
+export function ProductCard({
+  product,
+  index = 0,
+}: {
+  product: Product;
+  index?: number;
+}) {
   const img = product.images[0];
   const router = useRouter();
   const add = useCart((s) => s.add);
@@ -56,9 +62,12 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
       initial={{ opacity: 0, y: 24 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
-      transition={{ duration: 0.6, delay: Math.min(index * 0.04, 0.3), ease: [0.16, 1, 0.3, 1] }}
-      className="group flex flex-col rounded-[var(--radius-lg)] border border-[var(--line)] bg-white overflow-hidden transition-all duration-300 hover:border-[var(--line-strong)] hover:shadow-[var(--shadow-md)]"
-    >
+      transition={{
+        duration: 0.6,
+        delay: Math.min(index * 0.04, 0.3),
+        ease: [0.16, 1, 0.3, 1],
+      }}
+      className="group flex flex-col rounded-[var(--radius-lg)] border border-[var(--line)] bg-white overflow-hidden transition-all duration-300 hover:border-[var(--line-strong)] hover:shadow-[var(--shadow-md)]">
       <Link href={`/product/${product.slug}`} className="block">
         <div className="relative aspect-square w-full overflow-hidden bg-[var(--bg-soft)]">
           {img ? (
@@ -80,7 +89,7 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
             </span>
           )}
         </div>
-        <div className="px-4 pt-4">
+        <div className="px-2 md:px-4 pt-2 md:pt-4">
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-[14px] font-medium leading-tight text-[var(--fg)] line-clamp-2">
               {product.title}
@@ -89,17 +98,13 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
               {formatBDT(product.price)}
             </span>
           </div>
-          <span className="text-[12px] text-[var(--fg-muted)] capitalize">
-            {product.category.replace(/-/g, " ")}
-          </span>
         </div>
       </Link>
-      <div className="px-4 pb-4 pt-3 mt-auto flex items-center gap-2">
+      <div className="px-2 md:px-4 pb-4 pt-3 mt-auto flex items-center gap-2">
         <button
           type="button"
           onClick={handleBuyNow}
-          className="flex-1 inline-flex items-center justify-center h-9 rounded-full bg-black text-white text-[12px] font-medium tracking-tight hover:bg-[#1d1d1f] transition-colors"
-        >
+          className="flex-1 inline-flex items-center justify-center h-9 rounded-full bg-black text-white text-[12px] font-medium tracking-tight hover:bg-[#1d1d1f] transition-colors">
           Buy now
         </button>
         <button
@@ -107,9 +112,11 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
           onClick={handleAddToCart}
           aria-label={added ? "Added to cart" : "Add to cart"}
           title={added ? "Added" : "Add to cart"}
-          className="inline-flex items-center justify-center h-9 w-9 rounded-full border border-[var(--line-strong)] bg-white text-[var(--fg)] hover:bg-[var(--bg-soft)] transition-colors"
-        >
-          <ShoppingBag size={15} className={added ? "scale-110 transition-transform" : ""} />
+          className="inline-flex items-center justify-center h-9 w-9 rounded-full border border-[var(--line-strong)] bg-white text-[var(--fg)] hover:bg-[var(--bg-soft)] transition-colors">
+          <ShoppingBag
+            size={15}
+            className={added ? "scale-110 transition-transform" : ""}
+          />
         </button>
       </div>
     </motion.div>

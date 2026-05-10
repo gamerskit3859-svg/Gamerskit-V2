@@ -22,4 +22,9 @@ export const env = {
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ?? "admin123",
   GAMERSKIT_LEGACY_API:
     process.env.GAMERSKIT_LEGACY_API ?? "https://gamerskit-server.vercel.app",
+  // OAuth
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? "",
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? "",
+  FACEBOOK_APP_ID: process.env.FACEBOOK_APP_ID ?? "",
+  FACEBOOK_APP_SECRET: process.env.FACEBOOK_APP_SECRET ?? "",
 };

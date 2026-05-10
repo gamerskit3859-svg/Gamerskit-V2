@@ -62,6 +62,38 @@ export function adminRequired(req: Request, res: Response, next: NextFunction): 
   });
 }
 
+export function staffRequired(req: Request, res: Response, next: NextFunction): void {
+  authRequired(req, res, () => {
+    if (req.user?.role !== "staff") {
+      res.status(403).json({ error: "staff only" });
+      return;
+    }
+    next();
+  });
+}
+
+export function adminOnlyRequired(req: Request, res: Response, next: NextFunction): void {
+  authRequired(req, res, () => {
+    if (req.user?.role !== "admin") {
+      res.status(403).json({ error: "admin only" });
+      return;
+    }
+    next();
+  });
+}
+
+export function roleRequired(allowedRoles: Array<"customer" | "staff" | "admin">) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    authRequired(req, res, () => {
+      if (!req.user?.role || !allowedRoles.includes(req.user.role)) {
+        res.status(403).json({ error: "insufficient permissions" });
+        return;
+      }
+      next();
+    });
+  };
+}
+
 /**
  * Bootstrap admin user on first start using ADMIN_EMAIL / ADMIN_PASSWORD env vars.
  */

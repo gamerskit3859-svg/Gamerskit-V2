@@ -14,7 +14,8 @@ const ProductSchema = new Schema(
     slug: { type: String, required: true, unique: true, index: true },
     title: { type: String, required: true },
     description: { type: String, default: "" },
-    category: { type: String, required: true, index: true },
+    category: { type: Schema.Types.ObjectId, ref: "Category", required: true, index: true },
+    categorySlug: { type: String, default: "", index: true }, // kept for compatibility
     price: { type: Number, required: true, min: 0 },
     compareAtPrice: { type: Number },
     cost: { type: Number },
