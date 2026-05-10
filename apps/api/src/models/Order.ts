@@ -19,8 +19,8 @@ const CustomerSchema = new Schema(
     phone: { type: String, required: true, index: true },
     email: { type: String },
     address: { type: String, required: true },
-    city: { type: String, required: true },
-    area: { type: String },
+    district: { type: String },
+    thana: { type: String },
   },
   { _id: false },
 );
