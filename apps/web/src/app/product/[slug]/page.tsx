@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import { ProductGallery } from "@/components/ProductGallery";
 import { ProductBuyPanel } from "@/components/ProductBuyPanel";
 import { ProductCard } from "@/components/ProductCard";
+import { Section } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -44,21 +45,23 @@ export default async function ProductPage({
   } catch {}
 
   return (
-    <article className="px-5 lg:px-8 max-w-[1280px] mx-auto py-10 md:py-16">
-      <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-start">
+    <article className="mx-auto w-full max-w-[1280px] px-5 py-10 md:py-16 lg:px-8">
+      <div className="grid items-start gap-10 lg:grid-cols-2 lg:gap-16">
         <ProductGallery images={item!.images} alt={item!.title} />
         <ProductBuyPanel product={item!} />
       </div>
 
       {related.length > 0 && (
-        <section className="py-10 mt-10 md:py-16 hairline-t">
-          <h2 className="display-2">You may also like.</h2>
-          <div className="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-12">
+        <Section width="full" flush spacing="md" className="mt-10 border-t border-line">
+          <h2 className="text-[clamp(36px,5vw,64px)] leading-[1.06] tracking-[-0.035em] font-semibold">
+            You may also like.
+          </h2>
+          <div className="mt-10 grid grid-cols-2 gap-x-5 gap-y-12 lg:grid-cols-4">
             {related.map((p, i) => (
               <ProductCard product={p} key={p._id} index={i} />
             ))}
           </div>
-        </section>
+        </Section>
       )}
     </article>
   );

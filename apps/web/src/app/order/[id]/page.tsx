@@ -1,7 +1,8 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { api } from "@/lib/api";
 import { formatBDT, formatDateTime } from "@/lib/format";
+import { LinkButton, Card, Section } from "@/components/ui";
+import { cn } from "@/lib/cn";
 
 export const dynamic = "force-dynamic";
 
@@ -28,31 +29,37 @@ export default async function OrderPage({
   const idx = STATUSES.findIndex((s) => s.key === order!.status);
 
   return (
-    <section className="px-5 lg:px-8 max-w-3xl mx-auto py-16">
-      <span className="eyebrow">Order placed</span>
-      <h1 className="display-2 mt-2">Thanks, {order!.customer.name.split(" ")[0]}.</h1>
-      <p className="mt-3 text-[var(--fg-soft)]">
-        Your order <span className="font-mono text-[var(--fg)]">{order!.orderNumber}</span>{" "}
+    <Section width="narrow" spacing="lg" className="!max-w-3xl">
+      <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+        Order placed
+      </span>
+      <h1 className="mt-2 text-[clamp(36px,5vw,64px)] leading-[1.06] tracking-[-0.035em] font-semibold">
+        Thanks, {order!.customer.name.split(" ")[0]}.
+      </h1>
+      <p className="mt-3 text-fg-soft">
+        Your order{" "}
+        <span className="font-mono text-foreground">{order!.orderNumber}</span>{" "}
         was placed on {formatDateTime(order!.createdAt)}.
       </p>
 
-      {/* Status timeline */}
-      <div className="mt-10 card-soft p-6">
-        <h2 className="font-semibold mb-6">Status</h2>
+      <Card tone="soft" className="mt-10">
+        <h2 className="mb-6 font-semibold">Status</h2>
         <ol className="grid gap-4">
           {STATUSES.map((s, i) => {
             const reached = i <= Math.max(0, idx);
             return (
               <li
                 key={s.key}
-                className={`flex items-center gap-3 ${
-                  reached ? "" : "opacity-40"
-                }`}
+                className={cn(
+                  "flex items-center gap-3",
+                  !reached && "opacity-40",
+                )}
               >
                 <span
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] ${
-                    reached ? "bg-black text-white" : "bg-[var(--bg)]"
-                  } border border-[var(--line-strong)]`}
+                  className={cn(
+                    "flex h-6 w-6 items-center justify-center rounded-full border border-line-strong text-[10px]",
+                    reached ? "bg-black text-white" : "bg-background",
+                  )}
                 >
                   {reached ? "✓" : i + 1}
                 </span>
@@ -61,35 +68,32 @@ export default async function OrderPage({
             );
           })}
         </ol>
-      </div>
+      </Card>
 
-      <div className="mt-6 card-soft p-6">
-        <h2 className="font-semibold mb-3">Items</h2>
-        <ul className="divide-y divide-[var(--line)]">
+      <Card tone="soft" className="mt-6">
+        <h2 className="mb-3 font-semibold">Items</h2>
+        <ul className="divide-y divide-line">
           {order!.items.map((l, i) => (
-            <li key={i} className="py-3 flex justify-between text-sm">
+            <li key={i} className="flex justify-between py-3 text-sm">
               <span>
-                {l.title}{" "}
-                <span className="text-[var(--fg-muted)]">× {l.quantity}</span>
+                {l.title} <span className="text-fg-muted">× {l.quantity}</span>
               </span>
               <span>{formatBDT(l.unitPrice * l.quantity)}</span>
             </li>
           ))}
         </ul>
-        <div className="hairline-t mt-3 pt-3 flex justify-between font-semibold">
+        <div className="mt-3 flex justify-between border-t border-line pt-3 font-semibold">
           <span>Total</span>
           <span>{formatBDT(order!.total)}</span>
         </div>
-      </div>
+      </Card>
 
       <div className="mt-10 flex gap-3">
-        <Link href="/shop" className="btn btn-ghost">
+        <LinkButton href="/shop" variant="ghost">
           Continue shopping
-        </Link>
-        <Link href="/track" className="btn btn-primary">
-          Track another order
-        </Link>
+        </LinkButton>
+        <LinkButton href="/track">Track another order</LinkButton>
       </div>
-    </section>
+    </Section>
   );
 }

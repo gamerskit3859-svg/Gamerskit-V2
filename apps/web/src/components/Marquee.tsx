@@ -1,20 +1,26 @@
+const ITEMS = [
+  "Free delivery across Bangladesh",
+  "100% genuine products",
+  "Easy 7-day returns",
+  "Cash on delivery",
+  "WhatsApp support",
+];
+
+/**
+ * Continuously-scrolling promo band shown under the hero. Uses the
+ * `animate-marquee` utility exposed via `@theme inline` in globals.css.
+ */
 export function Marquee() {
-  const items = [
-    "Free delivery across Bangladesh",
-    "100% genuine products",
-    "Easy 7-day returns",
-    "Cash on delivery",
-    "WhatsApp support",
-  ];
   return (
-    <div className="hairline-t hairline-b py-3 overflow-hidden bg-white">
-      <div className="flex gap-12 whitespace-nowrap marquee">
-        {[...items, ...items, ...items].map((it, i) => (
+    <div className="border-y border-line py-3 overflow-hidden bg-white">
+      <div className="flex gap-12 whitespace-nowrap animate-marquee">
+        {[...ITEMS, ...ITEMS, ...ITEMS].map((it, i) => (
           <span
             key={i}
-            className="text-[12px] tracking-[0.18em] uppercase text-[var(--fg-muted)]"
+            className="text-xs tracking-[0.18em] uppercase text-fg-muted"
           >
-            {it} <span className="mx-6 text-[var(--line-strong)]">/</span>
+            {it}
+            <span className="mx-6 text-line-strong">/</span>
           </span>
         ))}
       </div>

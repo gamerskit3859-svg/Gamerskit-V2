@@ -1,6 +1,5 @@
 "use client";
 import Image from "next/image";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -8,8 +7,41 @@ import { useCart } from "@/lib/cart";
 import { formatBDT } from "@/lib/format";
 import { track } from "@/lib/fb-pixel";
 import { api } from "@/lib/api";
+import {
+  Button,
+  LinkButton,
+  Card,
+  Section,
+  Input,
+  Textarea,
+} from "@/components/ui";
+import { cn } from "@/lib/cn";
 
 type Step = 1 | 2 | 3;
+type PaymentMethod = "cod" | "bkash" | "nagad";
+
+interface CheckoutForm {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  area: string;
+  paymentMethod: PaymentMethod;
+  notes: string;
+}
+
+const PAYMENT_OPTIONS: Array<{ id: PaymentMethod; label: string; hint: string }> = [
+  { id: "cod", label: "Cash on Delivery", hint: "Pay when you receive." },
+  { id: "bkash", label: "bKash", hint: "Send advance to 01303-775977." },
+  { id: "nagad", label: "Nagad", hint: "Send advance to 01303-775977." },
+];
+
+const STEP_LABELS: Record<Step, string> = {
+  1: "Information",
+  2: "Payment",
+  3: "Review",
+};
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -19,14 +51,14 @@ export default function CheckoutPage() {
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<CheckoutForm>({
     name: "",
     phone: "",
     email: "",
     address: "",
     city: "Dhaka",
     area: "",
-    paymentMethod: "cod" as "cod" | "bkash" | "nagad",
+    paymentMethod: "cod",
     notes: "",
   });
 
@@ -51,12 +83,14 @@ export default function CheckoutPage() {
 
   if (lines.length === 0) {
     return (
-      <section className="px-5 max-w-2xl mx-auto py-24 text-center">
-        <h1 className="display-2">Your bag is empty.</h1>
-        <Link href="/shop" className="btn btn-primary mt-6 inline-flex">
+      <Section width="narrow" spacing="lg" className="!max-w-2xl text-center">
+        <h1 className="text-[clamp(36px,5vw,64px)] leading-[1.06] tracking-[-0.035em] font-semibold">
+          Your bag is empty.
+        </h1>
+        <LinkButton href="/shop" className="mt-6">
           Browse shop
-        </Link>
-      </section>
+        </LinkButton>
+      </Section>
     );
   }
 
@@ -121,9 +155,8 @@ export default function CheckoutPage() {
           city: form.city,
         },
       });
-      // Note: server already fired CAPI Purchase with its own event_id.
-      // The browser fires the same name; Meta will dedupe if eventId matches.
-      // We don't depend on that here; double events are also acceptable.
+      // Server fired CAPI Purchase with its own event_id; browser fires the
+      // same event, Meta dedupes if eventId matches. Double events are fine.
       void eventId;
       clear();
       router.push(`/order/${order.orderNumber}`);
@@ -141,32 +174,33 @@ export default function CheckoutPage() {
     form.city.trim().length > 1;
 
   return (
-    <section className="px-5 lg:px-8 max-w-[1100px] mx-auto py-12">
-      <span className="eyebrow">Checkout</span>
-      <h1 className="display-2 mt-2 mb-8">Almost there.</h1>
+    <Section width="narrow" spacing="md" className="!max-w-[1100px]">
+      <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+        Checkout
+      </span>
+      <h1 className="mt-2 mb-8 text-[clamp(36px,5vw,64px)] leading-[1.06] tracking-[-0.035em] font-semibold">
+        Almost there.
+      </h1>
 
-      {/* progress */}
-      <div className="mb-10 flex items-center gap-2 text-xs text-[var(--fg-soft)]">
+      {/* Progress indicator */}
+      <div className="mb-10 flex items-center gap-2 text-xs text-fg-soft">
         {([1, 2, 3] as Step[]).map((s) => (
           <div key={s} className="flex items-center gap-2">
             <span
-              className={`w-7 h-7 rounded-full flex items-center justify-center font-medium ${
-                step >= s
-                  ? "bg-black text-white"
-                  : "bg-[var(--bg-soft)] text-[var(--fg-muted)]"
-              }`}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-full font-medium",
+                step >= s ? "bg-black text-white" : "bg-bg-soft text-fg-muted",
+              )}
             >
               {s}
             </span>
-            {s < 3 && <span className="w-12 h-px bg-[var(--line-strong)]" />}
+            {s < 3 && <span className="h-px w-12 bg-line-strong" />}
           </div>
         ))}
-        <span className="ml-4 uppercase tracking-widest">
-          {step === 1 ? "Information" : step === 2 ? "Payment" : "Review"}
-        </span>
+        <span className="ml-4 uppercase tracking-widest">{STEP_LABELS[step]}</span>
       </div>
 
-      <div className="grid lg:grid-cols-[1fr_360px] gap-10 items-start">
+      <div className="grid items-start gap-10 lg:grid-cols-[1fr_360px]">
         <motion.div
           key={step}
           initial={{ opacity: 0, y: 12 }}
@@ -209,71 +243,59 @@ export default function CheckoutPage() {
                   onChange={(v) => setForm({ ...form, area: v })}
                 />
               </div>
-              <button
+              <Button
                 disabled={!canStep2}
                 onClick={() => setStep(2)}
-                className="btn btn-primary mt-4 w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                className="mt-4 w-full"
               >
                 Continue
-              </button>
+              </Button>
             </div>
           )}
+
           {step === 2 && (
             <div className="grid gap-3">
-              {(["cod", "bkash", "nagad"] as const).map((m) => (
+              {PAYMENT_OPTIONS.map((m) => (
                 <label
-                  key={m}
-                  className={`card-soft p-4 cursor-pointer flex justify-between items-center ${
-                    form.paymentMethod === m ? "ring-2 ring-black" : ""
-                  }`}
+                  key={m.id}
+                  className={cn(
+                    "flex cursor-pointer items-center justify-between rounded-[var(--radius-md)] border border-line bg-bg-soft p-4 transition-shadow",
+                    form.paymentMethod === m.id && "ring-2 ring-black",
+                  )}
                 >
                   <div>
-                    <div className="font-medium capitalize">
-                      {m === "cod"
-                        ? "Cash on Delivery"
-                        : m === "bkash"
-                          ? "bKash"
-                          : "Nagad"}
-                    </div>
-                    <div className="text-sm text-[var(--fg-soft)]">
-                      {m === "cod"
-                        ? "Pay when you receive."
-                        : m === "bkash"
-                          ? "Send advance to 01303-775977."
-                          : "Send advance to 01303-775977."}
-                    </div>
+                    <div className="font-medium">{m.label}</div>
+                    <div className="text-sm text-fg-soft">{m.hint}</div>
                   </div>
                   <input
                     type="radio"
                     name="payment"
-                    checked={form.paymentMethod === m}
-                    onChange={() => setForm({ ...form, paymentMethod: m })}
+                    checked={form.paymentMethod === m.id}
+                    onChange={() => setForm({ ...form, paymentMethod: m.id })}
                   />
                 </label>
               ))}
-              <textarea
-                className="textarea mt-2"
+              <Textarea
                 placeholder="Order notes (optional)"
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                className="mt-2"
               />
-              <div className="flex gap-3 mt-4">
-                <button
-                  className="btn btn-ghost flex-1"
-                  onClick={() => setStep(1)}
-                >
+              <div className="mt-4 flex gap-3">
+                <Button variant="ghost" className="flex-1" onClick={() => setStep(1)}>
                   Back
-                </button>
-                <button className="btn btn-primary flex-1" onClick={() => setStep(3)}>
+                </Button>
+                <Button className="flex-1" onClick={() => setStep(3)}>
                   Review order
-                </button>
+                </Button>
               </div>
             </div>
           )}
+
           {step === 3 && (
             <div className="grid gap-4">
-              <div className="card-soft p-5">
-                <h3 className="font-semibold mb-3">Delivery to</h3>
+              <Card tone="soft">
+                <h3 className="mb-3 font-semibold">Delivery to</h3>
                 <p className="text-sm leading-relaxed">
                   {form.name}
                   <br />
@@ -288,39 +310,34 @@ export default function CheckoutPage() {
                   {form.address}, {form.area && `${form.area}, `}
                   {form.city}
                 </p>
-              </div>
-              <div className="card-soft p-5">
-                <h3 className="font-semibold mb-3">Payment</h3>
+              </Card>
+              <Card tone="soft">
+                <h3 className="mb-3 font-semibold">Payment</h3>
                 <p className="text-sm capitalize">{form.paymentMethod}</p>
-              </div>
-              {error && (
-                <div className="text-sm text-red-600">Error: {error}</div>
-              )}
+              </Card>
+              {error && <div className="text-sm text-red-600">Error: {error}</div>}
               <div className="flex gap-3">
-                <button
-                  className="btn btn-ghost flex-1"
-                  onClick={() => setStep(2)}
-                >
+                <Button variant="ghost" className="flex-1" onClick={() => setStep(2)}>
                   Back
-                </button>
-                <button
-                  className="btn btn-primary flex-1"
+                </Button>
+                <Button
+                  className="flex-1"
                   onClick={submitOrder}
                   disabled={submitting}
                 >
                   {submitting ? "Placing…" : `Place order · ${formatBDT(subtotal)}`}
-                </button>
+                </Button>
               </div>
             </div>
           )}
         </motion.div>
 
-        <aside className="glass-strong rounded-[var(--radius-lg)] p-6 h-fit sticky top-24">
-          <h2 className="font-semibold text-lg mb-4">Your order</h2>
+        <aside className="glass-strong sticky top-24 h-fit rounded-[var(--radius-lg)] p-6">
+          <h2 className="mb-4 text-lg font-semibold">Your order</h2>
           <ul className="flex flex-col gap-3">
             {lines.map((l) => (
-              <li key={l.productId} className="flex gap-3 items-center">
-                <div className="relative w-12 h-12 rounded-md overflow-hidden bg-white flex-shrink-0">
+              <li key={l.productId} className="flex items-center gap-3">
+                <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-md bg-white">
                   {l.image && (
                     <Image
                       src={l.image}
@@ -331,13 +348,9 @@ export default function CheckoutPage() {
                     />
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium line-clamp-1">
-                    {l.title}
-                  </div>
-                  <div className="text-xs text-[var(--fg-muted)]">
-                    Qty {l.quantity}
-                  </div>
+                <div className="min-w-0 flex-1">
+                  <div className="line-clamp-1 text-sm font-medium">{l.title}</div>
+                  <div className="text-xs text-fg-muted">Qty {l.quantity}</div>
                 </div>
                 <div className="text-sm font-medium">
                   {formatBDT(l.unitPrice * l.quantity)}
@@ -345,33 +358,27 @@ export default function CheckoutPage() {
               </li>
             ))}
           </ul>
-          <div className="hairline-t mt-4 pt-4 flex justify-between font-semibold">
+          <div className="mt-4 flex justify-between border-t border-line pt-4 font-semibold">
             <span>Total</span>
             <span>{formatBDT(subtotal)}</span>
           </div>
         </aside>
       </div>
-    </section>
+    </Section>
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-}: {
+interface FieldProps {
   label: string;
   value: string;
   onChange: (v: string) => void;
-}) {
+}
+
+function Field({ label, value, onChange }: FieldProps) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs text-[var(--fg-soft)]">{label}</span>
-      <input
-        className="input"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      <span className="text-xs text-fg-soft">{label}</span>
+      <Input value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
   );
 }

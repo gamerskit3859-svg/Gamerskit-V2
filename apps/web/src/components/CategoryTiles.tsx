@@ -4,6 +4,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { Section } from "@/components/ui";
 
 interface Category {
   _id: string;
@@ -13,6 +14,7 @@ interface Category {
   image: string;
   featured?: boolean;
   order?: number;
+  parentId?: string | null;
 }
 
 interface Tile {
@@ -23,10 +25,21 @@ interface Tile {
   featured: boolean;
 }
 
-// Define some fallback tiles to prevent the UI from being empty if the API fails
 const FALLBACK_TILES: Tile[] = [
-  { slug: "new-arrivals", label: "New Arrivals", blurb: "Fresh Gear", image: "/placeholder.jpg", featured: true },
-  { slug: "best-sellers", label: "Best Sellers", blurb: "Community Favorites", image: "/placeholder.jpg", featured: false },
+  {
+    slug: "new-arrivals",
+    label: "New Arrivals",
+    blurb: "Fresh Gear",
+    image: "/placeholder.jpg",
+    featured: true,
+  },
+  {
+    slug: "best-sellers",
+    label: "Best Sellers",
+    blurb: "Community Favorites",
+    image: "/placeholder.jpg",
+    featured: false,
+  },
 ];
 
 function categoryToTile(c: Category): Tile {
@@ -50,7 +63,7 @@ function sortTiles(tiles: Tile[]): Tile[] {
 function TileSkeleton() {
   return (
     <div
-      className="aspect-[16/10] rounded-[var(--radius-xl)] bg-gray-100 animate-pulse"
+      className="aspect-[16/10] animate-pulse rounded-[var(--radius-xl)] bg-gray-100"
       aria-hidden
     />
   );
@@ -62,13 +75,14 @@ function CategoryTile({ tile, index }: { tile: Tile; index: number }) {
       initial={{ opacity: 0, y: 30 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-100px" }}
-      transition={{ duration: 0.7, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}>
+      transition={{ duration: 0.7, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
+    >
       <Link
         href={`/shop?category=${tile.slug}`}
-        className={`relative group block aspect-[16/10] overflow-hidden rounded-[var(--radius-xl)] bg-black`}>
-
+        className="group relative block aspect-[16/10] overflow-hidden rounded-[var(--radius-xl)] bg-black"
+      >
         {tile.featured && (
-          <div className="absolute top-3 left-3 z-10 bg-yellow-400 text-black px-2 py-1 rounded-full text-xs font-bold">
+          <div className="absolute left-3 top-3 z-10 rounded-full bg-yellow-400 px-2 py-1 text-xs font-bold text-black">
             🌟 Featured
           </div>
         )}
@@ -85,9 +99,11 @@ function CategoryTile({ tile, index }: { tile: Tile; index: number }) {
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
 
-        <div className="absolute inset-0 flex flex-col justify-end p-6 lg:p-8 text-white">
-          <span className="eyebrow text-white/70">{tile.blurb}</span>
-          <h3 className="text-3xl md:text-4xl font-semibold tracking-tight mt-1">
+        <div className="absolute inset-0 flex flex-col justify-end p-6 text-white lg:p-8">
+          <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/70">
+            {tile.blurb}
+          </span>
+          <h3 className="mt-1 text-3xl font-semibold tracking-tight md:text-4xl">
             {tile.label}
           </h3>
           <span className="mt-3 text-sm underline underline-offset-4 opacity-80 group-hover:opacity-100">
@@ -111,14 +127,11 @@ export function CategoryTiles() {
       try {
         const result = await api.listCategories();
         if (cancelled) return;
-
-        // Filter for top-level featured categories
         const featured = (result.items as Category[]).filter(
-          (c: any) => !c.parentId && c.featured,
+          (c) => !c.parentId && c.featured,
         );
-
-        const mappedTiles = featured.map(categoryToTile);
-        setTiles(sortTiles(mappedTiles));
+        const mapped = featured.map(categoryToTile);
+        setTiles(sortTiles(mapped));
       } catch (err) {
         if (cancelled) return;
         console.error("[CategoryTiles] Failed to load categories:", err);
@@ -128,28 +141,34 @@ export function CategoryTiles() {
       }
     }
 
-    loadCategories();
-    return () => { cancelled = true; };
+    void loadCategories();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // FIXED: Corrected syntax and added fallback
   const displayTiles = tiles.length > 0 ? tiles : FALLBACK_TILES;
 
   return (
-    <section className="px-5 lg:px-8 max-w-[1280px] mx-auto py-10 md:py-16">
-      <div className="flex items-end justify-between mb-10">
+    <Section spacing="md">
+      <div className="mb-10 flex items-end justify-between">
         <div>
-          <span className="eyebrow">Curated</span>
-          <h2 className="display-2 mt-2">Pick your category.</h2>
+          <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+            Curated
+          </span>
+          <h2 className="mt-2 text-[clamp(36px,5vw,64px)] leading-[1.06] tracking-[-0.035em] font-semibold">
+            Pick your category.
+          </h2>
         </div>
         <Link
           href="/shop"
-          className="text-sm font-medium underline underline-offset-4 hidden md:inline">
+          className="hidden text-sm font-medium underline underline-offset-4 md:inline"
+        >
           See everything →
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <TileSkeleton key={i} />)
           : displayTiles.map((tile, i) => (
@@ -162,6 +181,6 @@ export function CategoryTiles() {
           Showing default categories — couldn&apos;t reach the server.
         </p>
       )}
-    </section>
+    </Section>
   );
 }

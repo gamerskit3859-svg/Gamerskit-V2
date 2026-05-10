@@ -1,9 +1,10 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
+import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "@/lib/cart";
 import { formatBDT } from "@/lib/format";
-import { motion, AnimatePresence } from "framer-motion";
+import { LinkButton, Card, Section } from "@/components/ui";
 
 export default function CartPage() {
   const lines = useCart((s) => s.lines);
@@ -12,19 +13,21 @@ export default function CartPage() {
   const subtotal = useCart((s) => s.subtotal());
 
   return (
-    <section className="px-5 lg:px-8 max-w-[1100px] mx-auto py-12">
-      <span className="eyebrow">Bag</span>
-      <h1 className="display-2 mt-2 mb-10">Your bag.</h1>
+    <Section width="narrow" spacing="md" className="!max-w-[1100px]">
+      <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+        Bag
+      </span>
+      <h1 className="mt-2 mb-10 text-[clamp(36px,5vw,64px)] leading-[1.06] tracking-[-0.035em] font-semibold">
+        Your bag.
+      </h1>
 
       {lines.length === 0 ? (
-        <div className="card-soft p-16 text-center">
-          <p className="text-[var(--fg-soft)] mb-6">Your bag is empty.</p>
-          <Link href="/shop" className="btn btn-primary">
-            Start shopping
-          </Link>
-        </div>
+        <Card tone="soft" padding="lg" className="text-center">
+          <p className="mb-6 text-fg-soft">Your bag is empty.</p>
+          <LinkButton href="/shop">Start shopping</LinkButton>
+        </Card>
       ) : (
-        <div className="grid lg:grid-cols-[1fr_360px] gap-10">
+        <div className="grid gap-10 lg:grid-cols-[1fr_360px]">
           <div className="flex flex-col gap-3">
             <AnimatePresence initial={false}>
               {lines.map((l) => (
@@ -34,86 +37,92 @@ export default function CartPage() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
-                  className="card-soft p-4 flex gap-4"
                 >
-                  <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-white flex-shrink-0">
-                    {l.image && (
-                      <Image
-                        src={l.image}
-                        alt={l.title}
-                        fill
-                        sizes="80px"
-                        className="object-cover"
-                      />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <Link
-                      href={`/product/${l.slug}`}
-                      className="font-medium leading-tight line-clamp-2 hover:underline"
-                    >
-                      {l.title}
-                    </Link>
-                    <div className="text-sm text-[var(--fg-muted)] capitalize">
-                      {l.category.replace(/-/g, " ")}
+                  <Card tone="soft" padding="sm" className="flex gap-4">
+                    <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-white">
+                      {l.image && (
+                        <Image
+                          src={l.image}
+                          alt={l.title}
+                          fill
+                          sizes="80px"
+                          className="object-cover"
+                        />
+                      )}
                     </div>
-                    <div className="mt-3 flex items-center gap-3">
-                      <div className="flex items-center border border-[var(--line-strong)] rounded-full">
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/product/${l.slug}`}
+                        className="line-clamp-2 font-medium leading-tight hover:underline"
+                      >
+                        {l.title}
+                      </Link>
+                      <div className="text-sm capitalize text-fg-muted">
+                        {l.category.replace(/-/g, " ")}
+                      </div>
+                      <div className="mt-3 flex items-center gap-3">
+                        <div className="flex items-center rounded-full border border-line-strong">
+                          <button
+                            type="button"
+                            onClick={() => setQty(l.productId, l.quantity - 1)}
+                            className="h-8 w-8 rounded-l-full transition-colors hover:bg-bg-soft"
+                            aria-label="Decrease quantity"
+                          >
+                            −
+                          </button>
+                          <span className="w-8 text-center text-sm">{l.quantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => setQty(l.productId, l.quantity + 1)}
+                            className="h-8 w-8 rounded-r-full transition-colors hover:bg-bg-soft"
+                            aria-label="Increase quantity"
+                          >
+                            +
+                          </button>
+                        </div>
                         <button
-                          onClick={() => setQty(l.productId, l.quantity - 1)}
-                          className="w-8 h-8"
+                          type="button"
+                          onClick={() => remove(l.productId)}
+                          className="text-sm text-fg-muted underline underline-offset-4 transition-colors hover:text-foreground"
                         >
-                          −
-                        </button>
-                        <span className="w-8 text-center text-sm">{l.quantity}</span>
-                        <button
-                          onClick={() => setQty(l.productId, l.quantity + 1)}
-                          className="w-8 h-8"
-                        >
-                          +
+                          Remove
                         </button>
                       </div>
-                      <button
-                        onClick={() => remove(l.productId)}
-                        className="text-sm text-[var(--fg-muted)] hover:text-[var(--fg)] underline underline-offset-4"
-                      >
-                        Remove
-                      </button>
                     </div>
-                  </div>
-                  <div className="text-right font-semibold whitespace-nowrap">
-                    {formatBDT(l.unitPrice * l.quantity)}
-                  </div>
+                    <div className="whitespace-nowrap text-right font-semibold">
+                      {formatBDT(l.unitPrice * l.quantity)}
+                    </div>
+                  </Card>
                 </motion.div>
               ))}
             </AnimatePresence>
           </div>
 
-          <aside className="glass-strong rounded-[var(--radius-lg)] p-6 h-fit sticky top-24">
-            <h2 className="font-semibold text-lg">Summary</h2>
+          <aside className="glass-strong sticky top-24 h-fit rounded-[var(--radius-lg)] p-6">
+            <h2 className="text-lg font-semibold">Summary</h2>
             <dl className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between">
-                <dt className="text-[var(--fg-soft)]">Subtotal</dt>
+                <dt className="text-fg-soft">Subtotal</dt>
                 <dd>{formatBDT(subtotal)}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-[var(--fg-soft)]">Shipping</dt>
+                <dt className="text-fg-soft">Shipping</dt>
                 <dd>Free</dd>
               </div>
-              <div className="flex justify-between font-semibold text-base hairline-t pt-3 mt-2">
+              <div className="mt-2 flex justify-between border-t border-line pt-3 text-base font-semibold">
                 <dt>Total</dt>
                 <dd>{formatBDT(subtotal)}</dd>
               </div>
             </dl>
-            <Link href="/checkout" className="btn btn-primary w-full mt-6">
+            <LinkButton href="/checkout" className="mt-6 w-full">
               Continue to checkout
-            </Link>
-            <p className="text-xs text-[var(--fg-muted)] mt-3 text-center">
+            </LinkButton>
+            <p className="mt-3 text-center text-xs text-fg-muted">
               Cash on delivery available across Bangladesh.
             </p>
           </aside>
         </div>
       )}
-    </section>
+    </Section>
   );
 }
