@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export function StorySection() {
   return (
-    <section className="px-4 sm:px-6 lg:px-8 max-w-[1440px] mx-auto py-10 md:py-24">
+    <section className="px-4 sm:px-6 lg:px-8 max-w-[1440px] mx-auto py-10 md:py-16">
       <div className="card-soft rounded-[2rem] md:rounded-[var(--radius-xl)] p-8 md:p-20 lg:p-28 flex flex-col items-center text-center">
         <span className="eyebrow text-sm tracking-widest uppercase font-semibold">
           The story

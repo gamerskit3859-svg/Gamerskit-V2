@@ -31,7 +31,7 @@ export default async function Home() {
       <Marquee />
 
       {/* Featured Section */}
-      <section className="px-5 lg:px-8 max-w-[1280px] mx-auto py-10 md:py-24">
+      <section className="px-5 lg:px-8 max-w-[1280px] mx-auto py-10 md:py-16">
         <SectionHeader 
           eyebrow="This week" 
           title="Featured." 
@@ -44,7 +44,7 @@ export default async function Home() {
       <CategoryTiles />
 
       {/* Best Sellers Section */}
-      <section className="px-5 lg:px-8 max-w-[1280px] mx-auto py-1 md:py-24 border-t border-white/5">
+      <section className="px-5 lg:px-8 max-w-[1280px] mx-auto py-1 md:py-16 border-t border-white/5">
         <SectionHeader 
           eyebrow="Most loved" 
           title="Best sellers." 

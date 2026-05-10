@@ -136,7 +136,7 @@ export function CategoryTiles() {
   const displayTiles = tiles.length > 0 ? tiles : FALLBACK_TILES;
 
   return (
-    <section className="px-5 lg:px-8 max-w-[1280px] mx-auto py-10 md:py-24">
+    <section className="px-5 lg:px-8 max-w-[1280px] mx-auto py-10 md:py-16">
       <div className="flex items-end justify-between mb-10">
         <div>
           <span className="eyebrow">Curated</span>
