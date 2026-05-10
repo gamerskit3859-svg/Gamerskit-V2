@@ -1,9 +1,16 @@
 "use client";
 import { useState, useEffect } from "react";
+import { Button, Input } from "@/components/ui";
+import { cn } from "@/lib/cn";
 
 export type DateRange = { from: string; to: string; label: string };
 
-const PRESETS: Array<{ key: string; label: string; days?: number; preset?: string }> = [
+const PRESETS: Array<{
+  key: string;
+  label: string;
+  days?: number;
+  preset?: string;
+}> = [
   { key: "today", label: "Today", days: 0 },
   { key: "yesterday", label: "Yesterday", preset: "yesterday" },
   { key: "7d", label: "Last 7 days", days: 7 },
@@ -37,7 +44,6 @@ function rangeFromPreset(preset: (typeof PRESETS)[number]): DateRange {
     const last = new Date(today.getFullYear(), today.getMonth(), 0);
     return { from: isoDay(first), to: isoDay(last), label: preset.label };
   }
-  // days-based
   const from = new Date(today);
   from.setDate(from.getDate() - (preset.days ?? 0));
   return { from: isoDay(from), to: isoDay(today), label: preset.label };
@@ -69,47 +75,51 @@ export function DateRangePicker({
         return (
           <button
             key={p.key}
+            type="button"
             onClick={() => {
               setShowCustom(false);
               onChange(r);
             }}
-            className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+            className={cn(
+              "rounded-full border px-3 py-1.5 text-xs transition-colors",
               active
-                ? "bg-black text-white border-black"
-                : "border-[var(--line-strong)] text-[var(--fg-soft)] hover:text-[var(--fg)]"
-            }`}
+                ? "border-black bg-black text-white"
+                : "border-line-strong text-fg-soft hover:text-foreground",
+            )}
           >
             {p.label}
           </button>
         );
       })}
       <button
+        type="button"
         onClick={() => setShowCustom((v) => !v)}
-        className="px-3 py-1.5 rounded-full text-xs border border-[var(--line-strong)] hover:text-[var(--fg)] text-[var(--fg-soft)]"
+        className="rounded-full border border-line-strong px-3 py-1.5 text-xs text-fg-soft hover:text-foreground"
       >
         Custom range
       </button>
       {showCustom && (
-        <div className="flex items-center gap-2 ml-2">
-          <input
+        <div className="ml-2 flex items-center gap-2">
+          <Input
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            className="input !w-auto !py-1 !text-xs"
+            className="!w-auto !py-1 !text-xs"
           />
           <span className="text-xs">to</span>
-          <input
+          <Input
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="input !w-auto !py-1 !text-xs"
+            className="!w-auto !py-1 !text-xs"
           />
-          <button
+          <Button
+            size="sm"
             onClick={() => onChange({ from, to, label: "Custom" })}
-            className="btn btn-primary !py-1 !px-3 !text-xs"
+            className="!py-1 !px-3 !text-xs"
           >
             Apply
-          </button>
+          </Button>
         </div>
       )}
     </div>

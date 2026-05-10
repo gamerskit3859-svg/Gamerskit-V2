@@ -1,15 +1,18 @@
 @import "tailwindcss";
 
-@font-face {
-  font-family: "LouisVuitton";
-  src: url("/custom-font") format("truetype");
-  font-weight: normal;
-  font-style: normal;
-}
-/* GamersKit — Apple-inspired design tokens.
- * Palette is restricted to white / grey / black with subtle accents reserved
- * for focus rings only. The whole product page hierarchy lives on these vars. */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Design tokens
+ * ────────────────────────────────────────────────────────────────────────────
+ * `:root` holds the source-of-truth CSS variables. They are re-exported to
+ * Tailwind v4 via `@theme inline` so utilities like `bg-bg-soft`,
+ * `text-fg-muted`, `border-line`, `border-line-strong`, `text-foreground`
+ * and `text-accent` are auto-generated — no `tailwind.config.ts` needed.
+ *
+ * `@custom-variant dark` lets components opt in to `dark:bg-...` later
+ * without re-plumbing anything.
+ */
 :root {
+  /* Surface / ink */
   --bg: #ffffff;
   --bg-soft: #f5f5f7;
   --bg-elevated: rgba(255, 255, 255, 0.72);
@@ -20,31 +23,55 @@
   --fg-muted: #86868b;
   --line: rgba(0, 0, 0, 0.08);
   --line-strong: rgba(0, 0, 0, 0.16);
-  --black: #000000;
   --accent: #0071e3;
 
+  /* Radius */
   --radius-sm: 10px;
   --radius-md: 16px;
   --radius-lg: 22px;
   --radius-xl: 32px;
 
+  /* Shadow */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.10);
 }
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme inline {
+  /* Colors */
   --color-background: var(--bg);
+  --color-bg-soft: var(--bg-soft);
   --color-foreground: var(--fg);
   --color-fg-soft: var(--fg-soft);
   --color-fg-muted: var(--fg-muted);
-  --color-bg-soft: var(--bg-soft);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+
+  /* Fonts */
   --font-sans:
     -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter",
     "Segoe UI", Helvetica, Arial, sans-serif;
+
+  /* Animations */
+  --animate-marquee: marquee 40s linear infinite;
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Base
+ * ──────────────────────────────────────────────────────────────────────────── */
 * {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -59,36 +86,13 @@ body {
   font-feature-settings: "ss01", "cv11";
 }
 
-/* Apple-style "display" headlines */
-.display-1 {
-  font-size: clamp(48px, 8vw, 96px);
-  letter-spacing: -0.045em;
-  line-height: 1.04;
-  font-weight: 600;
-}
-.display-2 {
-  font-size: clamp(36px, 5vw, 64px);
-  letter-spacing: -0.035em;
-  line-height: 1.06;
-  font-weight: 600;
-}
-.eyebrow {
-  font-size: 12px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--fg-soft);
-  font-weight: 500;
-}
-
-/* Frosted-glass surfaces — used by the sticky nav, modals, hero overlay,
- * product card hover state. The backdrop filter falls back to a flat colour
- * on browsers that don't support it. */
-.glass {
-  background: var(--bg-glass);
-  backdrop-filter: saturate(180%) blur(22px);
-  -webkit-backdrop-filter: saturate(180%) blur(22px);
-  border: 1px solid var(--line);
-}
+/* ────────────────────────────────────────────────────────────────────────────
+ * Glass surfaces
+ * ────────────────────────────────────────────────────────────────────────────
+ * Tailwind v4 can produce `backdrop-blur` + `saturate` utilities, but the
+ * three-shadow inset-highlight combo + cross-browser `-webkit-backdrop-filter`
+ * fallback is a lot of noise to repeat at every call site, so these stay as
+ * named composites. */
 .glass-dark {
   background: rgba(20, 20, 22, 0.55);
   backdrop-filter: saturate(180%) blur(22px);
@@ -103,13 +107,12 @@ body {
   border: 1px solid var(--line);
 }
 
-/* Liquid-glass floating navbar — see components/Header.tsx.
- * Inspired by Apple's visionOS / Liquid Glass language: a centered pill
- * floating over the page content with thick blur, saturate, brightness
- * and inset highlights to imitate refracted glass.
- *
- * The hover indicator (.lg-pill) is positioned absolutely behind the link
- * being hovered and slides between items with a springy ease. */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Liquid-glass floating navbar
+ * ────────────────────────────────────────────────────────────────────────────
+ * visionOS-inspired pill nav. Stays in CSS because it relies on layered
+ * gradients + multiple inset highlights + a pseudo-element that aren't
+ * cleanly expressible with arbitrary-value Tailwind utilities. */
 .lg-navbar {
   position: fixed;
   top: 0;
@@ -122,10 +125,7 @@ body {
   pointer-events: none;
   transition: padding 0.3s ease;
 }
-
-.lg-navbar.scrolled {
-  padding: 8px 16px;
-}
+.lg-navbar.scrolled { padding: 8px 16px; }
 
 .lg-inner {
   pointer-events: auto;
@@ -134,34 +134,26 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-
   width: 100%;
   max-width: 1050px;
   height: 58px;
   padding: 0 16px;
-
   border-radius: 999px;
   overflow: hidden;
-
   background: linear-gradient(
     135deg,
     rgba(255, 255, 255, 0.82),
     rgba(255, 255, 255, 0.46)
   );
-
   border: 1px solid rgba(255, 255, 255, 0.65);
-
   backdrop-filter: blur(28px) saturate(190%);
   -webkit-backdrop-filter: blur(28px) saturate(190%);
-
   box-shadow:
     0 18px 50px rgba(0, 0, 0, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.85),
     inset 0 -1px 0 rgba(255, 255, 255, 0.35);
-
   transition: all 0.3s ease;
 }
-
 .lg-navbar.scrolled .lg-inner {
   height: 52px;
   background: linear-gradient(
@@ -173,14 +165,12 @@ body {
     0 20px 60px rgba(0, 0, 0, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
-
 .lg-inner::before {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-
   background: linear-gradient(
     135deg,
     rgba(255, 255, 255, 0.72),
@@ -210,19 +200,16 @@ body {
   padding: 4px;
   list-style: none;
 }
-
 .lg-links li {
   position: relative;
   list-style: none;
 }
-
 .lg-links a {
   position: relative;
   z-index: 2;
   display: block;
   padding: 8px 15px;
   border-radius: 999px;
-
   font-size: 13px;
   font-weight: 500;
   color: rgba(17, 24, 39, 0.72);
@@ -230,10 +217,7 @@ body {
   white-space: nowrap;
   transition: color 0.2s ease;
 }
-
-.lg-links a:hover {
-  color: #111827;
-}
+.lg-links a:hover { color: #111827; }
 
 .lg-pill {
   position: absolute;
@@ -243,10 +227,7 @@ body {
   opacity: 0;
   pointer-events: none;
 }
-
-.lg-pill.visible {
-  opacity: 1;
-}
+.lg-pill.visible { opacity: 1; }
 
 .lg-actions {
   position: relative;
@@ -261,28 +242,21 @@ body {
   position: relative;
   width: 38px;
   height: 38px;
-
   display: inline-flex;
   align-items: center;
   justify-content: center;
-
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.55);
-
   background: rgba(255, 255, 255, 0.46);
   color: #111827;
   cursor: pointer;
-
   backdrop-filter: blur(16px) saturate(170%);
   -webkit-backdrop-filter: blur(16px) saturate(170%);
-
   box-shadow:
     0 6px 18px rgba(0, 0, 0, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.75);
-
   transition: all 0.2s ease;
 }
-
 .lg-icon-btn:hover {
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 0.78);
@@ -295,19 +269,15 @@ body {
   position: absolute;
   top: -3px;
   right: -3px;
-
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-
   display: inline-flex;
   align-items: center;
   justify-content: center;
-
   border-radius: 999px;
   background: #111827;
   color: #fff;
-
   font-size: 10px;
   font-weight: 700;
   border: 2px solid rgba(255, 255, 255, 0.95);
@@ -317,115 +287,49 @@ body {
   position: fixed;
   inset: 14px;
   z-index: 1100;
-
   display: flex;
   flex-direction: column;
   gap: 10px;
-
   padding: 76px 22px 24px;
   border-radius: 30px;
-
   background: linear-gradient(
     135deg,
     rgba(255, 255, 255, 0.9),
     rgba(255, 255, 255, 0.58)
   );
-
   border: 1px solid rgba(255, 255, 255, 0.65);
-
   backdrop-filter: blur(34px) saturate(190%);
   -webkit-backdrop-filter: blur(34px) saturate(190%);
-
   box-shadow:
     0 30px 90px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
-
 .lg-mobile-menu a,
 .lg-mobile-menu button {
   display: block;
   width: 100%;
   padding: 14px 16px;
-
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.5);
-
   background: rgba(255, 255, 255, 0.42);
   color: #111827;
-
   text-align: left;
   text-decoration: none;
   font-size: 16px;
   font-weight: 500;
-
   transition: all 0.2s ease;
 }
-
 .lg-mobile-menu a:hover,
 .lg-mobile-menu button:hover {
   background: rgba(255, 255, 255, 0.75);
   transform: translateX(4px);
 }
-/* Hairline dividers à la macOS */
-.hairline-b {
-  border-bottom: 1px solid var(--line);
-}
-.hairline-t {
-  border-top: 1px solid var(--line);
-}
 
-/* Subtle "card" component */
-.card-soft {
-  background: var(--bg-soft);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--line);
-}
-
-/* Buttons (Apple "pill" style) */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4em;
-  padding: 12px 22px;
-  border-radius: 999px;
-  font-weight: 500;
-  font-size: 15px;
-  letter-spacing: -0.01em;
-  transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease,
-    box-shadow 0.18s ease;
-  white-space: nowrap;
-  border: 1px solid transparent;
-}
-.btn:hover {
-  transform: translateY(-1px);
-}
-.btn-primary {
-  background: var(--black);
-  color: #fff;
-}
-.btn-primary:hover {
-  background: #1d1d1f;
-}
-.btn-light {
-  background: #fff;
-  color: var(--black);
-  border-color: var(--line-strong);
-}
-.btn-ghost {
-  background: transparent;
-  color: var(--fg);
-  border-color: var(--line-strong);
-}
-.btn-ghost:hover {
-  background: var(--bg-soft);
-}
-
-/* Subtle scrollbars */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
+/* ────────────────────────────────────────────────────────────────────────────
+ * Scrollbar — subtle macOS-style. (Tailwind cannot style ::-webkit-scrollbar
+ * via utilities.)
+ * ──────────────────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.18);
   border-radius: 999px;
@@ -438,95 +342,20 @@ body {
   border: 2px solid transparent;
 }
 
-/* Marquee for scrolling band on landing */
-@keyframes marquee {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-.marquee {
-  animation: marquee 40s linear infinite;
-}
-
-/* Page enter — used by client transition wrapper */
-@keyframes fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.fade-up {
-  animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-/* Hide visually but keep accessible */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* Inputs (admin) */
-.input,
-.textarea,
-.select {
-  width: 100%;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 14px;
-  color: var(--fg);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-.input:focus,
-.textarea:focus,
-.select:focus {
-  outline: none;
-  border-color: var(--fg);
-  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.06);
-}
-
-/* Print styles for /admin/reports → Download PDF */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Print — /admin/reports → Download PDF
+ * ──────────────────────────────────────────────────────────────────────────── */
 @media print {
-  @page {
-    margin: 12mm 10mm;
-    size: A4;
-  }
-  html,
-  body {
-    background: #fff !important;
-    color: #000 !important;
-  }
-  /* Hide every element by default… */
-  body * {
-    visibility: hidden;
-  }
-  /* …then show only the report content. */
-  .print-area,
-  .print-area * {
-    visibility: visible;
-  }
+  @page { margin: 12mm 10mm; size: A4; }
+  html, body { background: #fff !important; color: #000 !important; }
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
   .print-area {
     position: absolute;
     inset: 0;
     width: 100%;
     padding: 0;
   }
-  /* Inputs render as plain values when printing. */
   .print-area input {
     border: 0 !important;
     background: transparent !important;
@@ -534,8 +363,5 @@ body {
     padding: 0 !important;
     box-shadow: none !important;
   }
-  .no-print,
-  .no-print * {
-    display: none !important;
-  }
+  .no-print, .no-print * { display: none !important; }
 }

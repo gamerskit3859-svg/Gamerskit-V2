@@ -7,6 +7,8 @@ import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
 import type { Product } from "@gamerskit/shared";
+import { Button, Card, Input } from "@/components/ui";
+import { cn } from "@/lib/cn";
 
 const LOW_THRESHOLD = 3;
 
@@ -36,7 +38,8 @@ export default function InventoryPage() {
   }, [q]);
 
   const filtered = useMemo(() => {
-    if (filter === "low") return items.filter((p) => p.stock > 0 && p.stock <= LOW_THRESHOLD);
+    if (filter === "low")
+      return items.filter((p) => p.stock > 0 && p.stock <= LOW_THRESHOLD);
     if (filter === "out") return items.filter((p) => p.stock <= 0);
     return items;
   }, [items, filter]);
@@ -46,7 +49,10 @@ export default function InventoryPage() {
       total: items.length,
       low: items.filter((p) => p.stock > 0 && p.stock <= LOW_THRESHOLD).length,
       out: items.filter((p) => p.stock <= 0).length,
-      stockValue: items.reduce((n, p) => n + p.price * Math.max(0, p.stock), 0),
+      stockValue: items.reduce(
+        (n, p) => n + p.price * Math.max(0, p.stock),
+        0,
+      ),
     }),
     [items],
   );
@@ -83,6 +89,12 @@ export default function InventoryPage() {
     }
   }
 
+  const filters = [
+    { key: "all", label: "All" },
+    { key: "low", label: `Low (${counts.low})` },
+    { key: "out", label: `Out (${counts.out})` },
+  ] as const;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -90,61 +102,68 @@ export default function InventoryPage() {
       transition={{ duration: 0.4 }}
     >
       <header className="mb-6">
-        <span className="eyebrow">Admin</span>
-        <h1 className="text-3xl font-semibold tracking-tight mt-2">Inventory</h1>
-        <p className="text-sm text-[var(--fg-soft)] mt-1">
-          {counts.total} SKUs · {counts.low} low · {counts.out} out · stock value{" "}
-          <span className="font-medium text-[var(--fg)]">{formatBDT(counts.stockValue)}</span>
+        <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+          Admin
+        </span>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+          Inventory
+        </h1>
+        <p className="mt-1 text-sm text-fg-soft">
+          {counts.total} SKUs · {counts.low} low · {counts.out} out · stock
+          value{" "}
+          <span className="font-medium text-foreground">
+            {formatBDT(counts.stockValue)}
+          </span>
         </p>
       </header>
 
-      <div className="flex flex-wrap gap-2 mb-5">
-        {(
-          [
-            ["all", "All"],
-            ["low", `Low (${counts.low})`],
-            ["out", `Out (${counts.out})`],
-          ] as const
-        ).map(([k, label]) => (
-          <button
-            key={k}
-            onClick={() => setFilter(k)}
-            className={`btn ${filter === k ? "btn-primary" : "btn-ghost"} !py-2 !px-4 text-xs`}
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        {filters.map(({ key, label }) => (
+          <Button
+            key={key}
+            size="sm"
+            variant={filter === key ? "primary" : "ghost"}
+            onClick={() => setFilter(key)}
           >
             {label}
-          </button>
+          </Button>
         ))}
-        <input
-          className="input !w-72 !ml-auto"
+        <Input
+          className="!ml-auto !w-72"
           placeholder="Search…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
 
-      <div className="card-soft p-0 overflow-hidden">
+      <Card tone="soft" padding="none" className="overflow-hidden">
         {loading ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)]">Loading…</div>
+          <div className="p-8 text-sm text-fg-muted">Loading…</div>
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)] text-center">No products in this view.</div>
+          <div className="p-8 text-center text-sm text-fg-muted">
+            No products in this view.
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-white text-xs text-[var(--fg-soft)] text-left">
+              <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
-                  <th className="py-3 px-4">Product</th>
-                  <th className="py-3 px-4">Category</th>
-                  <th className="py-3 px-4 w-40">Price</th>
-                  <th className="py-3 px-4 w-56">Stock</th>
-                  <th className="py-3 px-4 w-20">View</th>
+                  <th className="px-4 py-3">Product</th>
+                  <th className="px-4 py-3">Category</th>
+                  <th className="w-40 px-4 py-3">Price</th>
+                  <th className="w-56 px-4 py-3">Stock</th>
+                  <th className="w-20 px-4 py-3">View</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((p) => (
-                  <tr key={p._id} className="hairline-t bg-white align-middle">
-                    <td className="py-3 px-4">
+                  <tr
+                    key={p._id}
+                    className="border-t border-line bg-white align-middle"
+                  >
+                    <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="relative w-10 h-10 bg-[var(--bg-soft)] rounded overflow-hidden flex-shrink-0">
+                        <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-bg-soft">
                           {p.images[0] && (
                             <Image
                               src={p.images[0]}
@@ -157,61 +176,68 @@ export default function InventoryPage() {
                         </div>
                         <div>
                           <div className="font-medium">{p.title}</div>
-                          <div className="text-xs text-[var(--fg-muted)] font-mono">{p.slug}</div>
+                          <div className="font-mono text-xs text-fg-muted">
+                            {p.slug}
+                          </div>
                         </div>
                       </div>
                     </td>
-                    <td className="py-3 px-4 capitalize text-[var(--fg-soft)]">
+                    <td className="px-4 py-3 capitalize text-fg-soft">
                       {p.category.replace(/-/g, " ")}
                     </td>
-                    <td className="py-3 px-4">
-                      <input
+                    <td className="px-4 py-3">
+                      <Input
                         type="number"
                         defaultValue={p.price}
                         onBlur={(e) => {
                           const v = Number(e.target.value);
-                          if (Number.isFinite(v) && v !== p.price) void setPrice(p._id, v);
+                          if (Number.isFinite(v) && v !== p.price)
+                            void setPrice(p._id, v);
                         }}
-                        className="input !py-1.5 !px-2 !w-28"
+                        className="!w-28 !py-1.5 !px-2"
                         disabled={busyId === p._id}
                       />
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button
+                          type="button"
                           onClick={() => adjust(p._id, -1)}
                           disabled={busyId === p._id}
-                          className="w-7 h-7 rounded-full bg-[var(--bg-soft)] hover:bg-white border border-[var(--line)]"
+                          className="h-7 w-7 rounded-full border border-line bg-bg-soft hover:bg-white disabled:opacity-50"
                         >
                           −
                         </button>
-                        <input
+                        <Input
                           type="number"
                           defaultValue={p.stock}
                           key={p.stock}
                           onBlur={(e) => {
                             const v = Number(e.target.value);
-                            if (Number.isFinite(v)) void setExactStock(p._id, v);
+                            if (Number.isFinite(v))
+                              void setExactStock(p._id, v);
                           }}
-                          className={`input !py-1 !px-2 !w-16 text-center ${
+                          className={cn(
+                            "!w-16 !py-1 !px-2 text-center",
                             p.stock <= 0
                               ? "text-red-600"
                               : p.stock <= LOW_THRESHOLD
                                 ? "text-yellow-700"
-                                : ""
-                          }`}
+                                : "",
+                          )}
                           disabled={busyId === p._id}
                         />
                         <button
+                          type="button"
                           onClick={() => adjust(p._id, 1)}
                           disabled={busyId === p._id}
-                          className="w-7 h-7 rounded-full bg-[var(--bg-soft)] hover:bg-white border border-[var(--line)]"
+                          className="h-7 w-7 rounded-full border border-line bg-bg-soft hover:bg-white disabled:opacity-50"
                         >
                           +
                         </button>
                       </div>
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="px-4 py-3">
                       <Link
                         href={`/product/${p.slug}`}
                         target="_blank"
@@ -226,7 +252,7 @@ export default function InventoryPage() {
             </table>
           </div>
         )}
-      </div>
+      </Card>
     </motion.div>
   );
 }

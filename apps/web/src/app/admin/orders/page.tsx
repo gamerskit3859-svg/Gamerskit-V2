@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDateTime } from "@/lib/format";
@@ -11,6 +10,24 @@ import {
   type DateRange,
 } from "@/components/admin/DateRangePicker";
 import type { Order } from "@gamerskit/shared";
+import { Card, Input, LinkButton, Select } from "@/components/ui";
+import { cn } from "@/lib/cn";
+
+const STATUS_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "pending", label: "Pending" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "processing", label: "Processing" },
+  { value: "shipped", label: "Shipped" },
+  { value: "delivered", label: "Delivered" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+const SOURCE_OPTIONS = [
+  { value: "all", label: "All sources" },
+  { value: "storefront", label: "Storefront" },
+  { value: "manual", label: "Manual / custom" },
+];
 
 export default function AdminOrdersPage() {
   const [range, setRange] = useState<DateRange>(defaultRange());
@@ -49,46 +66,46 @@ export default function AdminOrdersPage() {
   return (
     <div>
       <header className="mb-6">
-        <span className="eyebrow">Admin</span>
-        <div className="flex flex-wrap items-center justify-between gap-4 mt-2">
+        <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+          Admin
+        </span>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Orders</h1>
-            <p className="text-sm text-[var(--fg-soft)] mt-1">
+            <p className="mt-1 text-sm text-fg-soft">
               {total} orders in {range.label.toLowerCase()}
             </p>
           </div>
-          <Link href="/admin/orders/new" className="btn btn-primary">
-            + Custom order
-          </Link>
+          <LinkButton href="/admin/orders/new">+ Custom order</LinkButton>
         </div>
-        <div className="mt-5 flex flex-wrap gap-3 items-center">
+        <div className="mt-5">
           <DateRangePicker value={range} onChange={setRange} />
         </div>
-        <div className="mt-3 flex flex-wrap gap-3 items-center">
-          <select
-            className="select !w-auto"
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Select
+            className="!w-auto"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
-            <option value="all">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="processing">Processing</option>
-            <option value="shipped">Shipped</option>
-            <option value="delivered">Delivered</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-          <select
-            className="select !w-auto"
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+          <Select
+            className="!w-auto"
             value={source}
             onChange={(e) => setSource(e.target.value)}
           >
-            <option value="all">All sources</option>
-            <option value="storefront">Storefront</option>
-            <option value="manual">Manual / custom</option>
-          </select>
-          <input
-            className="input !w-64"
+            {SOURCE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+          <Input
+            className="!w-64"
             placeholder="Search order #, name, phone…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -96,62 +113,66 @@ export default function AdminOrdersPage() {
         </div>
       </header>
 
-      <div className="card-soft p-0 overflow-hidden">
+      <Card tone="soft" padding="none" className="overflow-hidden">
         {loading ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)]">Loading…</div>
+          <div className="p-8 text-sm text-fg-muted">Loading…</div>
         ) : items.length === 0 ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)] text-center">
+          <div className="p-8 text-center text-sm text-fg-muted">
             No orders match these filters.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-white text-xs text-[var(--fg-soft)] text-left">
+              <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
-                  <th className="py-3 px-4">Order</th>
-                  <th className="py-3 px-4">Customer</th>
-                  <th className="py-3 px-4">Items</th>
-                  <th className="py-3 px-4">Total</th>
-                  <th className="py-3 px-4">Source</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Placed</th>
+                  <th className="px-4 py-3">Order</th>
+                  <th className="px-4 py-3">Customer</th>
+                  <th className="px-4 py-3">Items</th>
+                  <th className="px-4 py-3">Total</th>
+                  <th className="px-4 py-3">Source</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Placed</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((o) => (
-                  <tr key={o._id} className="hairline-t bg-white hover:bg-[var(--bg-soft)]">
-                    <td className="py-3 px-4 font-mono text-xs">
+                  <tr
+                    key={o._id}
+                    className="border-t border-line bg-white hover:bg-bg-soft"
+                  >
+                    <td className="px-4 py-3 font-mono text-xs">
                       {o.orderNumber}
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="px-4 py-3">
                       <div className="font-medium">{o.customer.name}</div>
-                      <div className="text-xs text-[var(--fg-muted)]">
+                      <div className="text-xs text-fg-muted">
                         {o.customer.phone}
                       </div>
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="px-4 py-3">
                       {o.items.length}{" "}
-                      <span className="text-[var(--fg-muted)]">
+                      <span className="text-fg-muted">
                         ({o.items.reduce((n, l) => n + l.quantity, 0)} units)
                       </span>
                     </td>
-                    <td className="py-3 px-4 font-medium">
+                    <td className="px-4 py-3 font-medium">
                       {formatBDT(o.total)}
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="px-4 py-3">
                       <span
-                        className={`text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-widest",
                           o.source === "manual"
                             ? "bg-black text-white"
-                            : "bg-[var(--bg-soft)] text-[var(--fg-soft)]"
-                        }`}
+                            : "bg-bg-soft text-fg-soft",
+                        )}
                       >
                         {o.source}
                       </span>
                     </td>
-                    <td className="py-3 px-4">
-                      <select
-                        className="select !w-auto !py-1 !text-xs"
+                    <td className="px-4 py-3">
+                      <Select
+                        className="!w-auto !py-1 !text-xs"
                         value={o.status}
                         onChange={async (e) => {
                           const token = getAdminToken();
@@ -163,7 +184,9 @@ export default function AdminOrdersPage() {
                             token,
                           );
                           setItems((prev) =>
-                            prev.map((x) => (x._id === o._id ? r.order : x)),
+                            prev.map((x) =>
+                              x._id === o._id ? r.order : x,
+                            ),
                           );
                         }}
                       >
@@ -172,9 +195,9 @@ export default function AdminOrdersPage() {
                             {s}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </td>
-                    <td className="py-3 px-4 text-[var(--fg-soft)]">
+                    <td className="px-4 py-3 text-fg-soft">
                       {formatDateTime(o.createdAt)}
                     </td>
                   </tr>
@@ -183,7 +206,7 @@ export default function AdminOrdersPage() {
             </table>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

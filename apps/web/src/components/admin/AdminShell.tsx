@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearAdminToken, getAdminToken } from "@/lib/admin-token";
+import { cn } from "@/lib/cn";
 
 const NAV = [
   { href: "/admin", label: "Dashboard" },
@@ -26,8 +27,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
 
-  // The login page is part of /admin but should render full-bleed without the
-  // sidebar / dashboard chrome. Bypass the auth gate and the chrome entirely.
+  // The login page is part of /admin but renders full-bleed without the
+  // sidebar / dashboard chrome. Bypass auth and chrome entirely.
   const isLogin = pathname === "/admin/login";
 
   useEffect(() => {
@@ -43,22 +44,25 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }, [isLogin, router]);
 
   if (isLogin) {
-    return <div className="min-h-screen bg-[var(--bg)]">{children}</div>;
+    return <div className="min-h-screen bg-background">{children}</div>;
   }
 
   if (!ready) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center text-[var(--fg-muted)] text-sm">
+      <div className="flex min-h-[60vh] items-center justify-center text-sm text-fg-muted">
         Loading admin…
       </div>
     );
   }
 
   return (
-    <div className="grid lg:grid-cols-[220px_1fr] min-h-screen">
-      <aside className="hairline-r bg-[var(--bg-soft)] hidden lg:flex flex-col">
+    <div className="grid min-h-screen lg:grid-cols-[220px_1fr]">
+      <aside className="hidden flex-col border-r border-line bg-bg-soft lg:flex">
         <div className="p-6">
-          <Link href="/admin" className="flex items-center gap-2 font-semibold tracking-tight">
+          <Link
+            href="/admin"
+            className="flex items-center gap-2 font-semibold tracking-tight"
+          >
             <Image
               src="/brand/logo.png"
               alt=""
@@ -68,7 +72,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             />
             <span>
               GamersKit
-              <span className="text-[var(--fg-muted)] font-normal"> · Admin</span>
+              <span className="font-normal text-fg-muted"> · Admin</span>
             </span>
           </Link>
         </div>
@@ -82,19 +86,21 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={n.href}
                 href={n.href}
-                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                className={cn(
+                  "rounded-lg px-4 py-2 text-sm transition-colors",
                   active
                     ? "bg-black text-white"
-                    : "text-[var(--fg-soft)] hover:bg-white hover:text-[var(--fg)]"
-                }`}
+                    : "text-fg-soft hover:bg-white hover:text-foreground",
+                )}
               >
                 {n.label}
               </Link>
             );
           })}
         </nav>
-        <div className="mt-auto p-4 text-xs text-[var(--fg-muted)]">
+        <div className="mt-auto p-4 text-xs text-fg-muted">
           <button
+            type="button"
             onClick={() => {
               clearAdminToken();
               router.replace("/admin/login");

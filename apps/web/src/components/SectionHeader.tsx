@@ -14,9 +14,11 @@ export function SectionHeader({
   linkLabel,
 }: SectionHeaderProps) {
   return (
-    <div className="flex items-center justify-between mb-10">
+    <div className="flex items-end justify-between gap-4 mb-8 md:mb-10">
       <div>
-        <span className="eyebrow block mb-2">{eyebrow}</span>
+        <span className="block mb-2 text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+          {eyebrow}
+        </span>
         <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight">
           {title}
         </h2>
@@ -24,7 +26,8 @@ export function SectionHeader({
       {linkHref && (
         <Link
           href={linkHref}
-          className="text-sm font-medium underline underline-offset-4 hover:opacity-70 transition-opacity">
+          className="text-sm font-medium underline underline-offset-4 hover:opacity-70 transition-opacity whitespace-nowrap"
+        >
           {linkLabel ?? "View all"} →
         </Link>
       )}

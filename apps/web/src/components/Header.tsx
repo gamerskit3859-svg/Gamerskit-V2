@@ -8,6 +8,7 @@ import { ShoppingBag, Search, User, Menu, X } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth";
 import { AuthDrawer } from "./AuthDrawer";
+import { cn } from "@/lib/cn";
 
 const NAV_LINKS = [
   { label: "Home", href: "/" },
@@ -31,7 +32,9 @@ export function Header() {
   const [pillStyle, setPillStyle] = useState({ left: 0, width: 0 });
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [authDrawerOpen, setAuthDrawerOpen] = useState(false);
-  const [authDrawerTab, setAuthDrawerTab] = useState<"login" | "register">("login");
+  const [authDrawerTab, setAuthDrawerTab] = useState<"login" | "register">(
+    "login",
+  );
 
   const navRef = useRef<HTMLUListElement>(null);
   const itemRefs = useRef<(HTMLLIElement | null)[]>([]);
@@ -52,7 +55,9 @@ export function Header() {
 
   useEffect(() => {
     document.body.style.overflow = mobileDrawerOpen ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [mobileDrawerOpen]);
 
   function updatePill(index: number) {
@@ -75,11 +80,10 @@ export function Header() {
   return (
     <>
       <nav
-        className={`lg-navbar${scrolled ? " scrolled" : ""}`}
-        aria-label="Primary">
+        className={cn("lg-navbar", scrolled && "scrolled")}
+        aria-label="Primary"
+      >
         <div className="lg-inner">
-
-          {/* Logo */}
           <Link href="/" className="lg-logo" aria-label="GamersKit home">
             <Image
               src="/brand/logo.png"
@@ -89,27 +93,33 @@ export function Header() {
               priority
               className="h-[26px] w-[26px] object-contain"
             />
-            <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.02em" }}>
+            <span className="text-sm font-semibold tracking-[-0.02em]">
               GamersKit
             </span>
           </Link>
 
-          {/* Desktop nav links — rendered only when not mobile */}
           {!isMobile && (
             <ul
               className="lg-links"
               ref={navRef}
-              onMouseLeave={() => setActiveIndex(null)}>
+              onMouseLeave={() => setActiveIndex(null)}
+            >
               <div
-                className={`lg-pill${activeIndex !== null ? " visible" : ""}`}
+                className={cn("lg-pill", activeIndex !== null && "visible")}
                 style={{ left: pillStyle.left, width: pillStyle.width }}
                 aria-hidden
               />
               {NAV_LINKS.map((link, i) => (
                 <li
                   key={link.label}
-                  ref={(el) => { itemRefs.current[i] = el; }}
-                  onMouseEnter={() => { setActiveIndex(i); updatePill(i); }}>
+                  ref={(el) => {
+                    itemRefs.current[i] = el;
+                  }}
+                  onMouseEnter={() => {
+                    setActiveIndex(i);
+                    updatePill(i);
+                  }}
+                >
                   <Link href={link.href}>{link.label}</Link>
                 </li>
               ))}
@@ -117,39 +127,42 @@ export function Header() {
           )}
 
           <div className="lg-actions">
-            {/* Search */}
             <Link href="/shop" className="lg-icon-btn" aria-label="Search">
               <Search size={16} strokeWidth={1.8} />
             </Link>
 
-            {/* Account / Sign In — desktop only */}
-            {!isMobile && (
-              user ? (
-                <Link href="/account" className="lg-icon-btn" aria-label="My account">
+            {!isMobile &&
+              (user ? (
+                <Link
+                  href="/account"
+                  className="lg-icon-btn"
+                  aria-label="My account"
+                >
                   <User size={16} strokeWidth={1.8} />
                 </Link>
               ) : (
                 <button
+                  type="button"
                   onClick={() => openAuth("login")}
                   className="lg-icon-btn"
-                  aria-label="Sign in">
+                  aria-label="Sign in"
+                >
                   <User size={14} strokeWidth={2} />
                 </button>
-              )
-            )}
+              ))}
 
-            {/* Cart */}
             <Link href="/cart" className="lg-icon-btn" aria-label="Cart">
               <ShoppingBag size={16} strokeWidth={1.8} />
               {count > 0 && <span className="lg-cart-badge">{count}</span>}
             </Link>
 
-            {/* Hamburger — mobile only */}
             {isMobile && (
               <button
+                type="button"
                 onClick={() => setMobileDrawerOpen(true)}
                 className="lg-icon-btn"
-                aria-label="Open menu">
+                aria-label="Open menu"
+              >
                 <Menu size={18} strokeWidth={1.8} />
               </button>
             )}
@@ -159,11 +172,9 @@ export function Header() {
 
       <div aria-hidden className="h-[76px]" data-site-header-spacer="" />
 
-      {/* ── Mobile Drawer ───────────────────────────────────── */}
       <AnimatePresence>
         {mobileDrawerOpen && (
           <>
-            {/* Backdrop */}
             <motion.div
               key="backdrop"
               initial={{ opacity: 0 }}
@@ -171,72 +182,60 @@ export function Header() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.22 }}
               onClick={() => setMobileDrawerOpen(false)}
-              style={{
-                position: "fixed", inset: 0, zIndex: 40,
-                background: "rgba(0,0,0,0.35)",
-                backdropFilter: "blur(4px)",
-                WebkitBackdropFilter: "blur(4px)",
-              }}
+              className="fixed inset-0 z-40 bg-black/35 backdrop-blur-sm"
               aria-hidden
             />
 
-            {/* Drawer panel */}
             <motion.aside
               key="drawer"
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              style={{
-                position: "fixed",
-                top: 0, left: 0, bottom: 0,
-                zIndex: 999,
-                width: 280,
-                display: "flex",
-                flexDirection: "column",
-                background: "linear-gradient(160deg, rgba(255,255,255,0.97), rgba(245,245,247,0.99))",
-                backdropFilter: "blur(40px) saturate(200%)",
-                WebkitBackdropFilter: "blur(40px) saturate(200%)",
-                boxShadow: "4px 0 40px rgba(0,0,0,0.14)",
-              }}
-              aria-label="Mobile navigation">
-
-              {/* Drawer header */}
-              <div style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "0 20px", height: 76,
-                borderBottom: "1px solid rgba(0,0,0,0.06)",
-              }}>
+              className="fixed bottom-0 left-0 top-0 z-[999] flex w-[280px] flex-col bg-[linear-gradient(160deg,rgba(255,255,255,0.97),rgba(245,245,247,0.99))] shadow-[4px_0_40px_rgba(0,0,0,0.14)] backdrop-blur-[40px] backdrop-saturate-200"
+              aria-label="Mobile navigation"
+            >
+              <div className="flex h-[76px] items-center justify-between border-b border-line/60 px-5">
                 <Link
                   href="/"
                   onClick={() => setMobileDrawerOpen(false)}
-                  style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: "inherit" }}>
-                  <Image src="/brand/logo.png" alt="" width={26} height={26} style={{ height: 26, width: 26, objectFit: "contain" }} />
-                  <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.02em" }}>GamersKit</span>
+                  className="flex items-center gap-2 text-foreground no-underline"
+                >
+                  <Image
+                    src="/brand/logo.png"
+                    alt=""
+                    width={26}
+                    height={26}
+                    className="h-[26px] w-[26px] object-contain"
+                  />
+                  <span className="text-sm font-semibold tracking-[-0.02em]">
+                    GamersKit
+                  </span>
                 </Link>
                 <button
+                  type="button"
                   onClick={() => setMobileDrawerOpen(false)}
                   className="lg-icon-btn"
-                  aria-label="Close menu">
+                  aria-label="Close menu"
+                >
                   <X size={18} strokeWidth={1.8} />
                 </button>
               </div>
 
-              {/* Nav links */}
-              <nav style={{ flex: 1, padding: "20px 12px", overflowY: "auto" }}>
-                <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+              <nav className="flex-1 overflow-y-auto px-3 py-5">
+                <ul className="m-0 flex flex-col gap-1 p-0">
                   {NAV_LINKS.map((link) => (
                     <li key={link.label}>
                       <Link
                         href={link.href}
                         onClick={() => setMobileDrawerOpen(false)}
-                        style={{
-                          display: "flex", alignItems: "center",
-                          padding: "12px 16px", borderRadius: 12,
-                          fontSize: 15, fontWeight: 500, textDecoration: "none",
-                          background: pathname === link.href ? "#000" : "transparent",
-                          color: pathname === link.href ? "#fff" : "#1a1a1a",
-                        }}>
+                        className={cn(
+                          "flex items-center rounded-xl px-4 py-3 text-[15px] font-medium",
+                          pathname === link.href
+                            ? "bg-black text-white"
+                            : "text-foreground hover:bg-bg-soft",
+                        )}
+                      >
                         {link.label}
                       </Link>
                     </li>
@@ -244,69 +243,46 @@ export function Header() {
                 </ul>
               </nav>
 
-              {/* Auth / Account at bottom */}
-              <div style={{
-                padding: "16px 16px 32px",
-                borderTop: "1px solid rgba(0,0,0,0.06)",
-                display: "flex", flexDirection: "column", gap: 8,
-              }}>
+              <div className="flex flex-col gap-2 border-t border-line/60 px-4 pb-8 pt-4">
                 {user ? (
                   <>
-                    <p style={{
-                      padding: "4px 12px", margin: 0,
-                      fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em",
-                      color: "#999", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    }}>
+                    <p className="m-0 truncate px-3 py-1 text-[11px] uppercase tracking-[0.1em] text-fg-muted">
                       {user.email}
                     </p>
                     <Link
                       href="/account"
                       onClick={() => setMobileDrawerOpen(false)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 12,
-                        padding: "12px 16px", borderRadius: 12,
-                        fontSize: 15, fontWeight: 500,
-                        color: "#1a1a1a", textDecoration: "none",
-                        background: "rgba(0,0,0,0.04)",
-                      }}>
+                      className="flex items-center gap-3 rounded-xl bg-black/[0.04] px-4 py-3 text-[15px] font-medium text-foreground no-underline"
+                    >
                       <User size={16} strokeWidth={1.8} />
                       My Account
                     </Link>
                     <button
-                      onClick={() => { clear(); setMobileDrawerOpen(false); }}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 12,
-                        padding: "12px 16px", borderRadius: 12,
-                        fontSize: 15, fontWeight: 500,
-                        color: "#ef4444", background: "none",
-                        border: "none", cursor: "pointer", width: "100%", textAlign: "left",
-                      }}>
+                      type="button"
+                      onClick={() => {
+                        clear();
+                        setMobileDrawerOpen(false);
+                      }}
+                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-[15px] font-medium text-red-500"
+                    >
                       Sign out
                     </button>
                   </>
                 ) : (
                   <>
                     <button
+                      type="button"
                       onClick={() => openAuth("login")}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                        padding: "13px 16px", borderRadius: 12,
-                        fontSize: 15, fontWeight: 500,
-                        background: "#000", color: "#fff",
-                        border: "none", cursor: "pointer", width: "100%",
-                      }}>
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-[15px] font-medium text-white"
+                    >
                       <User size={15} strokeWidth={2} />
                       Sign In
                     </button>
                     <button
+                      type="button"
                       onClick={() => openAuth("register")}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        padding: "13px 16px", borderRadius: 12,
-                        fontSize: 15, fontWeight: 500,
-                        background: "none", border: "1px solid rgba(0,0,0,0.14)",
-                        color: "#1a1a1a", cursor: "pointer", width: "100%",
-                      }}>
+                      className="flex w-full items-center justify-center rounded-xl border border-line-strong px-4 py-3 text-[15px] font-medium text-foreground"
+                    >
                       Create Account
                     </button>
                   </>
@@ -317,7 +293,6 @@ export function Header() {
         )}
       </AnimatePresence>
 
-      {/* Auth Drawer */}
       <AuthDrawer
         isOpen={authDrawerOpen}
         onClose={() => setAuthDrawerOpen(false)}

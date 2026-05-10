@@ -5,6 +5,7 @@ import { Marquee } from "@/components/Marquee";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ProductGrid } from "@/components/ProductGrid";
 import { StorySection } from "@/components/StorySection";
+import { Section, Card } from "@/components/ui";
 
 type Product = Awaited<ReturnType<typeof api.listProducts>>["items"][number];
 
@@ -30,27 +31,26 @@ export default async function Home() {
       <Hero />
       <Marquee />
 
-      {/* Featured Section */}
-      <section className="px-5 lg:px-8 max-w-[1280px] mx-auto py-10 md:py-16">
-        <SectionHeader 
-          eyebrow="This week" 
-          title="Featured." 
-          linkHref="/shop" 
-          linkLabel="All products" 
+      <Section spacing="md">
+        <SectionHeader
+          eyebrow="This week"
+          title="Featured."
+          linkHref="/shop"
+          linkLabel="All products"
         />
         {featured.length > 0 ? <ProductGrid products={featured} /> : <EmptyState />}
-      </section>
+      </Section>
 
       <CategoryTiles />
 
-      {/* Best Sellers Section */}
-      <section className="px-5 lg:px-8 max-w-[1280px] mx-auto py-1 md:py-16 border-t border-white/5">
-        <SectionHeader 
-          eyebrow="Most loved" 
-          title="Best sellers." 
-        />
-        {bestSellers.length > 0 ? <ProductGrid products={bestSellers} /> : <EmptyState />}
-      </section>
+      <Section spacing="md" className="border-t border-line">
+        <SectionHeader eyebrow="Most loved" title="Best sellers." />
+        {bestSellers.length > 0 ? (
+          <ProductGrid products={bestSellers} />
+        ) : (
+          <EmptyState />
+        )}
+      </Section>
 
       <StorySection />
     </main>
@@ -59,10 +59,18 @@ export default async function Home() {
 
 function EmptyState() {
   return (
-    <div className="card-soft p-12 text-center rounded-2xl border border-dashed border-white/10">
-      <p className="text-[var(--fg-soft)]">
-        No products yet. Run <code className="bg-white/10 px-2 py-1 rounded text-pink-400">npm run seed</code> to import live products.
+    <Card
+      tone="soft"
+      padding="lg"
+      className="text-center border-dashed text-fg-soft"
+    >
+      <p>
+        No products yet. Run{" "}
+        <code className="rounded bg-bg-soft px-2 py-1 text-xs font-mono text-foreground">
+          npm run seed
+        </code>{" "}
+        to import live products.
       </p>
-    </div>
+    </Card>
   );
 }
