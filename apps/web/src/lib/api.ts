@@ -70,6 +70,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   getOrder: (orderNumber: string) => request<{ order: Order }>(`/api/orders/by-number/${orderNumber}`),
+  getOrdersByPhone: (phone: string) => request<{ orders: Order[] }>(`/api/orders/by-phone/${phone}`),
   validateCoupon: (code: string, subtotal: number) =>
     request<{ coupon: { code: string; type: "percent" | "fixed"; value: number; discount: number } }>(
       `/api/coupons/validate`,

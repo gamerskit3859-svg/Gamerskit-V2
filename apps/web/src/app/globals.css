@@ -1,4 +1,5 @@
 @import "tailwindcss";
+
 @font-face {
   font-family: "LouisVuitton";
   src: url("/custom-font") format("truetype");

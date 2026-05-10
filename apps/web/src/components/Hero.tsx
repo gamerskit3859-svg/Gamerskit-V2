@@ -35,7 +35,8 @@ export function Hero() {
           },
           {
             _id: "default-2",
-            imageUrl: "https://ik.imagekit.io/Gamerskit/PC.jpg?updatedAt=1746205763054",
+            imageUrl:
+              "https://ik.imagekit.io/Gamerskit/PC.jpg?updatedAt=1746205763054",
             order: 1,
             isActive: true,
           },
@@ -78,10 +79,15 @@ export function Hero() {
         <motion.div
           key={src._id}
           initial={false}
-          animate={{ opacity: i === index ? 1 : 0, scale: i === index ? 1.04 : 1 }}
-          transition={{ opacity: { duration: 1.4 }, scale: { duration: 8, ease: "linear" } }}
-          className="absolute inset-0"
-        >
+          animate={{
+            opacity: i === index ? 1 : 0,
+            scale: i === index ? 1.04 : 1,
+          }}
+          transition={{
+            opacity: { duration: 1.4 },
+            scale: { duration: 8, ease: "linear" },
+          }}
+          className="absolute inset-0">
           <Image
             src={src.imageUrl}
             alt=""
@@ -101,40 +107,35 @@ export function Hero() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7 }}
-          className="eyebrow text-white/70"
-        >
+          className="eyebrow text-white/70">
           GamersKit · Spring 2026
         </motion.span>
         <motion.h1
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.85, delay: 0.1 }}
-          className="display-1 mt-3 max-w-[14ch]"
-        >
+          className="display-1 mt-3 max-w-[14ch]">
           Built for the players who don&apos;t settle.
         </motion.h1>
         <motion.p
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.85, delay: 0.2 }}
-          className="mt-5 max-w-xl text-base md:text-lg text-white/80"
-        >
-          High-speed RC drift cars, official F1 and e-sports jerseys, gaming gear —
-          delivered free across Bangladesh.
+          className="mt-5 max-w-xl text-base md:text-lg text-white/80">
+          High-speed RC drift cars, official F1 and e-sports jerseys, gaming
+          gear — delivered free across Bangladesh.
         </motion.p>
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.85, delay: 0.32 }}
-          className="mt-8 flex gap-3 flex-wrap"
-        >
+          className="mt-8 flex gap-3 flex-wrap">
           <Link href="/shop" className="btn btn-light">
             Shop the collection
           </Link>
           <Link
             href="/shop/rc-car"
-            className="btn glass-dark text-white border-white/30"
-          >
+            className="btn glass-dark text-white border-white/30">
             Explore RC cars
           </Link>
         </motion.div>

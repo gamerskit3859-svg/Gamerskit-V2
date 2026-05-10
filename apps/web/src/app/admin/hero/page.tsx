@@ -1,8 +1,21 @@
 "use client";
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+
+import { useEffect, useState, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { CldUploadWidget } from "next-cloudinary";
 import Image from "next/image";
+import {
+  Plus,
+  GripVertical,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  Image as ImageIcon,
+  AlertCircle,
+  Save,
+  X,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 
@@ -15,15 +28,13 @@ interface HeroImage {
   title: string;
   subtitle: string;
   link: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export default function AdminHeroImages() {
   const [images, setImages] = useState<HeroImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [draggedFrom, setDraggedFrom] = useState<number | null>(null);
@@ -39,25 +50,25 @@ export default function AdminHeroImages() {
 
   const token = getAdminToken();
 
-  useEffect(() => {
-    loadImages();
-  }, []);
-
-  async function loadImages() {
+  const loadImages = useCallback(async () => {
     if (!token) return;
     try {
       setLoading(true);
       const result = await api.listHeroImagesAdmin(token);
-      setImages(result.items);
+      setImages(result.items || []);
       setError(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
     }
-  }
+  }, [token]);
 
-  function resetForm() {
+  useEffect(() => {
+    loadImages();
+  }, [loadImages]);
+
+  const resetForm = () => {
     setFormData({
       imageUrl: "",
       title: "",
@@ -68,9 +79,9 @@ export default function AdminHeroImages() {
     });
     setEditingId(null);
     setShowForm(false);
-  }
+  };
 
-  function editImage(image: HeroImage) {
+  const handleEdit = (image: HeroImage) => {
     setFormData({
       imageUrl: image.imageUrl,
       title: image.title,
@@ -81,47 +92,42 @@ export default function AdminHeroImages() {
     });
     setEditingId(image._id);
     setShowForm(true);
-  }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
-  async function handleSubmit(e: React.FormEvent) {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !formData.imageUrl) {
-      setError("Image URL is required");
-      return;
-    }
+    if (!token || !formData.imageUrl) return;
 
-    setIsCreating(true);
+    setIsSaving(true);
     try {
       if (editingId) {
         await api.updateHeroImage(editingId, formData, token);
       } else {
-        const publicId = formData.imageUrl.split("/").pop()?.split("?")[0] || "hero";
-        await api.createHeroImage(
-          { ...formData, publicId },
-          token,
-        );
+        const publicId =
+          formData.imageUrl.split("/").pop()?.split("?")[0] || "hero";
+        await api.createHeroImage({ ...formData, publicId }, token);
       }
       await loadImages();
       resetForm();
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setIsCreating(false);
+      setIsSaving(false);
     }
-  }
+  };
 
-  async function deleteImage(id: string) {
-    if (!token || !confirm("Are you sure you want to delete this hero image?")) return;
-
+  const handleDelete = async (id: string) => {
+    if (!token || !confirm("Delete this hero slide?")) return;
     try {
       await api.deleteHeroImage(id, token);
       await loadImages();
     } catch (err) {
       setError((err as Error).message);
     }
-  }
+  };
 
-  async function toggleActive(id: string, currentState: boolean) {
+  const handleToggleActive = async (id: string, currentState: boolean) => {
     if (!token) return;
     try {
       await api.updateHeroImage(id, { isActive: !currentState }, token);
@@ -129,289 +135,254 @@ export default function AdminHeroImages() {
     } catch (err) {
       setError((err as Error).message);
     }
-  }
+  };
 
-  function handleDragStart(index: number) {
-    setDraggedFrom(index);
-  }
-
-  async function handleDragOver(index: number) {
+  // Drag and Drop Logic
+  const handleDragStart = (index: number) => setDraggedFrom(index);
+  const handleDragOver = async (index: number) => {
     if (draggedFrom === null || draggedFrom === index) return;
-
     const newImages = [...images];
-    const [draggedImage] = newImages.splice(draggedFrom, 1);
-    newImages.splice(index, 0, draggedImage);
+    const [draggedItem] = newImages.splice(draggedFrom, 1);
+    newImages.splice(index, 0, draggedItem);
 
-    // Update order values
-    const updatedImages = newImages.map((img, idx) => ({
-      ...img,
-      order: idx,
-    }));
+    const updated = newImages.map((img, idx) => ({ ...img, order: idx }));
+    setImages(updated);
+    setDraggedFrom(index);
+  };
 
-    setImages(updatedImages);
-
+  const handleDragEnd = async () => {
+    setDraggedFrom(null);
     if (!token) return;
-
     try {
-      const orderData = updatedImages.map((img) => ({
-        id: img._id,
-        order: img.order,
-      }));
+      const orderData = images.map((img, idx) => ({ id: img._id, order: idx }));
       await api.reorderHeroImages(orderData, token);
     } catch (err) {
-      setError((err as Error).message);
-      await loadImages();
+      setError("Failed to save new order.");
+      loadImages();
     }
-  }
-
-  function handleDragEnd() {
-    setDraggedFrom(null);
-  }
+  };
 
   const activeCount = images.filter((img) => img.isActive).length;
-  const canActivateMore = activeCount < 4;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Hero Images</h1>
-          <p className="text-gray-600">
-            Manage hero section images. Maximum 4 active images allowed.
-          </p>
-          <p className="text-sm text-gray-500 mt-2">
-            Active: {activeCount}/4 | Drag to reorder
+    <div className="min-h-screen pb-20">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-black text-gray-900 tracking-tight">
+            Hero Management
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">
+            Active Slides:{" "}
+            <span className="font-bold text-blue-600">{activeCount}/4</span> •
+            Drag to reorder
           </p>
         </div>
+        <button
+          onClick={() => (showForm ? resetForm() : setShowForm(true))}
+          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all ${
+            showForm
+              ? "bg-white border text-gray-600 shadow-sm"
+              : "bg-black text-white shadow-lg"
+          }`}>
+          {showForm ? <X size={18} /> : <Plus size={18} />}
+          {showForm ? "Close Form" : "Add Slide"}
+        </button>
+      </div>
 
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-4 p-4 bg-red-100 text-red-700 rounded-lg"
-          >
-            {error}
-          </motion.div>
-        )}
-
-        <div className="mb-6">
-          <button
-            onClick={() => {
-              resetForm();
-              setShowForm(!showForm);
-            }}
-            className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition"
-          >
-            {showForm ? "Cancel" : "+ Add Hero Image"}
-          </button>
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl flex items-center gap-3">
+          <AlertCircle size={20} />
+          <span className="text-sm font-medium">{error}</span>
         </div>
+      )}
 
+      {/* Form Section */}
+      <AnimatePresence>
         {showForm && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-8 p-6 bg-white rounded-lg border"
-          >
-            <h2 className="text-xl font-bold mb-4">
-              {editingId ? "Edit Hero Image" : "Add New Hero Image"}
-            </h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <h3 className="font-semibold text-sm mb-3 text-blue-900">
-                  Upload Image via Cloudinary
-                </h3>
-                <div className="bg-white rounded-lg p-4 border-2 border-dashed border-blue-300">
-                  {formData.imageUrl ? (
-                    <div className="space-y-3">
-                      <div className="relative w-full h-40">
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-white rounded-2xl border border-gray-200  p-6 mb-10 overflow-hidden">
+            <form
+              onSubmit={handleSubmit}
+              className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {/* Upload Area */}
+              <div className="md:col-span-1">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-3">
+                  Slide Media
+                </label>
+                <CldUploadWidget
+                  uploadPreset={
+                    process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
+                  }
+                  onSuccess={(res: any) =>
+                    setFormData({ ...formData, imageUrl: res.info.secure_url })
+                  }>
+                  {({ open }) => (
+                    <div
+                      onClick={() => open()}
+                      className="relative aspect-video rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-all group">
+                      {formData.imageUrl ? (
                         <Image
                           src={formData.imageUrl}
                           alt="Preview"
                           fill
-                          className="object-cover rounded-lg"
+                          className="object-cover rounded-xl"
                         />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setFormData({ ...formData, imageUrl: "" })
-                        }
-                        className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm"
-                      >
-                        Change Image
-                      </button>
-                    </div>
-                  ) : (
-                    <CldUploadWidget
-                      uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET}
-                      onSuccess={(result: any) => {
-                        if (result.event === "success") {
-                          setFormData({
-                            ...formData,
-                            imageUrl: result.info.secure_url,
-                          });
-                        }
-                      }}
-                    >
-                      {({ open }) => (
-                        <button
-                          type="button"
-                          onClick={() => open()}
-                          className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium text-sm"
-                        >
-                          📸 Click to Upload Image
-                        </button>
+                      ) : (
+                        <div className="text-center text-gray-400 group-hover:text-blue-500">
+                          <ImageIcon size={32} className="mx-auto mb-2" />
+                          <p className="text-xs font-bold">Select Image</p>
+                        </div>
                       )}
-                    </CldUploadWidget>
+                    </div>
                   )}
-                </div>
+                </CldUploadWidget>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Title</label>
+              {/* Text Fields */}
+              <div className="md:col-span-2 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-500">
+                      Title
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.title}
+                      onChange={(e) =>
+                        setFormData({ ...formData, title: e.target.value })
+                      }
+                      className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="Built for the Top 1%"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-500">
+                      Subtitle
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.subtitle}
+                      onChange={(e) =>
+                        setFormData({ ...formData, subtitle: e.target.value })
+                      }
+                      className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="Official RC drift gear..."
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-500">
+                    Link URL
+                  </label>
                   <input
                     type="text"
-                    value={formData.title}
+                    value={formData.link}
                     onChange={(e) =>
-                      setFormData({ ...formData, title: e.target.value })
+                      setFormData({ ...formData, link: e.target.value })
                     }
-                    className="w-full px-3 py-2 border rounded-lg"
-                    placeholder="Hero title"
+                    className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="/shop/rc-cars"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Subtitle</label>
-                  <input
-                    type="text"
-                    value={formData.subtitle}
-                    onChange={(e) =>
-                      setFormData({ ...formData, subtitle: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border rounded-lg"
-                    placeholder="Hero subtitle"
-                  />
-                </div>
+                <button
+                  type="submit"
+                  disabled={isSaving || !formData.imageUrl}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50 transition-all shadow-lg shadow-blue-100">
+                  <Save size={18} />
+                  {isSaving
+                    ? "Saving Changes..."
+                    : editingId
+                      ? "Update Slide"
+                      : "Create Slide"}
+                </button>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Link (optional)</label>
-                <input
-                  type="text"
-                  value={formData.link}
-                  onChange={(e) =>
-                    setFormData({ ...formData, link: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border rounded-lg"
-                  placeholder="/shop or /product/slug"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isCreating || !formData.imageUrl}
-                className="w-full px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition disabled:bg-gray-400"
-              >
-                {isCreating ? "Saving..." : editingId ? "Update Image" : "Add Image"}
-              </button>
             </form>
           </motion.div>
         )}
+      </AnimatePresence>
 
+      {/* List Section */}
+      <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100">
         {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading hero images...</div>
+          <div className="p-20 text-center text-gray-400 animate-pulse">
+            Loading Hero Inventory...
+          </div>
         ) : images.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            No hero images yet. Add one to get started!
+          <div className="p-20 text-center text-gray-400 font-medium">
+            No slides found.
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4">
-              {images.map((image, idx) => (
-                <motion.div
-                  key={image._id}
-                  draggable
-                  onDragStart={() => handleDragStart(idx)}
-                  onDragOver={() => handleDragOver(idx)}
-                  onDragEnd={handleDragEnd}
-                  className={`p-4 border rounded-lg bg-white cursor-move hover:shadow-md transition ${
-                    draggedFrom === idx ? "opacity-50" : ""
-                  }`}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="relative w-32 h-24 flex-shrink-0">
-                      <Image
-                        src={image.imageUrl}
-                        alt={image.title || "Hero image"}
-                        fill
-                        className="object-cover rounded"
-                      />
-                    </div>
-                    <div className="flex-grow">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-grow">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg font-semibold">
-                              Order {image.order}
-                            </span>
-                            <span
-                              className={`text-xs px-2 py-1 rounded ${
-                                image.isActive
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-gray-100 text-gray-600"
-                              }`}
-                            >
-                              {image.isActive ? "✓ Active" : "Inactive"}
-                            </span>
-                          </div>
-                          {image.title && (
-                            <p className="font-medium text-sm mt-1">{image.title}</p>
-                          )}
-                          {image.subtitle && (
-                            <p className="text-sm text-gray-600">{image.subtitle}</p>
-                          )}
-                          {image.link && (
-                            <p className="text-xs text-blue-600 mt-1">Link: {image.link}</p>
-                          )}
-                        </div>
-                        <div className="flex gap-2 flex-wrap justify-end">
-                          {image.isActive && activeCount >= 4 && (
-                            <span className="text-xs text-gray-500">Max reached</span>
-                          )}
-                          <button
-                            onClick={() => toggleActive(image._id, image.isActive)}
-                            disabled={
-                              !image.isActive &&
-                              activeCount >= 4
-                            }
-                            className={`px-2 py-1 text-xs rounded transition ${
-                              image.isActive
-                                ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
-                                : "bg-green-100 text-green-700 hover:bg-green-200 disabled:bg-gray-100 disabled:text-gray-400"
-                            }`}
-                          >
-                            {image.isActive ? "Deactivate" : "Activate"}
-                          </button>
-                          <button
-                            onClick={() => editImage(image)}
-                            className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => deleteImage(image._id)}
-                            className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+          images.map((img, idx) => (
+            <div
+              key={img._id}
+              draggable
+              onDragStart={() => handleDragStart(idx)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                handleDragOver(idx);
+              }}
+              onDragEnd={handleDragEnd}
+              className={`flex items-center p-4 group transition-colors hover:bg-gray-50/50 ${draggedFrom === idx ? "opacity-30 bg-blue-50" : ""}`}>
+              <div className="mr-4 text-gray-300 cursor-grab active:cursor-grabbing hover:text-gray-500">
+                <GripVertical size={20} />
+              </div>
+
+              <div className="relative h-16 w-24 rounded-lg overflow-hidden border border-gray-100 bg-gray-50 flex-shrink-0">
+                <Image
+                  src={img.imageUrl}
+                  alt=""
+                  fill
+                  className="object-cover"
+                />
+              </div>
+
+              <div className="ml-6 flex-grow">
+                <div className="flex items-center gap-3">
+                  <h3 className="font-bold text-gray-900 line-clamp-1">
+                    {img.title || "Untitled Slide"}
+                  </h3>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                      img.isActive
+                        ? "bg-emerald-50 text-emerald-600 border-emerald-100"
+                        : "bg-gray-100 text-gray-400 border-gray-200"
+                    }`}>
+                    {img.isActive ? "Active" : "Hidden"}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">
+                  {img.subtitle || "No subtitle set."}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 ml-4">
+                <button
+                  onClick={() => handleToggleActive(img._id, img.isActive)}
+                  disabled={!img.isActive && activeCount >= 4}
+                  className={`p-2 rounded-lg transition-all ${img.isActive ? "text-orange-500 hover:bg-orange-50" : "text-blue-500 hover:bg-blue-50 disabled:opacity-20"}`}>
+                  {img.isActive ? (
+                    <XCircle size={18} />
+                  ) : (
+                    <CheckCircle2 size={18} />
+                  )}
+                </button>
+                <button
+                  onClick={() => handleEdit(img)}
+                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                  <Pencil size={18} />
+                </button>
+                <button
+                  onClick={() => handleDelete(img._id)}
+                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                  <Trash2 size={18} />
+                </button>
+              </div>
             </div>
-          </div>
+          ))
         )}
       </div>
     </div>

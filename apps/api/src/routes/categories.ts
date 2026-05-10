@@ -39,9 +39,20 @@ router.get("/", async (req, res) => {
 // Get category by slug or ID
 router.get("/:id", async (req, res) => {
   try {
-    const category = await CategoryModel.findOne({
-      $or: [{ _id: req.params.id }, { slug: req.params.id }],
-    }).lean();
+    const { id } = req.params;
+    let category = null;
+
+    // First try to find by slug (more common case)
+    category = await CategoryModel.findOne({ slug: id }).lean();
+
+    // If not found, try to find by ObjectId (only if it looks like a valid MongoDB ID)
+    if (!category && id.match(/^[0-9a-fA-F]{24}$/)) {
+      try {
+        category = await CategoryModel.findOne({ _id: id }).lean();
+      } catch {
+        // Ignore cast errors
+      }
+    }
 
     if (!category) {
       res.status(404).json({ error: "not found" });

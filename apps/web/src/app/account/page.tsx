@@ -16,7 +16,7 @@ export default function AccountPage() {
 
   useEffect(() => {
     if (!token) {
-      router.replace("/account/login?next=/account");
+      router.replace("/");
       return;
     }
     let cancelled = false;
@@ -99,7 +99,7 @@ export default function AccountPage() {
                     </td>
                     <td className="py-3 px-4">
                       <Link
-                        href={`/track?o=${o.orderNumber}`}
+                        href="/track"
                         className="text-xs underline underline-offset-4"
                       >
                         Track

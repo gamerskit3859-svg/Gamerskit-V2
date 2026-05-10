@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 
@@ -12,8 +12,9 @@ interface Category {
 }
 
 export function CategoryNav({ activeSlug }: { activeSlug?: string }) {
-  const pathname = usePathname();
-  const isAll = !activeSlug && pathname === "/shop";
+  const searchParams = useSearchParams();
+  const activeCategory = searchParams.get("category") || activeSlug;
+  const isAll = !activeCategory;
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -55,11 +56,11 @@ export function CategoryNav({ activeSlug }: { activeSlug?: string }) {
           All
         </Link>
         {categories.map((c) => {
-          const active = c.slug === activeSlug;
+          const active = c.slug === activeCategory;
           return (
             <Link
               key={c._id}
-              href={`/shop/${c.slug}`}
+              href={`/shop?category=${c.slug}`}
               className={`px-4 py-1.5 rounded-full text-[13px] whitespace-nowrap transition-colors ${
                 active
                   ? "bg-black text-white"
