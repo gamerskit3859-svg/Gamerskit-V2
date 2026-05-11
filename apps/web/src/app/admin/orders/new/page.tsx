@@ -59,8 +59,8 @@ export default function CustomOrderPage() {
     phone: "",
     email: "",
     address: "",
-    city: "Dhaka",
-    area: "",
+    district: "Dhaka",
+    thana: "",
   });
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -352,17 +352,17 @@ export default function CustomOrderPage() {
               />
               <div className="grid grid-cols-2 gap-2">
                 <Input
-                  placeholder="City"
-                  value={customer.city}
+                  placeholder="District"
+                  value={customer.district}
                   onChange={(e) =>
-                    setCustomer({ ...customer, city: e.target.value })
+                    setCustomer({ ...customer, district: e.target.value })
                   }
                 />
                 <Input
-                  placeholder="Area"
-                  value={customer.area}
+                  placeholder="Thana / Area"
+                  value={customer.thana}
                   onChange={(e) =>
-                    setCustomer({ ...customer, area: e.target.value })
+                    setCustomer({ ...customer, thana: e.target.value })
                   }
                 />
               </div>

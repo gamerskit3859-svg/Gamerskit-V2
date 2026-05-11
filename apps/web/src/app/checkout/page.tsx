@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useCart } from "@/lib/cart";
+import { useAuth } from "@/lib/auth";
 import { formatBDT } from "@/lib/format";
 import { track } from "@/lib/fb-pixel";
 import { api } from "@/lib/api";
@@ -50,20 +51,29 @@ export default function CheckoutPage() {
   const lines = useCart((s) => s.lines);
   const subtotal = useCart((s) => s.subtotal());
   const clear = useCart((s) => s.clear);
+  // Pass the customer JWT (if signed in) so the API links the order to the
+  // user. Guest checkout still works — the token is just optional.
+  const authToken = useAuth((s) => s.token);
 
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [form, setForm] = useState<CheckoutForm>({
-    name: "",
-    phone: "",
-    email: "",
-    address: "",
-    district: "",
-    thana: "",
-    paymentMethod: "cod",
-    notes: "",
+  // Pre-fill name/phone/email from the signed-in customer's profile so they
+  // don't have to retype it. Reads the auth store once on mount; the persist
+  // middleware rehydrates from localStorage synchronously on the client.
+  const [form, setForm] = useState<CheckoutForm>(() => {
+    const u = useAuth.getState().user;
+    return {
+      name: u?.name ?? "",
+      phone: u?.phone ?? "",
+      email: u?.email ?? "",
+      address: "",
+      district: "",
+      thana: "",
+      paymentMethod: "cod",
+      notes: "",
+    };
   });
 
   const locations = useMemo(() => allLocation(), []);
@@ -131,29 +141,32 @@ export default function CheckoutPage() {
         },
       });
 
-      const { order, eventId } = await api.createOrder({
-        customer: {
-          name: form.name,
-          phone: form.phone,
-          email: form.email || undefined,
-          address: form.address,
-          district: form.district,
-          thana: form.thana,
+      const { order, eventId } = await api.createOrder(
+        {
+          customer: {
+            name: form.name,
+            phone: form.phone,
+            email: form.email || undefined,
+            address: form.address,
+            district: form.district,
+            thana: form.thana,
+          },
+          items: lines.map((l) => ({
+            productId: l.productId,
+            title: l.title,
+            image: l.image,
+            unitPrice: l.unitPrice,
+            quantity: l.quantity,
+          })),
+          shippingFee: 0,
+          discount: 0,
+          advance: 0,
+          paymentMethod: form.paymentMethod,
+          source: "storefront",
+          notes: form.notes,
         },
-        items: lines.map((l) => ({
-          productId: l.productId,
-          title: l.title,
-          image: l.image,
-          unitPrice: l.unitPrice,
-          quantity: l.quantity,
-        })),
-        shippingFee: 0,
-        discount: 0,
-        advance: 0,
-        paymentMethod: form.paymentMethod,
-        source: "storefront",
-        notes: form.notes,
-      });
+        authToken ?? undefined,
+      );
 
       track({
         event: "Purchase",
