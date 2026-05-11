@@ -12,12 +12,17 @@ const router = Router();
 
 router.use(adminRequired);
 
+function parseLocalDate(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
 function buildDateFilter(from?: string, to?: string): Record<string, Date> | undefined {
   if (!from && !to) return undefined;
   const range: Record<string, Date> = {};
-  if (from) range.$gte = new Date(from);
+  if (from) range.$gte = parseLocalDate(from);
   if (to) {
-    const end = new Date(to);
+    const end = parseLocalDate(to);
     end.setHours(23, 59, 59, 999);
     range.$lte = end;
   }

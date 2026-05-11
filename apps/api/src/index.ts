@@ -1,13 +1,17 @@
 import express from "express";
 import cors from "cors";
-import helmet from "helmet";
 import morgan from "morgan";
 import compression from "compression";
-import rateLimit from "express-rate-limit";
+import { createRequire } from "module";
 
 import { env } from "./env.js";
 import { connectDb } from "./db.js";
 import { ensureAdmin } from "./lib/auth.js";
+
+// Use require for CommonJS modules to ensure proper type resolution
+const require = createRequire(import.meta.url);
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
 import productsRouter from "./routes/products.js";
 import ordersRouter from "./routes/orders.js";

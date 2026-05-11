@@ -27,6 +27,10 @@ const customerSchema = z.object({
   phone: z.string().min(5),
   email: z.string().email().optional().or(z.literal("")),
   address: z.string().min(2),
+  // Customer location is intentionally lenient: the storefront ships
+  // district/thana, while the admin custom-order builder previously shipped
+  // city/area. Both pairs are accepted and persisted so old admin orders
+  // keep round-tripping correctly.
   district: z.string().optional(),
   thana: z.string().optional(),
   city: z.string().optional(),
@@ -167,6 +171,8 @@ router.post("/", async (req, res) => {
         phone: data.customer.phone,
         firstName,
         lastName: rest.join(" ") || undefined,
+        // CAPI's city field accepts either pair; prefer the legacy `city`
+        // when present, fall back to the storefront's `district`.
         city: data.customer.city ?? data.customer.district,
         externalId: orderNumber,
       }),
@@ -214,6 +220,11 @@ router.get("/by-phone/:phone", async (req, res) => {
   res.json({ orders });
 });
 
+function parseLocalDate(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
 // Admin endpoints
 router.get("/", adminRequired, async (req, res) => {
   const {
@@ -230,9 +241,9 @@ router.get("/", adminRequired, async (req, res) => {
   if (source && source !== "all") filter.source = source;
   if (from || to) {
     const range: Record<string, Date> = {};
-    if (from) range.$gte = new Date(from);
+    if (from) range.$gte = parseLocalDate(from);
     if (to) {
-      const end = new Date(to);
+      const end = parseLocalDate(to);
       end.setHours(23, 59, 59, 999);
       range.$lte = end;
     }
