@@ -10,7 +10,7 @@ import {
   defaultRange,
   type DateRange,
 } from "@/components/admin/DateRangePicker";
-import type { Order } from "@gamerskit/shared";
+import type { Order } from "@/types/shared";
 import { LinkButton, Card as UICard, Pill, StatCard } from "@/components/ui";
 import { cn } from "@/lib/cn";
 

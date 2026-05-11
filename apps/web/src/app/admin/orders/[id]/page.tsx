@@ -7,8 +7,8 @@ import { ArrowLeft, Package, Truck, CheckCircle, Clock, MapPin, Phone, Mail, Cre
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDateTime } from "@/lib/format";
-import { ORDER_STATUSES } from "@gamerskit/shared";
-import type { Order } from "@gamerskit/shared";
+import { ORDER_STATUSES } from "@/types/shared";
+import type { Order } from "@/types/shared";
 import { Button, Card, Section, Pill } from "@/components/ui";
 import { cn } from "@/lib/cn";
 

@@ -6,7 +6,7 @@ import { useInfiniteScroll, useDebouncedSearch } from "@/lib/hooks";
 import { SearchInput } from "./SearchInput";
 import { ProductCard } from "./ProductCard";
 import { track } from "@/lib/fb-pixel";
-import type { Product } from "@gamerskit/shared";
+import type { Product } from "@/types/shared";
 import { Button, Card, Section } from "@/components/ui";
 
 interface ProductListingProps {

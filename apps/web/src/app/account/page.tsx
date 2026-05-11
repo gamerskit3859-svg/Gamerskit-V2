@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatBDT, formatDateTime } from "@/lib/format";
-import type { Order } from "@gamerskit/shared";
+import type { Order } from "@/types/shared";
 import { Button, LinkButton, Card, Section } from "@/components/ui";
 
 export default function AccountPage() {
