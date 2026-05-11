@@ -71,11 +71,23 @@ export function track(p: TrackPayload): string {
     window.dataLayer = window.dataLayer ?? [];
     window.dataLayer.push(payload);
 
+    // Wrap fbq() in try/catch — privacy extensions sometimes stub `fbq`
+    // with a function that throws on call, and we never want analytics to
+    // break the rest of the page.
     if (window.fbq && PIXEL_ID) {
-      window.fbq("track", p.event, buildFbqParams(p), { eventID: eventId });
+      try {
+        window.fbq("track", p.event, buildFbqParams(p), { eventID: eventId });
+      } catch {
+        // Swallow — ad-blockers / privacy extensions. Already logged at
+        // the browser's network layer as ERR_BLOCKED_BY_CLIENT.
+      }
     }
 
-    // Fire-and-forget server CAPI proxy
+    // Server CAPI proxy. We deliberately swallow the rejected promise —
+    // requests to /api/fb/* are commonly blocked by AdBlock and uBlock,
+    // which surface as ERR_BLOCKED_BY_CLIENT in DevTools. The block is
+    // expected (privacy extensions doing their job) and never affects the
+    // checkout / page-view flow because the call is fire-and-forget.
     void fetch("/api/fb/event", {
       method: "POST",
       headers: { "content-type": "application/json" },

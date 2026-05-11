@@ -42,12 +42,14 @@ const FALLBACK_TILES: Tile[] = [
   },
 ];
 
+const PLACEHOLDER_IMAGE = "/placeholder.jpg";
+
 function categoryToTile(c: Category): Tile {
   return {
     slug: c.slug,
     label: c.name,
     blurb: c.description,
-    image: c.image,
+    image: c.image && c.image.trim() ? c.image : PLACEHOLDER_IMAGE,
     featured: c.featured ?? false,
   };
 }
