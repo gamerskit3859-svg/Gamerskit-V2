@@ -71,8 +71,8 @@ export interface OrderCustomer {
   phone: string;
   email?: string;
   address: string;
-  city: string;
-  area?: string;
+  district: string;
+  thana?: string;
 }
 
 export interface Order {
@@ -105,6 +105,7 @@ export type FbEventName =
   | "PageView"
   | "ViewContent"
   | "AddToCart"
+  | "RemoveFromCart"
   | "InitiateCheckout"
   | "AddPaymentInfo"
   | "Purchase"
