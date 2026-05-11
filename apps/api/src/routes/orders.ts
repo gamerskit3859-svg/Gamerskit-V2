@@ -1,9 +1,10 @@
 import { Router } from "express";
+import mongoose from "mongoose";
 import { z } from "zod";
 import { OrderModel } from "../models/Order.js";
 import { ProductModel } from "../models/Product.js";
 import { CouponModel } from "../models/Coupon.js";
-import { adminRequired } from "../lib/auth.js";
+import { adminRequired, verifyToken } from "../lib/auth.js";
 import { hashUserData, newEventId, sendCapiEvent } from "../lib/fb.js";
 
 const router = Router();
@@ -18,13 +19,22 @@ const lineSchema = z.object({
   note: z.string().optional(),
 });
 
+// Customer shape is intentionally lenient on location: the storefront ships
+// district/thana, while admin custom-order builder ships city/area. Both
+// combinations are accepted and persisted as-is.
 const customerSchema = z.object({
   name: z.string().min(1),
   phone: z.string().min(5),
   email: z.string().email().optional().or(z.literal("")),
   address: z.string().min(2),
-  district: z.string().min(1),
+  // Customer location is intentionally lenient: the storefront ships
+  // district/thana, while the admin custom-order builder previously shipped
+  // city/area. Both pairs are accepted and persisted so old admin orders
+  // keep round-tripping correctly.
+  district: z.string().optional(),
   thana: z.string().optional(),
+  city: z.string().optional(),
+  area: z.string().optional(),
 });
 
 const orderSchema = z.object({
@@ -58,16 +68,64 @@ router.post("/", async (req, res) => {
     return;
   }
   const data = parsed.data;
-  const subtotal = data.items.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
+
+  // Optional auth: if the request comes with a customer JWT we link the order
+  // to the user so it shows up in /account reliably. Invalid/missing tokens
+  // just produce a guest order.
+  const authHeader = req.header("authorization") ?? "";
+  const rawToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const jwtPayload = rawToken ? verifyToken(rawToken) : null;
+  const userId =
+    jwtPayload?.sub && mongoose.isValidObjectId(jwtPayload.sub)
+      ? new mongoose.Types.ObjectId(jwtPayload.sub)
+      : undefined;
+
+  // Server-side re-pricing: never trust the unitPrice that the client sent for
+  // catalog items. We look each non-custom line up by productId and overwrite
+  // unitPrice (and title/image) from the live DB. Custom admin lines keep
+  // whatever the admin typed.
+  const productIds = data.items
+    .map((l) => l.productId)
+    .filter(
+      (id): id is string => !!id && mongoose.isValidObjectId(id),
+    );
+  const products = productIds.length
+    ? await ProductModel.find({ _id: { $in: productIds } }).lean()
+    : [];
+  const productById = new Map(products.map((p) => [String(p._id), p]));
+
+  const items = data.items.map((line) => {
+    if (line.custom || !line.productId) return line;
+    const p = productById.get(line.productId);
+    if (!p) return line; // product was deleted; honour whatever was on the client
+    return {
+      ...line,
+      title: p.title ?? line.title,
+      image: line.image ?? (Array.isArray(p.images) ? p.images[0] : undefined),
+      unitPrice: typeof p.price === "number" ? p.price : line.unitPrice,
+    };
+  });
+
+  const subtotal = items.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
   const total = Math.max(0, subtotal + data.shippingFee - data.discount);
   const remaining = Math.max(0, total - data.advance);
   const eventId = data.eventId ?? newEventId();
   const orderNumber = genOrderNumber();
 
+  // Payment status follows the money. Online prepayments collected up front
+  // settle to "paid"; COD / advance flows start "unpaid"/"partial" until the
+  // admin marks them on the order detail page.
+  const paymentStatus =
+    data.advance > 0 && data.advance < total
+      ? "partial"
+      : data.advance >= total && total > 0
+        ? "paid"
+        : "unpaid";
+
   const order = await OrderModel.create({
     orderNumber,
     customer: data.customer,
-    items: data.items,
+    items,
     subtotal,
     shippingFee: data.shippingFee,
     discount: data.discount,
@@ -75,10 +133,12 @@ router.post("/", async (req, res) => {
     advance: data.advance,
     remaining,
     paymentMethod: data.paymentMethod,
+    paymentStatus,
     source: data.source,
     notes: data.notes,
     couponCode: data.couponCode,
     fbEventId: eventId,
+    userId,
   });
 
   // decrement stock for non-custom lines
@@ -111,6 +171,9 @@ router.post("/", async (req, res) => {
         phone: data.customer.phone,
         firstName,
         lastName: rest.join(" ") || undefined,
+        // CAPI's city field accepts either pair; prefer the legacy `city`
+        // when present, fall back to the storefront's `district`.
+        city: data.customer.city ?? data.customer.district,
         externalId: orderNumber,
       }),
       fbp: data.fbp,
@@ -122,13 +185,13 @@ router.post("/", async (req, res) => {
       currency: "BDT",
       value: total,
       content_type: "product",
-      content_ids: data.items.map((l) => l.productId ?? `custom-${l.title}`),
-      contents: data.items.map((l) => ({
+      content_ids: items.map((l) => l.productId ?? `custom-${l.title}`),
+      contents: items.map((l) => ({
         id: l.productId ?? `custom-${l.title}`,
         quantity: l.quantity,
         item_price: l.unitPrice,
       })),
-      num_items: data.items.reduce((s, l) => s + l.quantity, 0),
+      num_items: items.reduce((s, l) => s + l.quantity, 0),
       order_id: orderNumber,
     },
   });
@@ -214,10 +277,38 @@ router.get("/:id", adminRequired, async (req, res) => {
   res.json({ order });
 });
 
+const orderPatchSchema = z.object({
+  status: z
+    .enum([
+      "pending",
+      "confirmed",
+      "processing",
+      "shipped",
+      "delivered",
+      "cancelled",
+      "refunded",
+    ])
+    .optional(),
+  paymentStatus: z
+    .enum(["unpaid", "partial", "paid", "refunded"])
+    .optional(),
+  notes: z.string().optional(),
+});
+
 router.patch("/:id", adminRequired, async (req, res) => {
-  const updated = await OrderModel.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
-  }).lean();
+  // Only allow patching a small allowlist of fields. Previously this route
+  // forwarded the full request body to findByIdAndUpdate, which let an admin
+  // overwrite arbitrary persisted state (totals, customer, line items, _id).
+  const parsed = orderPatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const updated = await OrderModel.findByIdAndUpdate(
+    req.params.id,
+    parsed.data,
+    { new: true },
+  ).lean();
   if (!updated) {
     res.status(404).json({ error: "not found" });
     return;

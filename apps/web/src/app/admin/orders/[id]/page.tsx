@@ -2,15 +2,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import Link from "next/link";
 import { ArrowLeft, Package, Truck, CheckCircle, Clock, MapPin, Phone, Mail, CreditCard } from "lucide-react";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDateTime } from "@/lib/format";
-import { ORDER_STATUSES } from "@/types/shared";
+import { ORDER_STATUSES, PAYMENT_STATUSES } from "@/types/shared";
 import type { Order } from "@/types/shared";
 import { Button, Card, Section, Pill } from "@/components/ui";
-import { cn } from "@/lib/cn";
 
 const STATUS_CONFIG = {
   pending: { tone: "warning" as const, icon: Clock },
@@ -70,6 +68,22 @@ export default function AdminOrderDetailsPage({
       if (!token) return;
 
       const result = await api.updateOrder(order._id, { status: newStatus }, token);
+      setOrder(result.order);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const updatePaymentStatus = async (newPaymentStatus: Order["paymentStatus"]) => {
+    if (!order) return;
+    try {
+      const token = getAdminToken();
+      if (!token) return;
+      const result = await api.updateOrder(
+        order._id,
+        { paymentStatus: newPaymentStatus },
+        token,
+      );
       setOrder(result.order);
     } catch (err) {
       setError((err as Error).message);
@@ -260,7 +274,14 @@ export default function AdminOrderDetailsPage({
                 <MapPin size={14} className="mt-0.5 flex-shrink-0" />
                 <div>
                   <div>{order.customer.address}</div>
-                  <div>{order.customer.district}{order.customer.thana && `, ${order.customer.thana}`}</div>
+                  <div>
+                    {[
+                      order.customer.district ?? order.customer.city,
+                      order.customer.thana ?? order.customer.area,
+                    ]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </div>
                 </div>
               </div>
             </div>
@@ -275,6 +296,24 @@ export default function AdminOrderDetailsPage({
                 <span className="text-sm font-medium">
                   {PAYMENT_METHOD_LABELS[order.paymentMethod]}
                 </span>
+              </div>
+              <div>
+                <label className="block text-xs font-medium uppercase tracking-wide text-fg-muted mb-1">
+                  Payment status
+                </label>
+                <select
+                  value={order.paymentStatus ?? "unpaid"}
+                  onChange={(e) =>
+                    updatePaymentStatus(e.target.value as Order["paymentStatus"])
+                  }
+                  className="w-full h-9 rounded-md border border-line bg-bg px-2 text-sm outline-none focus:ring-2 focus:ring-black"
+                >
+                  {PAYMENT_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="text-sm">
                 <div className="flex justify-between">

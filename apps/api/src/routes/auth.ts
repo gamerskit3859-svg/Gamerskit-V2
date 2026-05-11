@@ -162,9 +162,11 @@ router.get("/orders", authRequired, async (req, res) => {
     res.status(404).json({ error: "not found" });
     return;
   }
-  // match by email or phone since orders aren't linked by user id today
+  // Match on userId first (orders placed while signed in are linked directly),
+  // then fall back to email/phone for guest orders that share contact details.
   const filter: Record<string, unknown> = {
     $or: [
+      { userId: user._id },
       { "customer.email": user.email },
       ...(user.phone ? [{ "customer.phone": user.phone }] : []),
     ],

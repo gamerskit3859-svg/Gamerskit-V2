@@ -31,6 +31,9 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const PAYMENT_METHODS = ["cod", "bkash", "nagad", "card", "manual"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
+export const PAYMENT_STATUSES = ["unpaid", "partial", "paid", "refunded"] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
 export interface ProductVariant {
   size?: string;
   color?: string;
@@ -94,10 +97,13 @@ export interface Order {
   advance: number;
   remaining: number;
   paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
   status: OrderStatus;
   source: "storefront" | "manual"; // manual = admin-created custom order
   notes?: string;
   fbEventId?: string;
+  /** Set when a signed-in customer placed the order. */
+  userId?: string;
   createdAt: string;
   updatedAt: string;
 }

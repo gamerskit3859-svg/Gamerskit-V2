@@ -64,10 +64,11 @@ export const api = {
     request<{ items: any[] }>(`/api/categories`),
   getCategory: (idOrSlug: string) =>
     request<{ item: any }>(`/api/categories/${idOrSlug}`),
-  createOrder: (body: unknown) =>
+  createOrder: (body: unknown, token?: string) =>
     request<{ order: Order; eventId: string }>(`/api/orders`, {
       method: "POST",
       body: JSON.stringify(body),
+      token,
     }),
   getOrder: (orderNumber: string) => request<{ order: Order }>(`/api/orders/by-number/${orderNumber}`),
   getOrdersByPhone: (phone: string) => request<{ orders: Order[] }>(`/api/orders/by-phone/${phone}`),

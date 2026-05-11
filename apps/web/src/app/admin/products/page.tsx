@@ -4,7 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { CldUploadWidget } from "next-cloudinary";
-import { Upload, X } from "lucide-react";
+import type {
+  CloudinaryUploadWidgetError,
+  CloudinaryUploadWidgetResults,
+} from "next-cloudinary";
+import { Upload, X, AlertCircle, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
@@ -81,6 +85,17 @@ export default function AdminProductsPage() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Cloudinary upload feedback. The widget itself shows progress, but we
+  // surface the last result inline so the admin always sees confirmation of
+  // a successful upload (or a friendly error message) on the form page too.
+  const [uploadState, setUploadState] = useState<
+    | { kind: "idle" }
+    | { kind: "uploading" }
+    | { kind: "success"; count: number }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
+  const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
   useEffect(() => {
     let cancelled = false;
@@ -456,35 +471,102 @@ export default function AdminProductsPage() {
                     )}
 
                     {/* Upload Widget */}
-                    <CldUploadWidget
-                      uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET}
-                      onSuccess={(result: any) => {
-                        if (result.event === "success") {
-                          setDraft({
-                            ...draft,
-                            images: [...draft.images, result.info.secure_url],
-                          });
+                    {uploadPreset ? (
+                      <CldUploadWidget
+                        uploadPreset={uploadPreset}
+                        onOpen={() =>
+                          setUploadState({ kind: "uploading" })
                         }
-                      }}
-                      options={{
-                        maxFiles: 10,
-                        maxFileSize: 5000000, // 5MB
-                        resourceType: "image",
-                        clientAllowedFormats: ["jpg", "jpeg", "png", "webp"],
-                      }}
-                    >
-                      {({ open, isLoading }) => (
-                        <button
-                          type="button"
-                          onClick={() => open()}
-                          disabled={isLoading}
-                          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-line bg-bg-soft py-8 text-sm text-fg-muted transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50"
-                        >
-                          <Upload size={20} />
-                          {isLoading ? "Uploading..." : "Click to upload images"}
-                        </button>
-                      )}
-                    </CldUploadWidget>
+                        onQueuesEnd={(results: CloudinaryUploadWidgetResults) => {
+                          const info = results?.info;
+                          // Cloudinary fires this once the entire batch finishes.
+                          // We rely on each individual onSuccess to push URLs;
+                          // here we just clear the uploading state.
+                          if (info && typeof info === "object") {
+                            // no-op
+                          }
+                        }}
+                        onSuccess={(result: CloudinaryUploadWidgetResults) => {
+                          if (
+                            result.event === "success" &&
+                            result.info &&
+                            typeof result.info === "object" &&
+                            "secure_url" in result.info &&
+                            typeof result.info.secure_url === "string"
+                          ) {
+                            const url = result.info.secure_url;
+                            setDraft((d) => ({
+                              ...d,
+                              images: d.images.includes(url)
+                                ? d.images
+                                : [...d.images, url],
+                            }));
+                            setUploadState((s) => ({
+                              kind: "success",
+                              count: s.kind === "success" ? s.count + 1 : 1,
+                            }));
+                          }
+                        }}
+                        onError={(error: CloudinaryUploadWidgetError) => {
+                          const message =
+                            typeof error === "string"
+                              ? error
+                              : (error as { statusText?: string })?.statusText ??
+                                "Upload failed. Please try again.";
+                          setUploadState({ kind: "error", message });
+                        }}
+                        options={{
+                          maxFiles: 10,
+                          maxFileSize: 5_000_000, // 5MB — also enforced server-side by Cloudinary
+                          resourceType: "image",
+                          clientAllowedFormats: ["jpg", "jpeg", "png", "webp"],
+                          multiple: true,
+                        }}
+                      >
+                        {({ open, isLoading }) => (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUploadState({ kind: "idle" });
+                              open();
+                            }}
+                            disabled={isLoading}
+                            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-line bg-bg-soft py-8 text-sm text-fg-muted transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50"
+                          >
+                            <Upload size={20} />
+                            {isLoading || uploadState.kind === "uploading"
+                              ? "Uploading…"
+                              : "Click to upload images"}
+                          </button>
+                        )}
+                      </CldUploadWidget>
+                    ) : (
+                      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                        <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                        <div>
+                          Image upload is disabled — the{" "}
+                          <code className="font-mono">
+                            NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
+                          </code>{" "}
+                          environment variable is not set.
+                        </div>
+                      </div>
+                    )}
+
+                    {uploadState.kind === "success" && (
+                      <div className="flex items-center gap-2 rounded-md bg-green-50 px-3 py-2 text-xs text-green-700">
+                        <CheckCircle2 size={14} />
+                        Uploaded {uploadState.count}{" "}
+                        {uploadState.count === 1 ? "image" : "images"} to
+                        Cloudinary.
+                      </div>
+                    )}
+                    {uploadState.kind === "error" && (
+                      <div className="flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+                        <AlertCircle size={14} />
+                        {uploadState.message}
+                      </div>
+                    )}
 
                     <p className="text-xs text-fg-muted">
                       Upload up to 10 images. Max 5MB each. Supported formats: JPG, PNG, WebP.

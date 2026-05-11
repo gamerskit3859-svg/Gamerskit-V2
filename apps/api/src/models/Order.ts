@@ -19,8 +19,13 @@ const CustomerSchema = new Schema(
     phone: { type: String, required: true, index: true },
     email: { type: String },
     address: { type: String, required: true },
+    // Bangladesh-style location pair used by the storefront checkout.
     district: { type: String },
     thana: { type: String },
+    // Legacy / admin custom-order location pair. Kept so the admin form
+    // continues to round-trip values it has historically written.
+    city: { type: String },
+    area: { type: String },
   },
   { _id: false },
 );
@@ -40,6 +45,12 @@ const OrderSchema = new Schema(
       type: String,
       enum: ["cod", "bkash", "nagad", "card", "manual"],
       default: "cod",
+    },
+    paymentStatus: {
+      type: String,
+      enum: ["unpaid", "partial", "paid", "refunded"],
+      default: "unpaid",
+      index: true,
     },
     status: {
       type: String,
@@ -65,6 +76,10 @@ const OrderSchema = new Schema(
     fbEventId: { type: String },
     couponCode: { type: String },
     metadata: { type: Schema.Types.Mixed },
+    // If the order was placed by a signed-in customer we link it here so the
+    // /account "your orders" view can find it even when the phone/email at
+    // checkout doesn't match the saved profile.
+    userId: { type: Schema.Types.ObjectId, ref: "User", index: true },
   },
   { timestamps: true },
 );
