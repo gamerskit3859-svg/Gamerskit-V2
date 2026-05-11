@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Minus, Plus } from "lucide-react";
-import type { Product } from "@gamerskit/shared";
+import type { Product } from "@/types/shared";
 import { useCart } from "@/lib/cart";
 import { formatBDT } from "@/lib/format";
 import { track } from "@/lib/fb-pixel";

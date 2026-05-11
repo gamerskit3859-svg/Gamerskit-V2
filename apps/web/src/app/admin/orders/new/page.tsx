@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Trash2, Plus, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatBDT } from "@/lib/format";
-import type { Product } from "@gamerskit/shared";
+import type { Product } from "@/types/shared";
 import {
   Button,
   Card,

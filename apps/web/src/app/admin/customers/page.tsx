@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDateTime } from "@/lib/format";
-import type { AdminCustomer } from "@gamerskit/shared";
+import type { AdminCustomer } from "@/types/shared";
 import { Card, Input } from "@/components/ui";
 
 export default function CustomersPage() {

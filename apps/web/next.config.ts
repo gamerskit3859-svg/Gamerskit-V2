@@ -17,7 +17,6 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "images.unsplash.com" },
     ],
   },
-  transpilePackages: ["@gamerskit/shared"],
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
   },

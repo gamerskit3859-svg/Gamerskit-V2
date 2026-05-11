@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { track } from "@/lib/fb-pixel";
-import type { Product } from "@gamerskit/shared";
+import type { Product } from "@/types/shared";
 
 export type CartLine = {
   productId: string;

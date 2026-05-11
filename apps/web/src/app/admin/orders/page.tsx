@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { clearAdminToken, getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDateTime } from "@/lib/format";
-import { ORDER_STATUSES } from "@gamerskit/shared";
+import { ORDER_STATUSES } from "@/types/shared";
 import {
   DateRangePicker,
   type DateRange,
 } from "@/components/admin/DateRangePicker";
-import type { Order } from "@gamerskit/shared";
+import type { Order } from "@/types/shared";
 import { Card, Input, LinkButton, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
 

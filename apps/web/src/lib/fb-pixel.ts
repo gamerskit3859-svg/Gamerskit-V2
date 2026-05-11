@@ -8,7 +8,7 @@
  *   3. POSTs the same event_id + payload to `/api/fb` so the server can call
  *      Meta's Conversions API (server CAPI). Meta dedupes on event_id.
  */
-import type { FbDataLayerItem, FbEventName } from "@gamerskit/shared";
+import type { FbDataLayerItem, FbEventName } from "@/types/shared";
 
 declare global {
   interface Window {
