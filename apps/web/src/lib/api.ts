@@ -13,8 +13,63 @@ import type {
   UserRole,
 } from "@/types/shared";
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? process.env.API_URL ?? "http://localhost:4000";
+/**
+ * Resolve the API base URL.
+ *
+ * Order of precedence:
+ *   1. `NEXT_PUBLIC_API_URL`        — primary (already used across the repo)
+ *   2. `NEXT_PUBLIC_API_BASE_URL`   — alias kept for compatibility with the
+ *                                    common Vite-style name from deployment docs
+ *   3. `API_URL`                    — server-side fallback (Server Components)
+ *   4. `http://localhost:4000`      — local dev default
+ *
+ * On Vercel (production or preview) we refuse to fall back to `localhost`:
+ * if the env var is missing or still pointing at localhost we throw at module
+ * load so the Vercel build fails loudly instead of silently shipping a
+ * bundle that would CORS-error against `http://localhost:4000`.
+ */
+function resolveApiBase(): string {
+  const raw =
+    process.env.NEXT_PUBLIC_API_URL ??
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    process.env.API_URL ??
+    "";
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(trimmed);
+
+  // On Vercel we hard-fail if the env var is missing or still points at
+  // localhost — these are the two cases that produced the original
+  // "fetch http://localhost:4000" / CORS errors in production. We use
+  // VERCEL_ENV instead of NODE_ENV so local `next build` runs still succeed
+  // when the env var isn't set.
+  const isVercelProd =
+    process.env.VERCEL_ENV === "production" ||
+    process.env.VERCEL_ENV === "preview";
+  if (isVercelProd) {
+    if (!trimmed) {
+      throw new Error(
+        "[api] NEXT_PUBLIC_API_URL is not set. Configure it in your Vercel project " +
+          "settings (e.g. https://gamerskit-backend.vercel.app).",
+      );
+    }
+    if (isLocalhost) {
+      throw new Error(
+        `[api] NEXT_PUBLIC_API_URL points at "${trimmed}" in a Vercel ${process.env.VERCEL_ENV} build. ` +
+          "Update the env var to the public API origin.",
+      );
+    }
+  } else if (process.env.NODE_ENV === "production" && isLocalhost) {
+    // Non-Vercel production build (e.g. self-hosted): just warn loudly.
+    console.warn(
+      `[api] Production build is using API base "${trimmed}" — this will not work for ` +
+        "browser fetches from any host other than the API box itself.",
+    );
+  }
+
+  return trimmed || "http://localhost:4000";
+}
+
+export const API_BASE = resolveApiBase();
 
 async function request<T>(
   path: string,
