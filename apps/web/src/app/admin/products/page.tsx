@@ -8,7 +8,7 @@ import { Upload, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
-import type { Product } from "@gamerskit/shared";
+import type { Product } from "@/types/shared";
 import {
   Button,
   Card,

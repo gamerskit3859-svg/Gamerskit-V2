@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatBDT, formatDateTime } from "@/lib/format";
-import type { Order, OrderStatus } from "@gamerskit/shared";
+import type { Order, OrderStatus } from "@/types/shared";
 import { Button, LinkButton, Card, Section, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
 

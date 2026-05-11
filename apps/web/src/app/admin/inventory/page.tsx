@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
-import type { Product } from "@gamerskit/shared";
+import type { Product } from "@/types/shared";
 import { Button, Card, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
 

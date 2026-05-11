@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDateTime } from "@/lib/format";
-import type { Coupon } from "@gamerskit/shared";
+import type { Coupon } from "@/types/shared";
 import {
   Button,
   Card,

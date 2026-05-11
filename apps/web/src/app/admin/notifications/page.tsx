@@ -6,7 +6,7 @@ import { Bell, Box, ShoppingBag, UserPlus } from "lucide-react";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatDateTime } from "@/lib/format";
-import type { NotificationItem, NotificationType } from "@gamerskit/shared";
+import type { NotificationItem, NotificationType } from "@/types/shared";
 import { Button, Card } from "@/components/ui";
 import { cn } from "@/lib/cn";
 

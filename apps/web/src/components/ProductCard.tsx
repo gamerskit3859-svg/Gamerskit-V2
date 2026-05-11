@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { ShoppingBag } from "lucide-react";
-import type { Product } from "@gamerskit/shared";
+import type { Product } from "@/types/shared";
 import { formatBDT } from "@/lib/format";
 import { useCart } from "@/lib/cart";
 import { track } from "@/lib/fb-pixel";

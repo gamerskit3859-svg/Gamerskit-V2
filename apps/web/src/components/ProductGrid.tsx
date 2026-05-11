@@ -1,5 +1,5 @@
 import { ProductCard } from "./ProductCard";
-import type { Product } from "@gamerskit/shared";
+import type { Product } from "@/types/shared";
 
 export function ProductGrid({ products }: { products: Product[] }) {
   return (
