@@ -1,15 +1,13 @@
 import { createRequire } from "module";
-
 import express, { type Express, type RequestHandler } from "express";
 import compression from "compression";
 import morgan from "morgan";
+import cors from "cors";
 
-import { buildCorsMiddleware } from "./lib/cors.js";
 import { errorHandler, notFoundHandler } from "./lib/errors.js";
 
 // `helmet` and `express-rate-limit` ship CommonJS bundles that don't expose a
-// clean ESM default export for TypeScript. We pull them through createRequire
-// so the types line up under "type": "module".
+// clean ESM default export for TypeScript.
 const require = createRequire(import.meta.url);
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
@@ -24,35 +22,7 @@ import categoriesRouter from "./routes/categories.js";
 import heroImagesRouter from "./routes/hero-images.js";
 import fbRouter from "./routes/fb.js";
 
-/**
- * Build the Express application.
- *
- * Pulled into its own factory so the app can be:
- *   - exported as the default for Vercel's serverless runtime (no .listen)
- *   - imported by tests
- *   - started with .listen() locally from `index.ts`
- *
- * Middleware order matters here. We register in this sequence:
- *
- *   trust-proxy  ->  cors  ->  helmet  ->  json/url-encoded
- *                ->  compression  ->  morgan  ->  rate-limit  ->  routes
- *                ->  404  ->  error
- *
- * CORS goes FIRST (after `trust proxy`) so that even if a later middleware
- * throws (e.g. JSON parse error on a malformed body, helmet bailout, rate
- * limit kicking in), the response still carries the
- * `Access-Control-Allow-Origin` header that the browser needs to display
- * the error. Without that, the user only sees the cryptic "No
- * 'Access-Control-Allow-Origin' header is present" CORS error in DevTools
- * with no hint about the real failure.
- */
 export interface CreateAppOptions {
-  /**
-   * Optional middleware that runs immediately before the route handlers
-   * (e.g. ensuring a database connection on serverless cold starts).
-   * Errors thrown here funnel into the centralized error handler with full
-   * CORS headers preserved.
-   */
   beforeRoutes?: RequestHandler;
 }
 
@@ -60,8 +30,39 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const app = express();
   app.set("trust proxy", 1);
 
-  // 1) CORS — before anything else that might short-circuit the response.
-  app.use(buildCorsMiddleware());
+  // 1) CORS — Explicitly handle preflight and allowed origins
+  const allowedOrigins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://gamerskit-frontend.vercel.app",
+    "https://gamerskitbd.com",
+    "https://www.gamerskitbd.com",
+  ];
+
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps or curl)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          // In production, we might want to be stricter, but for now we log and block
+          console.warn(`[cors] Rejected origin: ${origin}`);
+          callback(null, false);
+        }
+      },
+      credentials: true,
+      methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Authorization", "Content-Type", "X-Requested-With", "Accept"],
+      optionsSuccessStatus: 204,
+    }),
+  );
+
+  // Handle OPTIONS preflight explicitly if needed (cors middleware usually handles this)
+  app.options("*", (req, res) => {
+    res.sendStatus(204);
+  });
 
   // 2) Security headers.
   app.use(helmet({ crossOriginResourcePolicy: false }));
@@ -79,7 +80,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
     "/api/",
     rateLimit({
       windowMs: 60_000,
-      max: 200,
+      max: 500, // Increased for production
       standardHeaders: true,
       legacyHeaders: false,
     }),
@@ -87,7 +88,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   // Health probe. Returns 200 + JSON even if the database is down.
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, ts: new Date().toISOString() });
+    res.json({ ok: true, ts: new Date().toISOString(), env: process.env.NODE_ENV });
   });
 
   // 6) Optional pre-route hook (e.g. lazy DB connect for Vercel cold starts).
@@ -106,8 +107,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use("/api/admin/users", adminUsersRouter);
   app.use("/api/fb", fbRouter);
 
-  // 7) 404 + centralized JSON error handler. These two must be last so they
-  //    catch anything the routes above didn't handle.
+  // 7) 404 + centralized JSON error handler.
   app.use(notFoundHandler);
   app.use(errorHandler);
 
