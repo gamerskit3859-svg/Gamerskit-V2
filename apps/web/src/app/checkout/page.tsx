@@ -128,7 +128,6 @@ export default function CheckoutPage() {
           phone: form.phone,
           firstName: form.name.split(" ")[0],
           lastName: form.name.split(" ").slice(1).join(" "),
-          city: form.district,
         },
       });
 
@@ -174,7 +173,6 @@ export default function CheckoutPage() {
           phone: form.phone,
           firstName: form.name.split(" ")[0],
           lastName: form.name.split(" ").slice(1).join(" "),
-          city: form.district,
         },
       });
 

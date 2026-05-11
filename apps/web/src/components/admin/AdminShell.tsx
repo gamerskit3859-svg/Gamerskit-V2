@@ -1,9 +1,15 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { clearAdminToken, getAdminToken } from "@/lib/admin-token";
+import { api } from "@/lib/api";
+import {
+  clearAdminToken,
+  getAdminToken,
+  setAdminToken,
+} from "@/lib/admin-token";
+import { Button, Card, Input, Section } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
 const NAV = [
@@ -22,35 +28,120 @@ const NAV = [
   { href: "/admin/notifications", label: "Notifications" },
 ];
 
+const DEFAULT_ADMIN_EMAIL = "admin@gamerskit.local";
+const DEFAULT_ADMIN_PASSWORD = "admin123";
+
+function AdminLoginForm({ onSuccess }: { onSuccess: () => void }) {
+  const [email, setEmail] = useState(DEFAULT_ADMIN_EMAIL);
+  const [password, setPassword] = useState(DEFAULT_ADMIN_PASSWORD);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { token } = await api.login(email, password);
+      setAdminToken(token);
+      onSuccess();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Section width="narrow" spacing="lg" className="!max-w-md">
+      <div className="text-center mb-8">
+        <h1 className="text-2xl font-semibold">Admin Login</h1>
+        <p className="text-sm text-fg-muted mt-2">
+          Sign in to access the admin dashboard.
+        </p>
+      </div>
+
+      <Card padding="lg">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <label className="block">
+            <span className="text-xs font-medium text-fg-soft uppercase tracking-[0.18em] mb-2 block">
+              Email
+            </span>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              className="mt-1"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-fg-soft uppercase tracking-[0.18em] mb-2 block">
+              Password
+            </span>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              className="mt-1"
+            />
+          </label>
+
+          {error && (
+            <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
+              {error}
+            </div>
+          )}
+
+          <Button type="submit" disabled={loading} className="w-full">
+            {loading ? "Signing in..." : "Sign in"}
+          </Button>
+        </form>
+
+        <div className="mt-6 pt-4 border-t border-line">
+          <div className="text-xs text-fg-muted space-y-1">
+            <div>
+              <strong>Default credentials:</strong>
+            </div>
+            <div>Email: {DEFAULT_ADMIN_EMAIL}</div>
+            <div>Password: {DEFAULT_ADMIN_PASSWORD}</div>
+          </div>
+        </div>
+      </Card>
+    </Section>
+  );
+}
+
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [ready, setReady] = useState(false);
-
-  // The login page is part of /admin but renders full-bleed without the
-  // sidebar / dashboard chrome. Bypass auth and chrome entirely.
-  const isLogin = pathname === "/admin/login";
+  const [token, setToken] = useState<string | null>(null);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    if (isLogin) return;
     void Promise.resolve().then(() => {
       const t = getAdminToken();
-      if (!t) {
-        router.replace("/admin/login");
-        return;
-      }
-      setReady(true);
+      setToken(t);
+      setChecking(false);
     });
-  }, [isLogin, router]);
+  }, []);
 
-  if (isLogin) {
-    return <div className="min-h-screen bg-background">{children}</div>;
-  }
-
-  if (!ready) {
+  if (checking) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center text-sm text-fg-muted">
         Loading admin…
+      </div>
+    );
+  }
+
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-background">
+        <AdminLoginForm onSuccess={() => setToken(getAdminToken())} />
       </div>
     );
   }
@@ -103,7 +194,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             type="button"
             onClick={() => {
               clearAdminToken();
-              router.replace("/admin/login");
+              setToken(null);
             }}
             className="underline underline-offset-4"
           >

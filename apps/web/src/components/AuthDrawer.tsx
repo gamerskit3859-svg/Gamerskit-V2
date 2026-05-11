@@ -8,6 +8,7 @@ import { useGoogleLogin } from "@react-oauth/google";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { setAdminToken } from "@/lib/admin-token";
+import { track } from "@/lib/fb-pixel";
 
 interface AuthDrawerProps {
   isOpen: boolean;
@@ -89,6 +90,16 @@ export function AuthDrawer({
           providerId: payload.sub,
         });
         
+        track({
+          event: activeTab === "register" ? "CompleteRegistration" : "Lead",
+          contentName: `Google ${activeTab === "register" ? "Registration" : "Login"}`,
+          user: {
+            email: payload.email,
+            firstName: payload.given_name,
+            lastName: payload.family_name,
+          },
+        });
+        
         redirectByRole(r.token, r.user);
       } catch (err) {
         setError("Google sign-in failed. Please try again.");
@@ -118,6 +129,13 @@ export function AuthDrawer({
     setLoginLoading(true); setLoginError(null);
     try {
       const r = await api.login(loginEmail, loginPassword);
+      track({
+        event: "Lead",
+        contentName: "User Login",
+        user: {
+          email: loginEmail,
+        },
+      });
       redirectByRole(r.token, r.user);
     } catch (err) {
       const status = (err as { status?: number }).status;
@@ -130,6 +148,16 @@ export function AuthDrawer({
     setRegisterLoading(true); setRegisterError(null);
     try {
       const r = await api.register({ email: registerEmail, password: registerPassword, name: registerName, phone: registerPhone });
+      track({
+        event: "CompleteRegistration",
+        contentName: "User Registration",
+        user: {
+          email: registerEmail,
+          firstName: registerName.split(" ")[0],
+          lastName: registerName.split(" ").slice(1).join(" "),
+          phone: registerPhone,
+        },
+      });
       setSession({ token: r.token, user: r.user });
       router.replace(nextParam ?? "/account");
       onClose();

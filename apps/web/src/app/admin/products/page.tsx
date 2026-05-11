@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
+import { CldUploadWidget } from "next-cloudinary";
+import { Upload, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
@@ -31,7 +33,7 @@ interface DraftProduct {
   buyingPrice: number;
   stock: number;
   description: string;
-  images: string;
+  images: string[];
   featured: boolean;
 }
 
@@ -43,7 +45,7 @@ const blank = (firstCategorySlug?: string): DraftProduct => ({
   buyingPrice: 0,
   stock: 0,
   description: "",
-  images: "",
+  images: [],
   featured: false,
 });
 
@@ -56,7 +58,7 @@ function fromProduct(p: Product): DraftProduct {
     buyingPrice: p.buyingPrice ?? 0,
     stock: p.stock,
     description: p.description ?? "",
-    images: p.images.join("\n"),
+    images: p.images,
     featured: !!p.featured,
   };
 }
@@ -165,10 +167,7 @@ export default function AdminProductsPage() {
       buyingPrice: Number(draft.buyingPrice) || 0,
       stock: Number(draft.stock),
       description: draft.description,
-      images: draft.images
-        .split(/\n+/)
-        .map((s) => s.trim())
-        .filter(Boolean),
+      images: draft.images,
       featured: draft.featured,
     };
     try {
@@ -423,14 +422,74 @@ export default function AdminProductsPage() {
                     />
                   </FieldLabel>
                 </div>
-                <FieldLabel label="Image URLs (one per line)">
-                  <Textarea
-                    className="h-20 font-mono text-xs"
-                    value={draft.images}
-                    onChange={(e) =>
-                      setDraft({ ...draft, images: e.target.value })
-                    }
-                  />
+                <FieldLabel label="Product Images">
+                  <div className="space-y-3">
+                    {/* Image Previews */}
+                    {draft.images.length > 0 && (
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                        {draft.images.map((url, index) => (
+                          <div key={index} className="relative group">
+                            <div className="aspect-square relative overflow-hidden rounded-lg border border-line bg-bg-soft">
+                              <Image
+                                src={url}
+                                alt={`Product image ${index + 1}`}
+                                fill
+                                className="object-cover"
+                                sizes="(max-width: 768px) 50vw, 25vw"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDraft({
+                                    ...draft,
+                                    images: draft.images.filter((_, i) => i !== index),
+                                  });
+                                }}
+                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Upload Widget */}
+                    <CldUploadWidget
+                      uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET}
+                      onSuccess={(result: any) => {
+                        if (result.event === "success") {
+                          setDraft({
+                            ...draft,
+                            images: [...draft.images, result.info.secure_url],
+                          });
+                        }
+                      }}
+                      options={{
+                        maxFiles: 10,
+                        maxFileSize: 5000000, // 5MB
+                        resourceType: "image",
+                        clientAllowedFormats: ["jpg", "jpeg", "png", "webp"],
+                      }}
+                    >
+                      {({ open, isLoading }) => (
+                        <button
+                          type="button"
+                          onClick={() => open()}
+                          disabled={isLoading}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-line bg-bg-soft py-8 text-sm text-fg-muted transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50"
+                        >
+                          <Upload size={20} />
+                          {isLoading ? "Uploading..." : "Click to upload images"}
+                        </button>
+                      )}
+                    </CldUploadWidget>
+
+                    <p className="text-xs text-fg-muted">
+                      Upload up to 10 images. Max 5MB each. Supported formats: JPG, PNG, WebP.
+                    </p>
+                  </div>
                 </FieldLabel>
                 <FieldLabel label="Description">
                   <Textarea

@@ -134,6 +134,8 @@ function gtmEvent(fbEvent: FbEventName): string {
       return "view_item";
     case "AddToCart":
       return "add_to_cart";
+    case "RemoveFromCart":
+      return "remove_from_cart";
     case "InitiateCheckout":
       return "begin_checkout";
     case "Purchase":

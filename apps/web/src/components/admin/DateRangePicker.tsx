@@ -17,6 +17,7 @@ const PRESETS: Array<{
   { key: "30d", label: "Last 30 days", days: 30 },
   { key: "month", label: "This month", preset: "month" },
   { key: "lastMonth", label: "Last month", preset: "lastMonth" },
+  { key: "all", label: "All time" },
 ];
 
 function isoDay(d: Date): string {
@@ -43,6 +44,9 @@ function rangeFromPreset(preset: (typeof PRESETS)[number]): DateRange {
     const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const last = new Date(today.getFullYear(), today.getMonth(), 0);
     return { from: isoDay(first), to: isoDay(last), label: preset.label };
+  }
+  if (preset.key === "all") {
+    return { from: "1970-01-01", to: isoDay(today), label: preset.label };
   }
   const from = new Date(today);
   from.setDate(from.getDate() - (preset.days ?? 0));

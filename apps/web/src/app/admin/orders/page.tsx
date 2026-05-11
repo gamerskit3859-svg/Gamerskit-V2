@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { getAdminToken } from "@/lib/admin-token";
+import { clearAdminToken, getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDateTime } from "@/lib/format";
 import { ORDER_STATUSES } from "@gamerskit/shared";
 import {
   DateRangePicker,
-  defaultRange,
   type DateRange,
 } from "@/components/admin/DateRangePicker";
 import type { Order } from "@gamerskit/shared";
@@ -29,8 +30,13 @@ const SOURCE_OPTIONS = [
   { value: "manual", label: "Manual / custom" },
 ];
 
+function getAllTimeRange(): DateRange {
+  const today = new Date().toISOString().slice(0, 10);
+  return { from: "1970-01-01", to: today, label: "All time" };
+}
+
 export default function AdminOrdersPage() {
-  const [range, setRange] = useState<DateRange>(defaultRange());
+  const [range, setRange] = useState<DateRange>(getAllTimeRange());
   const [items, setItems] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState("all");
@@ -38,10 +44,17 @@ export default function AdminOrdersPage() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const router = useRouter();
+
   useEffect(() => {
     let cancelled = false;
     const token = getAdminToken();
-    if (!token) return;
+    if (!token) {
+      clearAdminToken();
+      router.replace("/admin");
+      return;
+    }
+
     void (async () => {
       setLoading(true);
       try {
@@ -52,8 +65,13 @@ export default function AdminOrdersPage() {
         if (cancelled) return;
         setItems(r.items);
         setTotal(r.total);
-      } catch {
-        /* ignore */
+      } catch (err) {
+        const status = (err as any)?.status;
+        if (status === 401 || status === 403) {
+          clearAdminToken();
+          router.replace("/admin");
+          return;
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -61,7 +79,7 @@ export default function AdminOrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, [range.from, range.to, status, source, q]);
+  }, [range.from, range.to, status, source, q, router]);
 
   return (
     <div>
@@ -132,6 +150,7 @@ export default function AdminOrdersPage() {
                   <th className="px-4 py-3">Source</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Placed</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -199,6 +218,14 @@ export default function AdminOrdersPage() {
                     </td>
                     <td className="px-4 py-3 text-fg-soft">
                       {formatDateTime(o.createdAt)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Link
+                        href={`/admin/orders/${o._id}`}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        View Details
+                      </Link>
                     </td>
                   </tr>
                 ))}

@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { useInfiniteScroll, useDebouncedSearch } from "@/lib/hooks";
 import { SearchInput } from "./SearchInput";
 import { ProductCard } from "./ProductCard";
+import { track } from "@/lib/fb-pixel";
 import type { Product } from "@gamerskit/shared";
 import { Button, Card, Section } from "@/components/ui";
 
@@ -121,6 +122,17 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
     void loadProducts(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, searchQuery]);
+
+  // Track search events
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      track({
+        event: "Search",
+        contentName: searchQuery,
+        currency: "BDT",
+      });
+    }
+  }, [searchQuery]);
 
   const observerTarget = useInfiniteScroll({
     onLoadMore: () => {

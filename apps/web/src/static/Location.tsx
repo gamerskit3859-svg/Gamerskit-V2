@@ -299,7 +299,7 @@ export const allLocation = () => {
             "name": "Sirajganj",
             "district": 'Sirajganj',
             "thana": ["Belkuchi", "Sirajganj Sadar", "Chowhali", "Kamarkhanda", "Kazipur", "Raiganj", "Shahjadpur", "Tarash", "Ullapara"],
-        // },
+        },
         {
             "name": "Sunamganj",
             "district": 'Sunamganj',
