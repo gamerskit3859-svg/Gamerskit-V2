@@ -30,10 +30,43 @@ async function main() {
   const app = express();
   app.set("trust proxy", 1);
   app.use(helmet({ crossOriginResourcePolicy: false }));
+
+  // Build a CORS allowlist from CORS_ORIGIN (comma-separated). We support:
+  //   - exact origins:   https://gamerskit-frontend.vercel.app
+  //   - regex literals:  /^https:\/\/gamerskit-frontend-[\w-]+\.vercel\.app$/
+  //   - wildcard "*":    allow any origin (development convenience)
+  // The Express `cors` middleware automatically handles preflight OPTIONS
+  // requests against this allowlist. We keep `credentials: false` because the
+  // frontend authenticates with `Authorization: Bearer <JWT>` headers, not
+  // cookies — flip this back to true if cookie-based auth is ever added.
+  type OriginEntry = string | RegExp;
+  const allowlist: OriginEntry[] = env.CORS_ORIGIN.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      if (entry.startsWith("/") && entry.endsWith("/")) {
+        return new RegExp(entry.slice(1, -1));
+      }
+      return entry;
+    });
+  const allowAny = allowlist.includes("*");
+
   app.use(
     cors({
-      origin: env.CORS_ORIGIN === "*" ? true : env.CORS_ORIGIN.split(","),
-      credentials: true,
+      origin: (origin, callback) => {
+        // Same-origin / curl / server-to-server requests have no Origin header.
+        if (!origin) return callback(null, true);
+        if (allowAny) return callback(null, true);
+        const ok = allowlist.some((entry) =>
+          typeof entry === "string" ? entry === origin : entry.test(origin),
+        );
+        // For disallowed origins we return `false` (no error) so the cors
+        // middleware simply omits the `Access-Control-Allow-Origin` header.
+        // The browser will reject the request cleanly, but we don't trip
+        // Express's default error handler and avoid log spam from probes.
+        return callback(null, ok);
+      },
+      credentials: false,
     }),
   );
   app.use(express.json({ limit: "1mb" }));

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { getAdminToken } from "@/lib/admin-token";
+import { API_BASE } from "@/lib/api";
 import { Button, Card } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
@@ -25,9 +26,6 @@ const ROLE_BADGE: Record<User["role"], string> = {
   staff: "bg-blue-100 text-blue-800",
   customer: "bg-gray-100 text-gray-800",
 };
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
