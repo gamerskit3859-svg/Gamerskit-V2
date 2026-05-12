@@ -1,8 +1,5 @@
 /**
  * Vercel Serverless Entrypoint
- *
- * This file is located at apps/api/api/index.js.
- * Vercel will pick this up as the handler for the backend.
  */
 
 import { createApp } from "../dist/app.js";
@@ -26,7 +23,7 @@ async function initialize() {
         console.log("[api] Initialization complete.");
       } catch (err) {
         console.error("[api] Initialization failed:", err);
-        initPromise = null; // Allow retry on next request
+        initPromise = null; 
         throw err;
       }
     })();
@@ -35,17 +32,21 @@ async function initialize() {
   return initPromise;
 }
 
-// Initialize the app with a middleware that ensures DB connection
 const app = createApp({
   beforeRoutes: async (req, res, next) => {
+    // Skip DB init for OPTIONS preflight to speed up responses
+    if (req.method === 'OPTIONS') {
+      return next();
+    }
+    
     try {
       await initialize();
       next();
     } catch (err) {
+      console.error("[api] Middleware init error:", err);
       next(err);
     }
   }
 });
 
-// Export the express app as the handler
 export default app;

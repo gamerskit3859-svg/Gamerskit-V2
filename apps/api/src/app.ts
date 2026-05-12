@@ -6,8 +6,6 @@ import cors from "cors";
 
 import { errorHandler, notFoundHandler } from "./lib/errors.js";
 
-// `helmet` and `express-rate-limit` ship CommonJS bundles that don't expose a
-// clean ESM default export for TypeScript.
 const require = createRequire(import.meta.url);
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
@@ -28,9 +26,11 @@ export interface CreateAppOptions {
 
 export function createApp(options: CreateAppOptions = {}): Express {
   const app = express();
+  
+  // Important for Vercel and other proxies
   app.set("trust proxy", 1);
 
-  // 1) CORS — Explicitly handle preflight and allowed origins
+  // 1) CORS — Simplified for Vercel compatibility
   const allowedOrigins = [
     "http://localhost:3000",
     "http://localhost:5173",
@@ -44,10 +44,10 @@ export function createApp(options: CreateAppOptions = {}): Express {
       origin: (origin, callback) => {
         // Allow requests with no origin (like mobile apps or curl)
         if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) {
+        
+        if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
           callback(null, true);
         } else {
-          // In production, we might want to be stricter, but for now we log and block
           console.warn(`[cors] Rejected origin: ${origin}`);
           callback(null, false);
         }
@@ -56,16 +56,15 @@ export function createApp(options: CreateAppOptions = {}): Express {
       methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: ["Authorization", "Content-Type", "X-Requested-With", "Accept"],
       optionsSuccessStatus: 204,
+      preflightContinue: false,
     }),
   );
 
-  // Handle OPTIONS preflight explicitly if needed (cors middleware usually handles this)
-  app.options("*", (req, res) => {
-    res.sendStatus(204);
-  });
-
   // 2) Security headers.
-  app.use(helmet({ crossOriginResourcePolicy: false }));
+  app.use(helmet({ 
+    crossOriginResourcePolicy: false,
+    crossOriginOpenerPolicy: false,
+  }));
 
   // 3) Body parsing.
   app.use(express.json({ limit: "1mb" }));
@@ -80,18 +79,18 @@ export function createApp(options: CreateAppOptions = {}): Express {
     "/api/",
     rateLimit({
       windowMs: 60_000,
-      max: 500, // Increased for production
+      max: 1000, 
       standardHeaders: true,
       legacyHeaders: false,
     }),
   );
 
-  // Health probe. Returns 200 + JSON even if the database is down.
+  // Health probe.
   app.get("/health", (_req, res) => {
     res.json({ ok: true, ts: new Date().toISOString(), env: process.env.NODE_ENV });
   });
 
-  // 6) Optional pre-route hook (e.g. lazy DB connect for Vercel cold starts).
+  // 6) Optional pre-route hook.
   if (options.beforeRoutes) {
     app.use(options.beforeRoutes);
   }
