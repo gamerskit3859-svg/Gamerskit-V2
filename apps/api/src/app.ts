@@ -72,7 +72,14 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   // 4) Response compression + request logging.
   app.use(compression());
-  app.use(morgan("tiny"));
+  // In production we only log errors (4xx/5xx) to keep request logs quiet
+  // and reduce Vercel function-log noise. Development logs every request.
+  const isProd = process.env.NODE_ENV === "production";
+  app.use(
+    morgan(isProd ? "tiny" : "dev", {
+      skip: (_req, res) => isProd && res.statusCode < 400,
+    }),
+  );
 
   // 5) Rate limiting on /api/*. Health check stays unmetered.
   app.use(

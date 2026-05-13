@@ -30,6 +30,9 @@ const ProductSchema = new Schema(
 );
 
 ProductSchema.index({ title: "text", description: "text" });
+// Matches the default storefront sort: featured-first, newest-first. The
+// homepage `/api/products` query relies on this index for fast pagination.
+ProductSchema.index({ featured: -1, createdAt: -1 });
 
 export const ProductModel =
   mongoose.models.Product ?? mongoose.model("Product", ProductSchema);

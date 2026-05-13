@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { HeroImageModel } from "../models/HeroImage.js";
 import { adminRequired } from "../lib/auth.js";
+import { cacheControl } from "../lib/cache.js";
 
 const router = Router();
 
 // Get all active hero images sorted by order (public)
-router.get("/", async (req, res) => {
+router.get("/", cacheControl({ maxAge: 120, sMaxAge: 600 }), async (req, res) => {
   try {
     const images = await HeroImageModel.find({ isActive: true })
       .sort({ order: 1 })

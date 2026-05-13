@@ -2,11 +2,12 @@ import { Router } from "express";
 import { CategoryModel } from "../models/Category.js";
 import { ProductModel } from "../models/Product.js";
 import { adminRequired } from "../lib/auth.js";
+import { cacheControl } from "../lib/cache.js";
 
 const router = Router();
 
 // Get all categories with subcategories
-router.get("/", async (req, res) => {
+router.get("/", cacheControl({ maxAge: 120, sMaxAge: 600 }), async (req, res) => {
   try {
     const categories = await CategoryModel.find({ active: true })
       .sort({ parentId: 1, order: 1, name: 1 })
@@ -37,16 +38,16 @@ router.get("/", async (req, res) => {
 });
 
 // Get category by slug or ID
-router.get("/:id", async (req, res) => {
+router.get("/:id", cacheControl({ maxAge: 120, sMaxAge: 600 }), async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     let category = null;
 
     // First try to find by slug (more common case)
     category = await CategoryModel.findOne({ slug: id }).lean();
 
     // If not found, try to find by ObjectId (only if it looks like a valid MongoDB ID)
-    if (!category && id.match(/^[0-9a-fA-F]{24}$/)) {
+    if (!category && /^[0-9a-fA-F]{24}$/.test(id)) {
       try {
         category = await CategoryModel.findOne({ _id: id }).lean();
       } catch {

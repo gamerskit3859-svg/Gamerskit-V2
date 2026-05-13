@@ -1,14 +1,21 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ShoppingBag, Search, User, Menu, X } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth";
-import { AuthDrawer } from "./AuthDrawer";
 import { cn } from "@/lib/cn";
+
+// AuthDrawer is heavy (Google OAuth client + form state) and only renders
+// when the user clicks "Sign in" — defer it out of the initial header bundle.
+const AuthDrawer = dynamic(
+  () => import("./AuthDrawer").then((m) => ({ default: m.AuthDrawer })),
+  { ssr: false },
+);
 
 const NAV_LINKS = [
   { label: "Home", href: "/" },
@@ -32,6 +39,9 @@ export function Header() {
   const [pillStyle, setPillStyle] = useState({ left: 0, width: 0 });
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [authDrawerOpen, setAuthDrawerOpen] = useState(false);
+  // Lazy-mount the AuthDrawer chunk only after the user first opens it,
+  // then keep it mounted so the close animation can play.
+  const [authDrawerMounted, setAuthDrawerMounted] = useState(false);
   const [authDrawerTab, setAuthDrawerTab] = useState<"login" | "register">(
     "login",
   );
@@ -72,6 +82,7 @@ export function Header() {
   function openAuth(tab: "login" | "register") {
     setMobileDrawerOpen(false);
     setAuthDrawerTab(tab);
+    setAuthDrawerMounted(true);
     setAuthDrawerOpen(true);
   }
 
@@ -293,12 +304,14 @@ export function Header() {
         )}
       </AnimatePresence>
 
-      <AuthDrawer
-        isOpen={authDrawerOpen}
-        onClose={() => setAuthDrawerOpen(false)}
-        initialTab={authDrawerTab}
-        nextParam={nextParam}
-      />
+      {authDrawerMounted && (
+        <AuthDrawer
+          isOpen={authDrawerOpen}
+          onClose={() => setAuthDrawerOpen(false)}
+          initialTab={authDrawerTab}
+          nextParam={nextParam}
+        />
+      )}
     </>
   );
 }
