@@ -5,30 +5,41 @@ import { Marquee } from "@/components/Marquee";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ProductGrid } from "@/components/ProductGrid";
 import { StorySection } from "@/components/StorySection";
+import { CustomerReviews } from "@/components/CustomerReviews";
 import { Section, Card } from "@/components/ui";
 
 type Product = Awaited<ReturnType<typeof api.listProducts>>["items"][number];
+type Category = Awaited<ReturnType<typeof api.listCategories>>["items"][number];
+type HeroImage = Awaited<ReturnType<typeof api.getHeroImages>>["items"][number];
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   let featured: Product[] = [];
   let bestSellers: Product[] = [];
+  let categories: Category[] = [];
+  let heroImages: HeroImage[] = [];
 
   try {
-    const [f, all] = await Promise.all([
-      api.listProducts({ featured: true }),
-      api.listProducts({}),
+    const [f, all, categoryList, hero] = await Promise.all([
+      api.listProducts({ featured: true, limit: 4 }),
+      api.listProducts({ limit: 20 }),
+      api.listCategories(),
+      api.getHeroImages(),
     ]);
-    featured = f.items.slice(0, 4);
+    featured = f.items;
     bestSellers = all.items.filter((p) => p.stock > 0).slice(0, 8);
+    categories = categoryList.items;
+    heroImages = hero.items;
   } catch (err) {
-    console.error("Failed to fetch products:", err);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("Failed to fetch home data:", err);
+    }
   }
 
   return (
     <main>
-      <Hero />
+      <Hero initialImages={heroImages} />
       <Marquee />
 
       <Section spacing="md">
@@ -38,10 +49,14 @@ export default async function Home() {
           linkHref="/shop"
           linkLabel="All products"
         />
-        {featured.length > 0 ? <ProductGrid products={featured} /> : <EmptyState />}
+        {featured.length > 0 ? (
+          <ProductGrid products={featured} />
+        ) : (
+          <EmptyState />
+        )}
       </Section>
 
-      <CategoryTiles />
+      <CategoryTiles initialCategories={categories} />
 
       <Section spacing="md" className="border-t border-line">
         <SectionHeader eyebrow="Most loved" title="Best sellers." />
@@ -51,7 +66,7 @@ export default async function Home() {
           <EmptyState />
         )}
       </Section>
-
+      <CustomerReviews />
       <StorySection />
     </main>
   );
@@ -62,15 +77,8 @@ function EmptyState() {
     <Card
       tone="soft"
       padding="lg"
-      className="text-center border-dashed text-fg-soft"
-    >
-      <p>
-        No products yet. Run{" "}
-        <code className="rounded bg-bg-soft px-2 py-1 text-xs font-mono text-foreground">
-          npm run seed
-        </code>{" "}
-        to import live products.
-      </p>
+      className="text-center border-dashed text-fg-soft">
+      <p>No products yet.</p>
     </Card>
   );
 }

@@ -145,7 +145,7 @@ export default function InventoryPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="min-w-[820px] w-full text-sm">
               <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
                   <th className="px-4 py-3">Product</th>

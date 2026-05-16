@@ -38,10 +38,15 @@ export default async function CategoryPage({
   const { category } = await params;
 
   let categoryData: Category | null = null;
+  let categories: Category[] = [];
 
   try {
-    const catRes = await api.getCategory(category);
+    const [catRes, categoryList] = await Promise.all([
+      api.getCategory(category),
+      api.listCategories().catch(() => ({ items: [] as Category[] })),
+    ]);
     categoryData = catRes.item;
+    categories = categoryList.items;
   } catch {
     notFound();
   }
@@ -52,7 +57,7 @@ export default async function CategoryPage({
 
   return (
     <>
-      <CategoryNav activeSlug={category} />
+      <CategoryNav activeSlug={category} initialCategories={categories} />
       <Section width="wide" spacing="md">
         <header className="mb-10">
           <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">

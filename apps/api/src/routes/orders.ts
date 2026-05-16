@@ -256,16 +256,25 @@ router.get("/", adminRequired, async (req, res) => {
       { "customer.phone": { $regex: q, $options: "i" } },
     ];
   }
-  const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Math.min(Number(limit) || 30, 200));
+  const skip = (pageNum - 1) * limitNum;
   const [items, total] = await Promise.all([
     OrderModel.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(Math.min(Number(limit), 200))
+      .limit(limitNum)
+      .select("orderNumber customer items total source status createdAt")
       .lean(),
     OrderModel.countDocuments(filter),
   ]);
-  res.json({ items, total, page: Number(page), limit: Number(limit) });
+  res.json({
+    items,
+    total,
+    page: pageNum,
+    limit: limitNum,
+    totalPages: Math.ceil(total / limitNum),
+  });
 });
 
 router.get("/:id", adminRequired, async (req, res) => {

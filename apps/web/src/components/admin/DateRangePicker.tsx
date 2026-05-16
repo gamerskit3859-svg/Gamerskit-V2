@@ -103,19 +103,19 @@ export function DateRangePicker({
         Custom range
       </button>
       {showCustom && (
-        <div className="ml-2 flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:ml-2 sm:w-auto">
           <Input
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            className="!w-auto !py-1 !text-xs"
+            className="!w-[140px] !py-1 !text-xs"
           />
           <span className="text-xs">to</span>
           <Input
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="!w-auto !py-1 !text-xs"
+            className="!w-[140px] !py-1 !text-xs"
           />
           <Button
             size="sm"

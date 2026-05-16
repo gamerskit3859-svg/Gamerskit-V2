@@ -53,23 +53,42 @@ export type TrackPayload = {
 
 export function track(p: TrackPayload): string {
   const eventId = rid();
+  const ecommerceItems = p.items?.map((item) => ({
+    item_id: item.id,
+    item_name: item.name,
+    item_category: item.category,
+    ...item,
+  }));
+  const ecommerce =
+    p.items || p.value !== undefined
+      ? {
+          currency: p.currency ?? "BDT",
+          value: p.value ?? 0,
+          transaction_id: p.orderId,
+          order_id: p.orderId,
+          items: ecommerceItems ?? [],
+        }
+      : undefined;
   const payload = {
     event: gtmEvent(p.event),
     fb_event: p.event,
     event_id: eventId,
-    ecommerce:
-      p.items || p.value !== undefined
-        ? {
-            currency: p.currency ?? "BDT",
-            value: p.value ?? 0,
-            transaction_id: p.orderId,
-            items: p.items ?? [],
-          }
-        : undefined,
+    transaction_id: p.orderId,
+    order_id: p.orderId,
+    value: p.value,
+    currency: p.currency ?? "BDT",
+    ecommerce,
   };
   if (typeof window !== "undefined") {
     window.dataLayer = window.dataLayer ?? [];
+    if (p.event === "Purchase") {
+      window.dataLayer.push({ ecommerce: null });
+    }
     window.dataLayer.push(payload);
+
+    if (process.env.NODE_ENV !== "production" && p.event === "Purchase") {
+      console.debug("[analytics] purchase pushed to dataLayer", payload);
+    }
 
     // Wrap fbq() in try/catch — privacy extensions sometimes stub `fbq`
     // with a function that throws on call, and we never want analytics to

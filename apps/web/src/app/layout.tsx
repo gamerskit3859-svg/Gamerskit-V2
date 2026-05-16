@@ -5,6 +5,7 @@ import "./globals.css";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { AuthProviders } from "@/components/AuthProviders";
+import { AnnouncementBar } from "@/components/AnnouncementBar";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://gamerskit.example.com"),
@@ -46,6 +47,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col bg-[var(--bg)] text-[var(--fg)]">
         <AuthProviders>
+          <AnnouncementBar />
           {GTM_ID && (
             <noscript>
               <iframe

@@ -84,5 +84,11 @@ const OrderSchema = new Schema(
   { timestamps: true },
 );
 
+OrderSchema.index({ createdAt: -1 });
+OrderSchema.index({ status: 1, createdAt: -1 });
+OrderSchema.index({ source: 1, createdAt: -1 });
+OrderSchema.index({ userId: 1, createdAt: -1 });
+OrderSchema.index({ "customer.phone": 1, createdAt: -1 });
+
 export const OrderModel =
   mongoose.models.Order ?? mongoose.model("Order", OrderSchema);

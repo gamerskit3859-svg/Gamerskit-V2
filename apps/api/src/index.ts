@@ -7,8 +7,6 @@
  */
 
 import { createApp } from "./app.js";
-import { connectDb } from "./db.js";
-import { ensureAdmin } from "./lib/auth.js";
 
 // We export the app factory and a pre-configured app instance
 export { createApp };

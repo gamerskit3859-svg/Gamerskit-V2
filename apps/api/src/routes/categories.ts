@@ -5,6 +5,13 @@ import { adminRequired } from "../lib/auth.js";
 
 const router = Router();
 
+type CategoryTreeNode = {
+  _id: { toString(): string };
+  parentId?: { toString(): string } | string | null;
+  subcategories: CategoryTreeNode[];
+  [key: string]: unknown;
+};
+
 // Get all categories with subcategories
 router.get("/", async (req, res) => {
   try {
@@ -13,11 +20,11 @@ router.get("/", async (req, res) => {
       .lean();
 
     // Structure categories with their subcategories
-    const categoryMap = new Map();
-    const rootCategories: any[] = [];
+    const categoryMap = new Map<string, CategoryTreeNode>();
+    const rootCategories: CategoryTreeNode[] = [];
 
     categories.forEach((cat) => {
-      const catData = { ...cat, subcategories: [] };
+      const catData: CategoryTreeNode = { ...cat, subcategories: [] };
       categoryMap.set(cat._id.toString(), catData);
 
       if (cat.parentId) {

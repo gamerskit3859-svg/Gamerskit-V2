@@ -133,7 +133,7 @@ export default function StaffPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="min-w-[720px] w-full text-sm">
               <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
                   <th className="px-4 py-3">Email</th>
@@ -194,7 +194,7 @@ export default function StaffPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-3 py-6 backdrop-blur-sm sm:p-4"
             onClick={() => !busy && setOpenCreate(false)}
           >
             <motion.div
@@ -203,7 +203,7 @@ export default function StaffPage() {
               exit={{ y: 20, opacity: 0 }}
               transition={{ type: "spring", damping: 24 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+              className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl sm:p-6"
             >
               <h2 className="mb-4 text-xl font-semibold">Invite member</h2>
               <div className="space-y-3">
@@ -232,7 +232,7 @@ export default function StaffPage() {
                     }
                   />
                 </FieldLabel>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <FieldLabel label="Role">
                     <Select
                       value={draft.role}

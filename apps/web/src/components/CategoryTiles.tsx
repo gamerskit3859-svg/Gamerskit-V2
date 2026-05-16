@@ -4,6 +4,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { optimizeCloudinaryImage } from "@/lib/images";
 import { Section } from "@/components/ui";
 
 interface Category {
@@ -91,7 +92,7 @@ function CategoryTile({ tile, index }: { tile: Tile; index: number }) {
 
         {tile.image && (
           <Image
-            src={tile.image}
+            src={optimizeCloudinaryImage(tile.image, "f_auto,q_auto,c_fill,w_900")}
             alt={tile.label}
             fill
             sizes="(max-width: 768px) 100vw, 50vw"
@@ -117,12 +118,21 @@ function CategoryTile({ tile, index }: { tile: Tile; index: number }) {
   );
 }
 
-export function CategoryTiles() {
-  const [tiles, setTiles] = useState<Tile[]>([]);
-  const [loading, setLoading] = useState(true);
+export function CategoryTiles({
+  initialCategories = [],
+}: {
+  initialCategories?: Category[];
+}) {
+  const initialTiles = sortTiles(
+    initialCategories.filter((c) => !c.parentId && c.featured).map(categoryToTile),
+  );
+  const [tiles, setTiles] = useState<Tile[]>(initialTiles);
+  const [loading, setLoading] = useState(initialCategories.length === 0);
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    if (initialCategories.length > 0) return;
+
     let cancelled = false;
 
     async function loadCategories() {
@@ -147,7 +157,7 @@ export function CategoryTiles() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialCategories.length]);
 
   const displayTiles = tiles.length > 0 ? tiles : FALLBACK_TILES;
 

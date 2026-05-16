@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { useInfiniteScroll, useDebouncedSearch } from "@/lib/hooks";
 import { SearchInput } from "./SearchInput";
@@ -76,11 +75,13 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
     debouncedValue: searchQuery,
   } = useDebouncedSearch("");
 
-  useEffect(() => {
-    setPage(1);
-    setProducts([]);
-    setHasMore(true);
-  }, [searchQuery, category]);
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setPage(1);
+      setSearchValue(value);
+    },
+    [setSearchValue],
+  );
 
   const loadProducts = useCallback(
     async (pageNum: number) => {
@@ -100,9 +101,11 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
         if (isFirstPage) {
           setProducts(result.items);
         } else {
-          const existingIds = new Set(products.map((p) => p._id));
-          const newItems = result.items.filter((p) => !existingIds.has(p._id));
-          setProducts((prev) => [...prev, ...newItems]);
+          setProducts((prev) => {
+            const existingIds = new Set(prev.map((p) => p._id));
+            const newItems = result.items.filter((p) => !existingIds.has(p._id));
+            return [...prev, ...newItems];
+          });
         }
 
         setPage(pageNum);
@@ -115,11 +118,11 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
         setLoadingMore(false);
       }
     },
-    [category, searchQuery, products],
+    [category, searchQuery],
   );
 
   useEffect(() => {
-    void loadProducts(1);
+    void Promise.resolve().then(() => loadProducts(1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, searchQuery]);
 
@@ -149,8 +152,7 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
       <Section width="default" spacing="md">
         <Card tone="soft" padding="lg" className="text-center text-fg-soft">
           <p>
-            Nothing here yet. Seed the database with{" "}
-            <code className="text-foreground">npm run seed</code>.
+            Nothing here yet. Check back later for awesome products!
           </p>
         </Card>
       </Section>
@@ -166,7 +168,7 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
           subtitle={subtitle}
           showSearch
           searchValue={searchValue}
-          onSearchChange={setSearchValue}
+          onSearchChange={handleSearchChange}
         />
         <Card tone="soft" padding="lg" className="text-center text-fg-soft">
           <p>
@@ -188,7 +190,7 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
             subtitle={subtitle}
             showSearch={!category}
             searchValue={searchValue}
-            onSearchChange={setSearchValue}
+            onSearchChange={handleSearchChange}
           />
         )}
         <Card tone="soft" padding="lg" className="text-center text-red-600">
@@ -215,33 +217,18 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
         subtitle={subtitle}
         showSearch={!category}
         searchValue={searchValue}
-        onSearchChange={setSearchValue}
+        onSearchChange={handleSearchChange}
         countLabel={countLabel}
       />
 
-      <AnimatePresence>
-        <div className="grid grid-cols-2 gap-x-5 gap-y-12 md:grid-cols-3 lg:grid-cols-4">
-          {products.map((p, i) => (
-            <motion.div
-              key={p._id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3, delay: (i % 4) * 0.05 }}
-            >
-              <ProductCard product={p} index={i} />
-            </motion.div>
-          ))}
-        </div>
-      </AnimatePresence>
+      <div className="grid grid-cols-2 gap-x-5 gap-y-12 md:grid-cols-3 lg:grid-cols-4">
+        {products.map((p, i) => (
+          <ProductCard key={p._id} product={p} index={i} />
+        ))}
+      </div>
 
       {loadingMore && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="mt-12 text-center"
-        >
+        <div className="mt-12 text-center">
           <div className="inline-flex items-center gap-2 text-fg-soft">
             <div className="h-2 w-2 animate-pulse rounded-full bg-current" />
             <div
@@ -253,17 +240,13 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
               style={{ animationDelay: "0.2s" }}
             />
           </div>
-        </motion.div>
+        </div>
       )}
 
       {!hasMore && products.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mt-12 text-center text-sm text-fg-soft"
-        >
+        <div className="mt-12 text-center text-sm text-fg-soft">
           No more products to load
-        </motion.div>
+        </div>
       )}
 
       {hasMore && !loading && products.length > 0 && (

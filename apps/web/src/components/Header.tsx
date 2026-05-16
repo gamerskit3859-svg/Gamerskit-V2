@@ -1,14 +1,19 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ShoppingBag, Search, User, Menu, X } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth";
-import { AuthDrawer } from "./AuthDrawer";
 import { cn } from "@/lib/cn";
+
+const AuthDrawer = dynamic(
+  () => import("./AuthDrawer").then((mod) => mod.AuthDrawer),
+  { ssr: false },
+);
 
 const NAV_LINKS = [
   { label: "Home", href: "/" },
@@ -25,6 +30,7 @@ export function Header() {
   const count = useCart((s) => s.lines.reduce((n, l) => n + l.quantity, 0));
   const user = useAuth((s) => s.user);
   const clear = useAuth((s) => s.clear);
+  const accountHref = user?.role === "admin" ? "/admin" : "/account";
 
   const [scrolled, setScrolled] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -83,7 +89,7 @@ export function Header() {
         className={cn("lg-navbar", scrolled && "scrolled")}
         aria-label="Primary"
       >
-        <div className="lg-inner">
+        <div className="lg-inner pt-5">
           <Link href="/" className="lg-logo" aria-label="GamersKit home">
             <Image
               src="/brand/logo.png"
@@ -131,12 +137,21 @@ export function Header() {
               <Search size={16} strokeWidth={1.8} />
             </Link>
 
+            {!isMobile && user?.role === "admin" && (
+              <Link
+                href="/admin"
+                className="hidden items-center rounded-full bg-black px-4 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-white no-underline shadow-[0_12px_28px_rgba(0,0,0,0.16)] transition hover:bg-black/85 md:inline-flex"
+              >
+                Admin Dashboard
+              </Link>
+            )}
+
             {!isMobile &&
               (user ? (
                 <Link
-                  href="/account"
+                  href={accountHref}
                   className="lg-icon-btn"
-                  aria-label="My account"
+                  aria-label={user.role === "admin" ? "Admin dashboard" : "My account"}
                 >
                   <User size={16} strokeWidth={1.8} />
                 </Link>
@@ -169,8 +184,6 @@ export function Header() {
           </div>
         </div>
       </nav>
-
-      <div aria-hidden className="h-[76px]" data-site-header-spacer="" />
 
       <AnimatePresence>
         {mobileDrawerOpen && (
@@ -250,12 +263,12 @@ export function Header() {
                       {user.email}
                     </p>
                     <Link
-                      href="/account"
+                      href={accountHref}
                       onClick={() => setMobileDrawerOpen(false)}
                       className="flex items-center gap-3 rounded-xl bg-black/[0.04] px-4 py-3 text-[15px] font-medium text-foreground no-underline"
                     >
                       <User size={16} strokeWidth={1.8} />
-                      My Account
+                      {user.role === "admin" ? "Admin Dashboard" : "My Account"}
                     </Link>
                     <button
                       type="button"
@@ -294,6 +307,7 @@ export function Header() {
       </AnimatePresence>
 
       <AuthDrawer
+        key={authDrawerOpen ? authDrawerTab : "closed"}
         isOpen={authDrawerOpen}
         onClose={() => setAuthDrawerOpen(false)}
         initialTab={authDrawerTab}

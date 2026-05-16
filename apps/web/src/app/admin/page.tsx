@@ -94,7 +94,7 @@ export default function AdminDashboard() {
         </UICard>
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Revenue"
           value={formatBDT(stats?.revenue ?? 0)}
@@ -143,7 +143,7 @@ export default function AdminDashboard() {
       </div>
 
       <PanelCard title="Categories" className="mt-5">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {categories.length === 0 ? (
             <Empty />
           ) : (
@@ -176,7 +176,7 @@ export default function AdminDashboard() {
           <Empty />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="min-w-[760px] w-full text-sm">
               <thead className="text-left text-xs text-fg-soft">
                 <tr>
                   <th className="py-2 pr-3">Order</th>

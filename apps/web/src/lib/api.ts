@@ -58,18 +58,54 @@ function resolveApiBase(): string {
           "Update the env var to the public API origin.",
       );
     }
-  } else if (process.env.NODE_ENV === "production" && isLocalhost) {
-    // Non-Vercel production build (e.g. self-hosted): just warn loudly.
-    console.warn(
-      `[api] Production build is using API base "${trimmed}" — this will not work for ` +
-        "browser fetches from any host other than the API box itself.",
-    );
   }
 
   return trimmed || "http://localhost:4000";
 }
 
 export const API_BASE = resolveApiBase();
+
+export interface CategoryItem {
+  _id: string;
+  slug: string;
+  name: string;
+  description: string;
+  image: string;
+  icon: string;
+  parentId: string | null;
+  featured: boolean;
+  order: number;
+  active: boolean;
+  productCount: number;
+  createdAt: string;
+  updatedAt: string;
+  subcategories?: CategoryItem[];
+}
+
+export interface HeroImageItem {
+  _id: string;
+  imageUrl: string;
+  publicId: string;
+  order: number;
+  isActive: boolean;
+  title: string;
+  subtitle: string;
+  link: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AnnouncementBarSettings {
+  enabled: boolean;
+  codText: string;
+  deliveryText: string;
+  offerText: string;
+}
+
+export interface ShopBannerSettings {
+  imageUrl: string;
+  publicId: string;
+}
 
 async function request<T>(
   path: string,
@@ -91,7 +127,9 @@ async function request<T>(
       body = await res.text().catch(() => null);
     }
     const message = `[api] ${init?.method ?? "GET"} ${path} → ${res.status}`;
-    console.error(message, body);
+    if (process.env.NODE_ENV !== "production") {
+      console.error(message, body);
+    }
     const err = new Error(message) as Error & { status?: number; body?: unknown };
     err.status = res.status;
     err.body = body;
@@ -116,9 +154,9 @@ export const api = {
     request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(`/api/products${qs(params)}`),
   getProduct: (slug: string) => request<{ item: Product }>(`/api/products/${slug}`),
   listCategories: () =>
-    request<{ items: any[] }>(`/api/categories`),
+    request<{ items: CategoryItem[] }>(`/api/categories`),
   getCategory: (idOrSlug: string) =>
-    request<{ item: any }>(`/api/categories/${idOrSlug}`),
+    request<{ item: CategoryItem }>(`/api/categories/${idOrSlug}`),
   createOrder: (body: unknown, token?: string) =>
     request<{ order: Order; eventId: string }>(`/api/orders`, {
       method: "POST",
@@ -170,7 +208,7 @@ export const api = {
     },
     token: string,
   ) =>
-    request<{ items: Order[]; total: number; page: number; limit: number }>(
+    request<{ items: Order[]; total: number; page: number; limit: number; totalPages: number }>(
       `/api/orders${qs(params)}`,
       { token },
     ),
@@ -287,14 +325,14 @@ export const api = {
     request<void>(`/api/products/${id}`, { method: "DELETE", token }),
 
   // Categories
-  createCategory: (body: Partial<any>, token: string) =>
-    request<{ item: any }>(`/api/categories`, {
+  createCategory: (body: Partial<CategoryItem>, token: string) =>
+    request<{ item: CategoryItem }>(`/api/categories`, {
       method: "POST",
       body: JSON.stringify(body),
       token,
     }),
-  updateCategory: (id: string, body: Partial<any>, token: string) =>
-    request<{ item: any }>(`/api/categories/${id}`, {
+  updateCategory: (id: string, body: Partial<CategoryItem>, token: string) =>
+    request<{ item: CategoryItem }>(`/api/categories/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
       token,
@@ -347,14 +385,22 @@ export const api = {
     request<void>(`/api/admin/coupons/${id}`, { method: "DELETE", token }),
 
   // Hero Images
-  getHeroImages: () => request<{ items: any[] }>(`/api/hero-images`),
+  getHeroImages: () => request<{ items: HeroImageItem[] }>(`/api/hero-images`),
+  getShopBanner: () =>
+    request<{ item: ShopBannerSettings }>(`/api/settings/shop-banner`),
+  updateShopBanner: (body: ShopBannerSettings, token: string) =>
+    request<{ item: ShopBannerSettings }>(`/api/settings/shop-banner`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+      token,
+    }),
   listHeroImagesAdmin: (token: string) =>
-    request<{ items: any[] }>(`/api/hero-images/admin/all`, { token }),
+    request<{ items: HeroImageItem[] }>(`/api/hero-images/admin/all`, { token }),
   createHeroImage: (
     body: { imageUrl: string; publicId: string; order?: number; isActive?: boolean; title?: string; subtitle?: string; link?: string },
     token: string,
   ) =>
-    request<{ item: any }>(`/api/hero-images`, {
+    request<{ item: HeroImageItem }>(`/api/hero-images`, {
       method: "POST",
       body: JSON.stringify(body),
       token,
@@ -364,7 +410,7 @@ export const api = {
     body: Partial<{ imageUrl: string; order: number; isActive: boolean; title: string; subtitle: string; link: string }>,
     token: string,
   ) =>
-    request<{ item: any }>(`/api/hero-images/${id}`, {
+    request<{ item: HeroImageItem }>(`/api/hero-images/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
       token,
@@ -375,9 +421,19 @@ export const api = {
     order: Array<{ id: string; order: number }>,
     token: string,
   ) =>
-    request<{ items: any[] }>(`/api/hero-images/reorder`, {
+    request<{ items: HeroImageItem[] }>(`/api/hero-images/reorder`, {
       method: "POST",
       body: JSON.stringify({ order }),
+      token,
+    }),
+
+  // Site Settings
+  getAnnouncementBar: () =>
+    request<{ item: AnnouncementBarSettings }>(`/api/settings/announcement-bar`),
+  updateAnnouncementBar: (body: AnnouncementBarSettings, token: string) =>
+    request<{ item: AnnouncementBarSettings }>(`/api/settings/announcement-bar`, {
+      method: "PUT",
+      body: JSON.stringify(body),
       token,
     }),
 };

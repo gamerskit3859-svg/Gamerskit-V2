@@ -2,7 +2,7 @@ import { LinkButton, Section, Card } from "@/components/ui";
 
 export function StorySection() {
   return (
-    <Section width="wide" spacing="md">
+    <Section spacing="md">
       <Card
         tone="soft"
         padding="lg"

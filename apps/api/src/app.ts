@@ -18,6 +18,7 @@ import adminUsersRouter from "./routes/admin-users.js";
 import couponsRouter from "./routes/coupons.js";
 import categoriesRouter from "./routes/categories.js";
 import heroImagesRouter from "./routes/hero-images.js";
+import settingsRouter from "./routes/settings.js";
 import fbRouter from "./routes/fb.js";
 
 export interface CreateAppOptions {
@@ -100,6 +101,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use("/api/products", productsRouter);
   app.use("/api/categories", categoriesRouter);
   app.use("/api/hero-images", heroImagesRouter);
+  app.use("/api/settings", settingsRouter);
   app.use("/api/orders", ordersRouter);
   app.use("/api/coupons", couponsRouter);
   app.use("/api/admin", adminRouter);

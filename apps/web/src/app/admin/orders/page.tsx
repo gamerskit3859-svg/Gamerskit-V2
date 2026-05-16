@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { clearAdminToken, getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDateTime } from "@/lib/format";
+import { useDebouncedSearch } from "@/lib/hooks";
 import { ORDER_STATUSES } from "@/types/shared";
 import {
   DateRangePicker,
   type DateRange,
 } from "@/components/admin/DateRangePicker";
 import type { Order } from "@/types/shared";
-import { Card, Input, LinkButton, Select } from "@/components/ui";
+import { Button, Card, Input, LinkButton, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
 const STATUS_OPTIONS = [
@@ -30,6 +31,8 @@ const SOURCE_OPTIONS = [
   { value: "manual", label: "Manual / custom" },
 ];
 
+const PAGE_SIZE = 30;
+
 function getAllTimeRange(): DateRange {
   const today = new Date().toISOString().slice(0, 10);
   return { from: "1970-01-01", to: today, label: "All time" };
@@ -39,10 +42,17 @@ export default function AdminOrdersPage() {
   const [range, setRange] = useState<DateRange>(getAllTimeRange());
   const [items, setItems] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [status, setStatus] = useState("all");
   const [source, setSource] = useState("all");
-  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const {
+    value: q,
+    setValue: setQ,
+    debouncedValue: searchQuery,
+  } = useDebouncedSearch("");
 
   const router = useRouter();
 
@@ -57,20 +67,36 @@ export default function AdminOrdersPage() {
 
     void (async () => {
       setLoading(true);
+      setError(null);
       try {
         const r = await api.listOrdersAdmin(
-          { from: range.from, to: range.to, status, source, q, limit: 50 },
+          {
+            from: range.from,
+            to: range.to,
+            status,
+            source,
+            q: searchQuery,
+            page,
+            limit: PAGE_SIZE,
+          },
           token,
         );
         if (cancelled) return;
         setItems(r.items);
         setTotal(r.total);
+        setTotalPages(Math.max(1, r.totalPages));
       } catch (err) {
-        const status = (err as any)?.status;
+        const status = (err as Error & { status?: number })?.status;
         if (status === 401 || status === 403) {
           clearAdminToken();
           router.replace("/admin");
           return;
+        }
+        if (!cancelled) {
+          setError((err as Error).message);
+          setItems([]);
+          setTotal(0);
+          setTotalPages(1);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -79,7 +105,7 @@ export default function AdminOrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, [range.from, range.to, status, source, q, router]);
+  }, [range.from, range.to, status, source, searchQuery, page, router]);
 
   return (
     <div>
@@ -93,17 +119,27 @@ export default function AdminOrdersPage() {
             <p className="mt-1 text-sm text-fg-soft">
               {total} orders in {range.label.toLowerCase()}
             </p>
+            {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
           </div>
           <LinkButton href="/admin/orders/new">+ Custom order</LinkButton>
         </div>
         <div className="mt-5">
-          <DateRangePicker value={range} onChange={setRange} />
+          <DateRangePicker
+            value={range}
+            onChange={(nextRange) => {
+              setPage(1);
+              setRange(nextRange);
+            }}
+          />
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <Select
             className="!w-auto"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setStatus(e.target.value);
+            }}
           >
             {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -114,7 +150,10 @@ export default function AdminOrdersPage() {
           <Select
             className="!w-auto"
             value={source}
-            onChange={(e) => setSource(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setSource(e.target.value);
+            }}
           >
             {SOURCE_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -126,7 +165,10 @@ export default function AdminOrdersPage() {
             className="!w-64"
             placeholder="Search order #, name, phone…"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setQ(e.target.value);
+            }}
           />
         </div>
       </header>
@@ -134,13 +176,17 @@ export default function AdminOrdersPage() {
       <Card tone="soft" padding="none" className="overflow-hidden">
         {loading ? (
           <div className="p-8 text-sm text-fg-muted">Loading…</div>
+        ) : error ? (
+          <div className="p-8 text-center text-sm text-red-600">
+            Could not load orders.
+          </div>
         ) : items.length === 0 ? (
           <div className="p-8 text-center text-sm text-fg-muted">
             No orders match these filters.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="min-w-[900px] w-full text-sm">
               <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
                   <th className="px-4 py-3">Order</th>
@@ -234,6 +280,32 @@ export default function AdminOrdersPage() {
           </div>
         )}
       </Card>
+
+      {!loading && !error && totalPages > 1 && (
+        <div className="mt-4 flex items-center justify-between text-sm text-fg-soft">
+          <span>
+            Page {page} of {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

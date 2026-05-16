@@ -9,6 +9,7 @@ import type { Product } from "@/types/shared";
 import { formatBDT } from "@/lib/format";
 import { useCart } from "@/lib/cart";
 import { track } from "@/lib/fb-pixel";
+import { optimizeCloudinaryImage } from "@/lib/images";
 import { Button } from "@/components/ui";
 
 interface ProductCardProps {
@@ -74,7 +75,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
         <div className="relative aspect-square w-full overflow-hidden bg-bg-soft">
           {img ? (
             <Image
-              src={img}
+              src={optimizeCloudinaryImage(img, "f_auto,q_auto,c_fill,w_700")}
               alt={product.title}
               fill
               sizes="(max-width: 768px) 50vw, 25vw"

@@ -113,7 +113,7 @@ export default function AdminUsersPage() {
       >
         <Card tone="soft" padding="none" className="overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="min-w-[760px] w-full">
               <thead className="border-b border-line bg-bg-soft">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-fg-soft">
@@ -211,11 +211,11 @@ export default function AdminUsersPage() {
       </motion.div>
 
       {selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 py-6 sm:p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md rounded-lg bg-white p-6"
+            className="w-full max-w-md rounded-lg bg-white p-4 sm:p-6"
           >
             <h2 className="mb-4 text-xl font-semibold">Change User Role</h2>
             <p className="mb-6 text-sm text-fg-soft">

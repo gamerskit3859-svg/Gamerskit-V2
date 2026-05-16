@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { UserModel } from "../models/User.js";
 import { OrderModel } from "../models/Order.js";
-import { authRequired, comparePassword, hashPassword, signToken, adminOnlyRequired } from "../lib/auth.js";
+import { authRequired, comparePassword, hashPassword, signToken } from "../lib/auth.js";
 
 const router = Router();
 

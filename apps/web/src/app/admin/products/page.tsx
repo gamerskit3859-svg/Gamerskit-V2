@@ -1,4 +1,5 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -9,6 +10,7 @@ import type {
   CloudinaryUploadWidgetResults,
 } from "next-cloudinary";
 import { Upload, X, AlertCircle, CheckCircle2 } from "lucide-react";
+
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
@@ -27,7 +29,16 @@ interface Category {
   _id: string;
   slug: string;
   name: string;
+  parentId?: string | null;
 }
+
+type ProductCategory =
+  | string
+  | {
+      _id?: string;
+      slug?: string;
+      name?: string;
+    };
 
 interface DraftProduct {
   title: string;
@@ -53,16 +64,34 @@ const blank = (firstCategorySlug?: string): DraftProduct => ({
   featured: false,
 });
 
-function fromProduct(p: Product): DraftProduct {
+function getProductCategoryValue(category: ProductCategory): string {
+  if (!category) return "";
+
+  if (typeof category === "string") {
+    return category;
+  }
+
+  return category.slug || category._id || "";
+}
+
+function fromProduct(p: Product, categories: Category[]): DraftProduct {
+  const categoryValue = getProductCategoryValue(
+    p.category as ProductCategory,
+  );
+
+  const matchedCategory = categories.find(
+    (c) => c._id === categoryValue || c.slug === categoryValue,
+  );
+
   return {
     title: p.title,
     slug: p.slug,
-    category: p.category,
+    category: matchedCategory?.slug ?? "",
     price: p.price,
     buyingPrice: p.buyingPrice ?? 0,
     stock: p.stock,
     description: p.description ?? "",
-    images: p.images,
+    images: p.images ?? [],
     featured: !!p.featured,
   };
 }
@@ -77,47 +106,62 @@ export default function AdminProductsPage() {
   const [items, setItems] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [, setCategoriesLoading] = useState(true);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("all");
+
   const [draft, setDraft] = useState<DraftProduct>(blank());
   const [editing, setEditing] = useState<Product | null>(null);
   const [open, setOpen] = useState(false);
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Cloudinary upload feedback. The widget itself shows progress, but we
-  // surface the last result inline so the admin always sees confirmation of
-  // a successful upload (or a friendly error message) on the form page too.
   const [uploadState, setUploadState] = useState<
     | { kind: "idle" }
     | { kind: "uploading" }
     | { kind: "success"; count: number }
     | { kind: "error"; message: string }
   >({ kind: "idle" });
+
   const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
   useEffect(() => {
     let cancelled = false;
+
     void (async () => {
+      setCategoriesLoading(true);
+
       try {
         const result = await api.listCategories();
+
         if (!cancelled) {
           const topLevel = (result.items as Category[]).filter(
-            (c: Category & { parentId?: string | null }) => !c.parentId,
+            (c) => !c.parentId,
           );
+
           setCategories(topLevel);
+
           if (topLevel.length > 0) {
             setDraft(blank(topLevel[0].slug));
           }
         }
       } catch (err) {
-        console.error("Failed to load categories:", err);
-        if (!cancelled) setCategories([]);
+        if (process.env.NODE_ENV !== "production") {
+          console.error("Failed to load categories:", err);
+        }
+
+        if (!cancelled) {
+          setCategories([]);
+        }
       } finally {
-        if (!cancelled) setCategoriesLoading(false);
+        if (!cancelled) {
+          setCategoriesLoading(false);
+        }
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -125,21 +169,31 @@ export default function AdminProductsPage() {
 
   useEffect(() => {
     let cancelled = false;
+
     void (async () => {
       setLoading(true);
+
       try {
         const r = await api.listProducts({
           q: q || undefined,
           category: category === "all" ? undefined : category,
           limit: 200,
         });
-        if (!cancelled) setItems(r.items);
+
+        if (!cancelled) {
+          setItems(r.items);
+        }
       } catch {
-        if (!cancelled) setItems([]);
+        if (!cancelled) {
+          setItems([]);
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -149,23 +203,38 @@ export default function AdminProductsPage() {
     setEditing(null);
     setDraft(blank(categories.length > 0 ? categories[0].slug : ""));
     setError(null);
+    setUploadState({ kind: "idle" });
     setOpen(true);
   }
 
   function startEdit(p: Product) {
+    if (categoriesLoading || categories.length === 0) {
+      setError("Categories are still loading. Please try again.");
+      return;
+    }
+
     setEditing(p);
-    setDraft(fromProduct(p));
+    setDraft(fromProduct(p, categories));
     setError(null);
+    setUploadState({ kind: "idle" });
     setOpen(true);
   }
 
   async function save() {
     const token = getAdminToken();
-    if (!token) return;
+
+    if (!token) {
+      setError("Admin token not found. Please login again.");
+      return;
+    }
+
     setBusy(true);
     setError(null);
 
-    const selectedCategory = categories.find((c) => c.slug === draft.category);
+    const selectedCategory = categories.find(
+      (c) => c.slug === draft.category || c._id === draft.category,
+    );
+
     if (!selectedCategory) {
       setError("Please select a valid category");
       setBusy(false);
@@ -185,16 +254,20 @@ export default function AdminProductsPage() {
       images: draft.images,
       featured: draft.featured,
     };
+
     try {
       if (editing) {
         const r = await api.updateProduct(editing._id, body, token);
+
         setItems((prev) =>
           prev.map((p) => (p._id === editing._id ? r.item : p)),
         );
       } else {
         const r = await api.createProduct(body, token);
+
         setItems((prev) => [r.item, ...prev]);
       }
+
       setOpen(false);
     } catch (err) {
       setError((err as Error).message);
@@ -205,9 +278,16 @@ export default function AdminProductsPage() {
 
   async function remove(p: Product) {
     if (!confirm(`Delete ${p.title}?`)) return;
+
     const token = getAdminToken();
-    if (!token) return;
+
+    if (!token) {
+      setError("Admin token not found. Please login again.");
+      return;
+    }
+
     await api.deleteProduct(p._id, token);
+
     setItems((prev) => prev.filter((x) => x._id !== p._id));
   }
 
@@ -222,15 +302,23 @@ export default function AdminProductsPage() {
           <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
             Admin
           </span>
+
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">
             Products
           </h1>
+
           <p className="mt-1 text-sm text-fg-soft">
-            {items.length} products. Use <code>npm run seed</code> to import 34
-            from gamerskitbd.com.
+            {items.length} products.
           </p>
+
+          {error && !open && (
+            <p className="mt-2 text-sm text-red-600">{error}</p>
+          )}
         </div>
-        <Button onClick={startCreate}>+ New product</Button>
+
+        <Button onClick={startCreate} disabled={categoriesLoading}>
+          + New product
+        </Button>
       </header>
 
       <div className="mb-5 mt-3 flex flex-wrap gap-3">
@@ -240,12 +328,15 @@ export default function AdminProductsPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
+
         <Select
           className="!w-auto"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
+          disabled={categoriesLoading}
         >
           <option value="all">All categories</option>
+
           {categories.map((c) => (
             <option key={c._id} value={c.slug}>
               {c.name}
@@ -259,11 +350,11 @@ export default function AdminProductsPage() {
           <div className="p-8 text-sm text-fg-muted">Loading…</div>
         ) : items.length === 0 ? (
           <div className="p-8 text-center text-sm text-fg-muted">
-            No products. Create one or run <code>npm run seed</code>.
+            No products
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="min-w-[860px] w-full text-sm">
               <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
                   <th className="px-4 py-3">Product</th>
@@ -274,71 +365,93 @@ export default function AdminProductsPage() {
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
+
               <tbody>
-                {items.map((p) => (
-                  <tr
-                    key={p._id}
-                    className="border-t border-line bg-white hover:bg-bg-soft"
-                  >
-                    <td className="flex items-center gap-3 px-4 py-3">
-                      <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-bg-soft">
-                        {p.images[0] && (
-                          <Image
-                            src={p.images[0]}
-                            alt=""
-                            fill
-                            sizes="40px"
-                            className="object-cover"
-                          />
-                        )}
-                      </div>
-                      <div>
-                        <div className="font-medium">{p.title}</div>
-                        <div className="font-mono text-xs text-fg-muted">
-                          {p.slug}
+                {items.map((p) => {
+                  const productCategoryValue = getProductCategoryValue(
+                    p.category as ProductCategory,
+                  );
+
+                  const productCategory = categories.find(
+                    (c) =>
+                      c._id === productCategoryValue ||
+                      c.slug === productCategoryValue,
+                  );
+
+                  return (
+                    <tr
+                      key={p._id}
+                      className="border-t border-line bg-white hover:bg-bg-soft"
+                    >
+                      <td className="flex items-center gap-3 px-4 py-3">
+                        <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-bg-soft">
+                          {p.images?.[0] && (
+                            <Image
+                              src={p.images[0]}
+                              alt=""
+                              fill
+                              sizes="40px"
+                              className="object-cover"
+                            />
+                          )}
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 capitalize">
-                      {categories.find((c) => c._id === p.category)?.name ||
-                        "Unknown"}
-                    </td>
-                    <td className="px-4 py-3 font-medium">
-                      {formatBDT(p.price)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={cn("text-xs", stockColor(p.stock))}>
-                        {p.stock}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      {p.featured ? "Yes" : "—"}
-                    </td>
-                    <td className="space-x-3 whitespace-nowrap px-4 py-3 text-right">
-                      <Link
-                        href={`/product/${p.slug}`}
-                        target="_blank"
-                        className="text-xs underline underline-offset-4"
-                      >
-                        Open ↗
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => startEdit(p)}
-                        className="text-xs underline"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => remove(p)}
-                        className="text-xs text-red-600 underline"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+
+                        <div>
+                          <div className="font-medium">{p.title}</div>
+
+                          <div className="font-mono text-xs text-fg-muted">
+                            {p.slug}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-3 capitalize">
+                        {productCategory?.name || "Unknown"}
+                      </td>
+
+                      <td className="px-4 py-3 font-medium">
+                        {formatBDT(p.price)}
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <span className={cn("text-xs", stockColor(p.stock))}>
+                          {p.stock}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3 text-xs">
+                        {p.featured ? "Yes" : "—"}
+                      </td>
+
+                      <td className="space-x-3 whitespace-nowrap px-4 py-3 text-right">
+                        <Link
+                          href={`/product/${p.slug}`}
+                          target="_blank"
+                          className="text-xs underline underline-offset-4"
+                        >
+                          Open ↗
+                        </Link>
+
+                        <button
+                          type="button"
+                          onClick={() => startEdit(p)}
+                          disabled={categoriesLoading}
+                          className="text-xs underline disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => remove(p)}
+                          className="text-xs text-red-600 underline"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -351,7 +464,7 @@ export default function AdminProductsPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-3 py-6 backdrop-blur-sm sm:p-4"
             onClick={() => !busy && setOpen(false)}
           >
             <motion.div
@@ -360,11 +473,12 @@ export default function AdminProductsPage() {
               exit={{ y: 20, opacity: 0 }}
               transition={{ type: "spring", damping: 24 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl"
+              className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-xl sm:p-6"
             >
               <h2 className="mb-4 text-xl font-semibold">
                 {editing ? `Edit ${editing.title}` : "New product"}
               </h2>
+
               <div className="space-y-3">
                 <FieldLabel label="Title">
                   <Input
@@ -374,7 +488,8 @@ export default function AdminProductsPage() {
                     }
                   />
                 </FieldLabel>
-                <div className="grid grid-cols-2 gap-3">
+
+                <div className="grid gap-3 sm:grid-cols-2">
                   <FieldLabel label="Slug">
                     <Input
                       className="font-mono"
@@ -385,13 +500,19 @@ export default function AdminProductsPage() {
                       placeholder="auto from title"
                     />
                   </FieldLabel>
+
                   <FieldLabel label="Category">
                     <Select
                       value={draft.category}
                       onChange={(e) =>
                         setDraft({ ...draft, category: e.target.value })
                       }
+                      disabled={categoriesLoading}
                     >
+                      <option value="" disabled>
+                        Select category
+                      </option>
+
                       {categories.map((c) => (
                         <option key={c._id} value={c.slug}>
                           {c.name}
@@ -400,16 +521,21 @@ export default function AdminProductsPage() {
                     </Select>
                   </FieldLabel>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+
+                <div className="grid gap-3 sm:grid-cols-3">
                   <FieldLabel label="Selling price (৳)">
                     <Input
                       type="number"
                       value={draft.price}
                       onChange={(e) =>
-                        setDraft({ ...draft, price: Number(e.target.value) })
+                        setDraft({
+                          ...draft,
+                          price: Number(e.target.value),
+                        })
                       }
                     />
                   </FieldLabel>
+
                   <FieldLabel label="Buying price (৳)">
                     <Input
                       type="number"
@@ -422,29 +548,34 @@ export default function AdminProductsPage() {
                       }
                       placeholder="0"
                     />
+
                     <p className="mt-1 text-[11px] text-fg-muted">
                       Wholesale cost per unit. Used to compute gross profit in
                       reports.
                     </p>
                   </FieldLabel>
+
                   <FieldLabel label="Stock">
                     <Input
                       type="number"
                       value={draft.stock}
                       onChange={(e) =>
-                        setDraft({ ...draft, stock: Number(e.target.value) })
+                        setDraft({
+                          ...draft,
+                          stock: Number(e.target.value),
+                        })
                       }
                     />
                   </FieldLabel>
                 </div>
+
                 <FieldLabel label="Product Images">
                   <div className="space-y-3">
-                    {/* Image Previews */}
                     {draft.images.length > 0 && (
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
                         {draft.images.map((url, index) => (
-                          <div key={index} className="relative group">
-                            <div className="aspect-square relative overflow-hidden rounded-lg border border-line bg-bg-soft">
+                          <div key={url} className="group relative">
+                            <div className="relative aspect-square overflow-hidden rounded-lg border border-line bg-bg-soft">
                               <Image
                                 src={url}
                                 alt={`Product image ${index + 1}`}
@@ -452,15 +583,18 @@ export default function AdminProductsPage() {
                                 className="object-cover"
                                 sizes="(max-width: 768px) 50vw, 25vw"
                               />
+
                               <button
                                 type="button"
                                 onClick={() => {
                                   setDraft({
                                     ...draft,
-                                    images: draft.images.filter((_, i) => i !== index),
+                                    images: draft.images.filter(
+                                      (_, i) => i !== index,
+                                    ),
                                   });
                                 }}
-                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                                className="absolute right-1 top-1 rounded-full bg-red-500 p-1 text-white opacity-0 transition-opacity hover:bg-red-600 group-hover:opacity-100"
                               >
                                 <X size={12} />
                               </button>
@@ -470,18 +604,15 @@ export default function AdminProductsPage() {
                       </div>
                     )}
 
-                    {/* Upload Widget */}
                     {uploadPreset ? (
                       <CldUploadWidget
                         uploadPreset={uploadPreset}
-                        onOpen={() =>
-                          setUploadState({ kind: "uploading" })
-                        }
-                        onQueuesEnd={(results: CloudinaryUploadWidgetResults) => {
+                        onOpen={() => setUploadState({ kind: "uploading" })}
+                        onQueuesEnd={(
+                          results: CloudinaryUploadWidgetResults,
+                        ) => {
                           const info = results?.info;
-                          // Cloudinary fires this once the entire batch finishes.
-                          // We rely on each individual onSuccess to push URLs;
-                          // here we just clear the uploading state.
+
                           if (info && typeof info === "object") {
                             // no-op
                           }
@@ -495,12 +626,14 @@ export default function AdminProductsPage() {
                             typeof result.info.secure_url === "string"
                           ) {
                             const url = result.info.secure_url;
+
                             setDraft((d) => ({
                               ...d,
                               images: d.images.includes(url)
                                 ? d.images
                                 : [...d.images, url],
                             }));
+
                             setUploadState((s) => ({
                               kind: "success",
                               count: s.kind === "success" ? s.count + 1 : 1,
@@ -511,15 +644,22 @@ export default function AdminProductsPage() {
                           const message =
                             typeof error === "string"
                               ? error
-                              : (error as { statusText?: string })?.statusText ??
+                              : (error as { statusText?: string })
+                                  ?.statusText ??
                                 "Upload failed. Please try again.";
+
                           setUploadState({ kind: "error", message });
                         }}
                         options={{
                           maxFiles: 10,
-                          maxFileSize: 5_000_000, // 5MB — also enforced server-side by Cloudinary
+                          maxFileSize: 5_000_000,
                           resourceType: "image",
-                          clientAllowedFormats: ["jpg", "jpeg", "png", "webp"],
+                          clientAllowedFormats: [
+                            "jpg",
+                            "jpeg",
+                            "png",
+                            "webp",
+                          ],
                           multiple: true,
                         }}
                       >
@@ -534,6 +674,7 @@ export default function AdminProductsPage() {
                             className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-line bg-bg-soft py-8 text-sm text-fg-muted transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50"
                           >
                             <Upload size={20} />
+
                             {isLoading || uploadState.kind === "uploading"
                               ? "Uploading…"
                               : "Click to upload images"}
@@ -542,7 +683,11 @@ export default function AdminProductsPage() {
                       </CldUploadWidget>
                     ) : (
                       <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                        <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                        <AlertCircle
+                          size={14}
+                          className="mt-0.5 flex-shrink-0"
+                        />
+
                         <div>
                           Image upload is disabled — the{" "}
                           <code className="font-mono">
@@ -561,6 +706,7 @@ export default function AdminProductsPage() {
                         Cloudinary.
                       </div>
                     )}
+
                     {uploadState.kind === "error" && (
                       <div className="flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
                         <AlertCircle size={14} />
@@ -569,31 +715,42 @@ export default function AdminProductsPage() {
                     )}
 
                     <p className="text-xs text-fg-muted">
-                      Upload up to 10 images. Max 5MB each. Supported formats: JPG, PNG, WebP.
+                      Upload up to 10 images. Max 5MB each. Supported formats:
+                      JPG, PNG, WebP.
                     </p>
                   </div>
                 </FieldLabel>
+
                 <FieldLabel label="Description">
                   <Textarea
                     className="h-20"
                     value={draft.description}
                     onChange={(e) =>
-                      setDraft({ ...draft, description: e.target.value })
+                      setDraft({
+                        ...draft,
+                        description: e.target.value,
+                      })
                     }
                   />
                 </FieldLabel>
+
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={draft.featured}
                     onChange={(e) =>
-                      setDraft({ ...draft, featured: e.target.checked })
+                      setDraft({
+                        ...draft,
+                        featured: e.target.checked,
+                      })
                     }
                   />
                   Featured on landing page
                 </label>
+
                 {error && <p className="text-sm text-red-600">{error}</p>}
               </div>
+
               <div className="mt-6 flex justify-end gap-2">
                 <Button
                   variant="ghost"
@@ -602,7 +759,16 @@ export default function AdminProductsPage() {
                 >
                   Cancel
                 </Button>
-                <Button onClick={save} disabled={busy || !draft.title}>
+
+                <Button
+                  onClick={save}
+                  disabled={
+                    busy ||
+                    !draft.title.trim() ||
+                    !draft.category ||
+                    categoriesLoading
+                  }
+                >
                   {busy ? "Saving…" : editing ? "Save changes" : "Create"}
                 </Button>
               </div>

@@ -164,7 +164,7 @@ export default function CouponsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="min-w-[820px] w-full text-sm">
               <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
                   <th className="px-4 py-3">Code</th>
@@ -243,7 +243,7 @@ export default function CouponsPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-3 py-6 backdrop-blur-sm sm:p-4"
             onClick={() => !busy && setOpenCreate(false)}
           >
             <motion.div
@@ -252,7 +252,7 @@ export default function CouponsPage() {
               exit={{ y: 20, opacity: 0 }}
               transition={{ type: "spring", damping: 24 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl"
+              className="w-full max-w-lg rounded-2xl bg-white p-4 shadow-xl sm:p-6"
             >
               <h2 className="mb-4 text-xl font-semibold">
                 {editing ? `Edit ${editing.code}` : "New coupon"}
@@ -268,7 +268,7 @@ export default function CouponsPage() {
                     placeholder="WELCOME10"
                   />
                 </FieldLabel>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <FieldLabel label="Type">
                     <Select
                       value={draft.type}
@@ -297,7 +297,7 @@ export default function CouponsPage() {
                     />
                   </FieldLabel>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <FieldLabel label="Min order (৳)">
                     <Input
                       type="number"
@@ -324,7 +324,7 @@ export default function CouponsPage() {
                     />
                   </FieldLabel>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <FieldLabel label="Starts">
                     <Input
                       type="date"

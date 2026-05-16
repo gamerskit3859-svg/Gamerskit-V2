@@ -2,7 +2,7 @@
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { optimizeCloudinaryImage } from "@/lib/images";
 import { LinkButton } from "@/components/ui";
 
 interface HeroImage {
@@ -38,29 +38,15 @@ const FALLBACK_IMAGES: HeroImage[] = [
 
 const SLIDE_INTERVAL_MS = 5500;
 
-export function Hero() {
-  const [images, setImages] = useState<HeroImage[]>([]);
+export function Hero({
+  initialImages = FALLBACK_IMAGES,
+}: {
+  initialImages?: HeroImage[];
+}) {
+  const [images] = useState<HeroImage[]>(
+    initialImages.length > 0 ? initialImages : FALLBACK_IMAGES,
+  );
   const [index, setIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .getHeroImages()
-      .then((result) => {
-        if (!cancelled) setImages(result.items);
-      })
-      .catch((err) => {
-        console.error("Failed to load hero images:", err);
-        if (!cancelled) setImages(FALLBACK_IMAGES);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (images.length === 0) return;
@@ -70,23 +56,23 @@ export function Hero() {
     return () => clearInterval(id);
   }, [images]);
 
-  if (loading || images.length === 0) {
+  if (images.length === 0) {
     return (
-      <section className="relative h-screen w-full overflow-hidden bg-black -mt-[76px]">
+      <section className="relative h-screen w-full overflow-hidden bg-black -mt-[86px]">
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-black/85" />
       </section>
     );
   }
 
   return (
-    <section className="relative h-screen w-full overflow-hidden bg-black -mt-[76px]">
-      {images.map((src, i) => (
+    <section className="relative h-screen w-full overflow-hidden bg-black -mt-[86px]">
+      {images.slice(index, index + 1).map((src) => (
         <motion.div
           key={src._id}
           initial={false}
           animate={{
-            opacity: i === index ? 1 : 0,
-            scale: i === index ? 1.04 : 1,
+            opacity: 1,
+            scale: 1.04,
           }}
           transition={{
             opacity: { duration: 1.4 },
@@ -95,10 +81,10 @@ export function Hero() {
           className="absolute inset-0"
         >
           <Image
-            src={src.imageUrl}
+            src={optimizeCloudinaryImage(src.imageUrl, "f_auto,q_auto,c_fill,w_1920")}
             alt=""
             fill
-            priority={i === 0}
+            priority={index === 0}
             sizes="100vw"
             className="object-cover"
           />

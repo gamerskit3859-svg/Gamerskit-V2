@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { SortOrder } from "mongoose";
 import { ProductModel } from "../models/Product.js";
 import { CategoryModel } from "../models/Category.js";
 import { adminRequired } from "../lib/auth.js";
@@ -10,12 +11,12 @@ router.get("/", async (req, res) => {
   const filter: Record<string, unknown> = {};
   
   if (category && category !== "all") {
-    // Try to find category by slug first
-    const categoryDoc = await CategoryModel.findOne({ slug: category });
+    const categoryDoc = await CategoryModel.findOne({ slug: category })
+      .select("_id")
+      .lean();
     if (categoryDoc) {
       filter.category = categoryDoc._id;
     } else {
-      // Fallback to string comparison for backward compatibility
       filter.$or = [
         { category: category },
         { categorySlug: category }
@@ -27,12 +28,15 @@ router.get("/", async (req, res) => {
   if (q) filter.$text = { $search: q };
   
   const pageNum = Math.max(1, Number(page) || 1);
-  const limitNum = Math.min(Number(limit) || 20, 100);
+  const limitNum = Math.max(1, Math.min(Number(limit) || 20, 100));
   const skip = (pageNum - 1) * limitNum;
+  const sort: Record<string, SortOrder | { $meta: "textScore" }> = q
+    ? { score: { $meta: "textScore" }, featured: -1, createdAt: -1 }
+    : { featured: -1, createdAt: -1 };
   
   const [items, total] = await Promise.all([
     ProductModel.find(filter)
-      .sort({ featured: -1, createdAt: -1 })
+      .sort(sort)
       .skip(skip)
       .limit(limitNum)
       .lean(),

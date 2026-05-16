@@ -190,7 +190,7 @@ export default function CustomOrderPage() {
 
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_360px]">
         <Card tone="soft" padding="md">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-semibold">Items</h2>
             <div className="flex gap-2">
               <Button
@@ -292,7 +292,7 @@ export default function CustomOrderPage() {
             </ul>
           )}
 
-          <div className="mt-5 grid grid-cols-2 gap-3 border-t border-line pt-4 lg:grid-cols-4">
+          <div className="mt-5 grid gap-3 border-t border-line pt-4 sm:grid-cols-2 lg:grid-cols-4">
             <NumField
               label="Shipping fee"
               value={shippingFee}
@@ -350,7 +350,7 @@ export default function CustomOrderPage() {
                   setCustomer({ ...customer, address: e.target.value })
                 }
               />
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-2 sm:grid-cols-2">
                 <Input
                   placeholder="District"
                   value={customer.district}
@@ -402,7 +402,7 @@ export default function CustomOrderPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-3 py-10 sm:pt-24"
             onClick={() => setShowSearch(false)}
           >
             <motion.div

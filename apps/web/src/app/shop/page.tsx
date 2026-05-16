@@ -1,5 +1,8 @@
+import { Suspense } from "react";
 import { CategoryNav } from "@/components/CategoryNav";
 import { ProductListing } from "@/components/ProductListing";
+import { ShopBanner, ShopBannerLoading } from "@/components/ShopBanner";
+import { api } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -7,20 +10,24 @@ export const metadata = {
   title: "Shop everything",
 };
 
-export default function ShopPage({
+export default async function ShopPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string }> | Promise<{ [key: string]: string | string[] | undefined }>;
+  searchParams:
+    | Promise<{ category?: string }>
+    | Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  // searchParams is async in Next.js App Router
-  const getParams = async () => {
-    const params = await searchParams;
-    return params as { category?: string };
-  };
-  
+  const categories = await api
+    .listCategories()
+    .then((r) => r.items)
+    .catch(() => []);
+
   return (
     <>
-      <CategoryNav />
+      <Suspense fallback={<ShopBannerLoading />}>
+        <ShopBanner />
+      </Suspense>
+      <CategoryNav initialCategories={categories} />
       <ShopContent searchParams={searchParams} />
     </>
   );
@@ -29,7 +36,9 @@ export default function ShopPage({
 async function ShopContent({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string }> | Promise<{ [key: string]: string | string[] | undefined }>;
+  searchParams:
+    | Promise<{ category?: string }>
+    | Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const params = await searchParams;
   const category = (params as { category?: string }).category;

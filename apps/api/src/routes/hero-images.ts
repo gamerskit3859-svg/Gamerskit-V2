@@ -40,7 +40,6 @@ router.post("/", adminRequired, async (req, res) => {
       return;
     }
 
-    // If order is not provided, set it to max order + 1
     let finalOrder = order;
     if (finalOrder === undefined) {
       const maxOrder = await HeroImageModel.findOne().sort({ order: -1 }).lean();

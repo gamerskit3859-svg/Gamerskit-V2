@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { setAdminToken } from "@/lib/admin-token";
 import { track } from "@/lib/fb-pixel";
+import type { AuthUser } from "@/types/shared";
 
 interface AuthDrawerProps {
   isOpen: boolean;
@@ -44,18 +45,14 @@ export function AuthDrawer({
 
   useEffect(() => {
     if (isOpen) {
-      setActiveTab(initialTab);
-      setLoginEmail(""); setLoginPassword(""); setLoginError(null);
-      setRegisterName(""); setRegisterEmail(""); setRegisterPhone("");
-      setRegisterPassword(""); setRegisterError(null);
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
     }
     return () => { document.body.style.overflow = ""; };
-  }, [isOpen, initialTab]);
+  }, [isOpen]);
 
-  function redirectByRole(token: string, user: any) {
+  function redirectByRole(token: string, user: AuthUser) {
     setSession({ token, user });
     if (user.role === "admin" || user.role === "staff") {
       setAdminToken(token);
@@ -101,7 +98,7 @@ export function AuthDrawer({
         });
         
         redirectByRole(r.token, r.user);
-      } catch (err) {
+      } catch {
         setError("Google sign-in failed. Please try again.");
       } finally {
         setLoading(false);

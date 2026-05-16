@@ -1,7 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { CldUploadWidget } from "next-cloudinary";
+import {
+  CldUploadWidget,
+  type CloudinaryUploadWidgetResults,
+} from "next-cloudinary";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import {
@@ -131,7 +134,7 @@ export default function AdminCategories() {
         <div key={cat._id}>
           <div
             className={cn(
-              "grid grid-cols-[1fr_2fr_1fr_1fr_80px_80px_80px] items-center gap-4 border-b border-line p-3",
+              "grid min-w-[820px] grid-cols-[1fr_2fr_1fr_1fr_80px_80px_80px] items-center gap-4 border-b border-line p-3",
               level > 0 && "bg-bg-soft pl-12",
             )}
           >
@@ -223,7 +226,7 @@ export default function AdminCategories() {
               {editingId ? "Edit Category" : "Create New Category"}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <FieldLabel label="Slug" required>
                   <Input
                     value={formData.slug}
@@ -283,12 +286,20 @@ export default function AdminCategories() {
                       uploadPreset={
                         process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
                       }
-                      onSuccess={(result: any) => {
+                      onSuccess={(result: CloudinaryUploadWidgetResults) => {
                         if (result.event === "success") {
-                          setFormData({
-                            ...formData,
-                            image: result.info.secure_url,
-                          });
+                          const info = result.info;
+                          if (
+                            info &&
+                            typeof info === "object" &&
+                            "secure_url" in info &&
+                            typeof info.secure_url === "string"
+                          ) {
+                            setFormData({
+                              ...formData,
+                              image: info.secure_url,
+                            });
+                          }
                         }
                       }}
                     >
@@ -320,7 +331,7 @@ export default function AdminCategories() {
                 </motion.div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <FieldLabel label="Icon">
                   <Input
                     value={formData.icon}
@@ -347,7 +358,7 @@ export default function AdminCategories() {
                 </FieldLabel>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <FieldLabel label="Parent Category">
                   <Select
                     value={formData.parentId}
@@ -418,7 +429,7 @@ export default function AdminCategories() {
         </div>
       ) : (
         <Card padding="none" className="overflow-x-auto">
-          <div className="grid grid-cols-[1fr_2fr_1fr_1fr_80px_80px_80px] items-center gap-4 bg-bg-soft p-3 text-sm font-semibold">
+          <div className="grid min-w-[820px] grid-cols-[1fr_2fr_1fr_1fr_80px_80px_80px] items-center gap-4 bg-bg-soft p-3 text-sm font-semibold">
             <div>Slug</div>
             <div>Name</div>
             <div>Status</div>

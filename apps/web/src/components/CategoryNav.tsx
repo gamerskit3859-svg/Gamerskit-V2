@@ -18,26 +18,36 @@ const chipActive = "bg-black text-white";
 const chipIdle =
   "border border-line-strong text-fg-soft hover:text-foreground";
 
-export function CategoryNav({ activeSlug }: { activeSlug?: string }) {
+export function CategoryNav({
+  activeSlug,
+  initialCategories = [],
+}: {
+  activeSlug?: string;
+  initialCategories?: Category[];
+}) {
   const searchParams = useSearchParams();
   const activeCategory = searchParams.get("category") || activeSlug;
   const isAll = !activeCategory;
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<Category[]>(initialCategories);
+  const [loading, setLoading] = useState(initialCategories.length === 0);
 
   useEffect(() => {
+    if (initialCategories.length > 0) return;
+
     async function loadCategories() {
       try {
         const result = await api.listCategories();
         setCategories(result.items);
       } catch (err) {
-        console.error("Failed to load categories:", err);
+        if (process.env.NODE_ENV !== "production") {
+          console.error("Failed to load categories:", err);
+        }
       } finally {
         setLoading(false);
       }
     }
     loadCategories();
-  }, []);
+  }, [initialCategories.length]);
 
   if (loading) {
     return (

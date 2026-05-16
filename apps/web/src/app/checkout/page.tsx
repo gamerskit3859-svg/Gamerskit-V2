@@ -173,13 +173,12 @@ export default function CheckoutPage() {
         currency: "BDT",
         value: order.total,
         orderId: order.orderNumber,
-        contentIds: lines.map((l) => l.productId),
-        items: lines.map((l) => ({
-          id: l.productId,
-          name: l.title,
-          category: l.category,
-          price: l.unitPrice,
-          quantity: l.quantity,
+        contentIds: order.items.map((item) => item.productId ?? item.title),
+        items: order.items.map((item) => ({
+          id: item.productId ?? item.title,
+          name: item.title,
+          price: item.unitPrice,
+          quantity: item.quantity,
         })),
         user: {
           email: form.email || undefined,
