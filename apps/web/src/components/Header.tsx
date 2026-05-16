@@ -5,9 +5,11 @@ import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ShoppingBag, Search, User, Menu, X } from "lucide-react";
+import { ChevronDown, ShoppingBag, Search, User, Menu, X } from "lucide-react";
+import { api, type CategoryItem } from "@/lib/api";
 import { useCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth";
+import { clearAdminToken } from "@/lib/admin-token";
 import { cn } from "@/lib/cn";
 
 const AuthDrawer = dynamic(
@@ -23,10 +25,25 @@ const NAV_LINKS = [
 
 const MD_BREAKPOINT = 768;
 
+type NavCategory = Pick<CategoryItem, "_id" | "name" | "slug" | "active"> & {
+  subcategories?: NavCategory[];
+};
+
+function collectValidCategories(items: NavCategory[]): NavCategory[] {
+  return items.flatMap((item) => {
+    const current = item.active !== false && item.slug ? [item] : [];
+    const children = item.subcategories
+      ? collectValidCategories(item.subcategories)
+      : [];
+    return [...current, ...children];
+  });
+}
+
 export function Header() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const nextParam = searchParams.get("next");
+  const authParam = searchParams.get("auth");
   const count = useCart((s) => s.lines.reduce((n, l) => n + l.quantity, 0));
   const user = useAuth((s) => s.user);
   const clear = useAuth((s) => s.clear);
@@ -38,6 +55,10 @@ export function Header() {
   const [pillStyle, setPillStyle] = useState({ left: 0, width: 0 });
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [authDrawerOpen, setAuthDrawerOpen] = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [categories, setCategories] = useState<NavCategory[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesFailed, setCategoriesFailed] = useState(false);
   const [authDrawerTab, setAuthDrawerTab] = useState<"login" | "register">(
     "login",
   );
@@ -65,6 +86,45 @@ export function Header() {
       document.body.style.overflow = "";
     };
   }, [mobileDrawerOpen]);
+
+  useEffect(() => {
+    if (authParam === "login" && !user) {
+      const id = window.setTimeout(() => {
+        setAuthDrawerTab("login");
+        setAuthDrawerOpen(true);
+      }, 0);
+      return () => window.clearTimeout(id);
+    }
+  }, [authParam, user]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCategories() {
+      setCategoriesLoading(true);
+      setCategoriesFailed(false);
+
+      try {
+        const result = await api.listCategories();
+        if (!cancelled) {
+          setCategories(collectValidCategories(result.items));
+        }
+      } catch {
+        if (!cancelled) {
+          setCategories([]);
+          setCategoriesFailed(true);
+        }
+      } finally {
+        if (!cancelled) setCategoriesLoading(false);
+      }
+    }
+
+    void loadCategories();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function updatePill(index: number) {
     const el = itemRefs.current[index];
@@ -129,6 +189,64 @@ export function Header() {
                   <Link href={link.href}>{link.label}</Link>
                 </li>
               ))}
+              <li
+                onMouseEnter={() => {
+                  setActiveIndex(null);
+                  setCategoriesOpen(true);
+                }}
+                onMouseLeave={() => setCategoriesOpen(false)}
+              >
+                <button
+                  type="button"
+                  className="lg-nav-trigger"
+                  onClick={() => setCategoriesOpen((open) => !open)}
+                  aria-expanded={categoriesOpen}
+                >
+                  Categories
+                  <ChevronDown
+                    size={14}
+                    className={cn("transition-transform", categoriesOpen && "rotate-180")}
+                  />
+                </button>
+                <AnimatePresence>
+                  {categoriesOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 8 }}
+                      transition={{ duration: 0.16 }}
+                      className="absolute left-1/2 top-full z-[700] mt-3 w-64 -translate-x-1/2 rounded-2xl border border-white/70 bg-white/95 p-2 shadow-[0_18px_60px_rgba(0,0,0,0.18)] backdrop-blur-xl"
+                    >
+                      {categoriesLoading ? (
+                        <div className="space-y-2 p-2">
+                          <div className="h-8 animate-pulse rounded-xl bg-gray-100" />
+                          <div className="h-8 animate-pulse rounded-xl bg-gray-100" />
+                          <div className="h-8 animate-pulse rounded-xl bg-gray-100" />
+                        </div>
+                      ) : categories.length === 0 ? (
+                        <div className="rounded-xl px-3 py-4 text-center text-sm text-fg-soft">
+                          {categoriesFailed
+                            ? "Categories could not load."
+                            : "No categories yet."}
+                        </div>
+                      ) : (
+                        <div className="max-h-[320px] overflow-y-auto">
+                          {categories.map((category) => (
+                            <Link
+                              key={category._id}
+                              href={`/shop?category=${encodeURIComponent(category.slug)}`}
+                              onClick={() => setCategoriesOpen(false)}
+                              className="block rounded-xl px-3 py-2 text-sm font-medium text-foreground no-underline hover:bg-bg-soft"
+                            >
+                              {category.name}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </li>
             </ul>
           )}
 
@@ -137,14 +255,7 @@ export function Header() {
               <Search size={16} strokeWidth={1.8} />
             </Link>
 
-            {!isMobile && user?.role === "admin" && (
-              <Link
-                href="/admin"
-                className="hidden items-center rounded-full bg-black px-4 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-white no-underline shadow-[0_12px_28px_rgba(0,0,0,0.16)] transition hover:bg-black/85 md:inline-flex"
-              >
-                Admin Dashboard
-              </Link>
-            )}
+
 
             {!isMobile &&
               (user ? (
@@ -253,6 +364,37 @@ export function Header() {
                       </Link>
                     </li>
                   ))}
+                  <li>
+                    <div className="px-4 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-[0.14em] text-fg-muted">
+                      Categories
+                    </div>
+                    {categoriesLoading ? (
+                      <div className="space-y-2 px-4">
+                        <div className="h-9 animate-pulse rounded-xl bg-bg-soft" />
+                        <div className="h-9 animate-pulse rounded-xl bg-bg-soft" />
+                      </div>
+                    ) : categories.length === 0 ? (
+                      <div className="rounded-xl px-4 py-3 text-sm text-fg-muted">
+                        {categoriesFailed
+                          ? "Categories could not load."
+                          : "No categories yet."}
+                      </div>
+                    ) : (
+                      <ul className="m-0 flex flex-col gap-1 p-0">
+                        {categories.map((category) => (
+                          <li key={category._id}>
+                            <Link
+                              href={`/shop?category=${encodeURIComponent(category.slug)}`}
+                              onClick={() => setMobileDrawerOpen(false)}
+                              className="flex items-center rounded-xl px-4 py-3 text-[15px] font-medium text-foreground hover:bg-bg-soft"
+                            >
+                              {category.name}
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
                 </ul>
               </nav>
 
@@ -273,6 +415,7 @@ export function Header() {
                     <button
                       type="button"
                       onClick={() => {
+                        clearAdminToken();
                         clear();
                         setMobileDrawerOpen(false);
                       }}

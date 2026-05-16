@@ -1,89 +1,137 @@
 import { Router } from "express";
 import { z } from "zod";
-import { adminRequired } from "../lib/auth.js";
+import { adminOnlyRequired } from "../lib/auth.js";
 import { SiteSettingsModel } from "../models/SiteSettings.js";
+import { setPublicCache } from "../lib/http.js";
 
 const router = Router();
 const SETTINGS_KEY = "global";
 
-const DEFAULT_ANNOUNCEMENT = {
-  enabled: true,
-  codText: "Full Cash on Delivery",
-  deliveryText: "Free Delivery All Over Bangladesh",
-  offerText: "Offer ends in",
+type ShopBanner = {
+  _id?: unknown;
+  imageUrl: string;
+  publicId: string;
+  order?: number;
+  isActive?: boolean;
+  createdAt?: Date;
 };
-
-const DEFAULT_SHOP_BANNER = {
-  imageUrl: "",
-  publicId: "",
-};
-
-const announcementSchema = z.object({
-  enabled: z.boolean(),
-  codText: z.string().trim().min(1).max(120),
-  deliveryText: z.string().trim().min(1).max(140),
-  offerText: z.string().trim().min(1).max(100),
-});
 
 const shopBannerSchema = z.object({
-  imageUrl: z.string().trim().url().or(z.literal("")),
+  imageUrl: z.string().trim().url(),
   publicId: z.string().trim().max(240).default(""),
+  order: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
 });
 
 async function getSettings() {
   return SiteSettingsModel.findOneAndUpdate(
     { key: SETTINGS_KEY },
-    {
-      $setOnInsert: {
-        key: SETTINGS_KEY,
-        announcementBar: DEFAULT_ANNOUNCEMENT,
-        shopBanner: DEFAULT_SHOP_BANNER,
-      },
-    },
+    { $setOnInsert: { key: SETTINGS_KEY, shopBanners: [] } },
     { new: true, upsert: true, setDefaultsOnInsert: true },
-  ).lean();
+  );
 }
 
-router.get("/shop-banner", async (_req, res) => {
-  const settings = await getSettings();
-  res.json({ item: settings.shopBanner ?? DEFAULT_SHOP_BANNER });
+async function readSettings() {
+  return SiteSettingsModel.findOne({ key: SETTINGS_KEY }).lean();
+}
+
+function sortBanners<T extends { order?: number; createdAt?: Date }>(items: T[]) {
+  return [...items].sort(
+    (a, b) =>
+      (a.order ?? 0) - (b.order ?? 0) ||
+      new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime(),
+  );
+}
+
+router.get("/shop-banners", async (_req, res) => {
+  const settings = await readSettings();
+  const items = sortBanners(
+    ((settings?.shopBanners ?? []) as ShopBanner[]).filter(
+      (banner) => banner.isActive && banner.imageUrl,
+    ),
+  );
+  setPublicCache(res, 60, 300);
+  res.json({ items });
 });
 
-router.put("/shop-banner", adminRequired, async (req, res) => {
+router.get("/shop-banners/admin/all", adminOnlyRequired, async (_req, res) => {
+  const settings = await getSettings();
+  res.json({ items: sortBanners(settings.shopBanners as ShopBanner[]) });
+});
+
+router.post("/shop-banners", adminOnlyRequired, async (req, res) => {
   const parsed = shopBannerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
 
-  const settings = await SiteSettingsModel.findOneAndUpdate(
-    { key: SETTINGS_KEY },
-    { $set: { key: SETTINGS_KEY, shopBanner: parsed.data } },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
-  ).lean();
-
-  res.json({ item: settings.shopBanner ?? DEFAULT_SHOP_BANNER });
-});
-
-router.get("/announcement-bar", async (_req, res) => {
   const settings = await getSettings();
-  res.json({ item: settings.announcementBar ?? DEFAULT_ANNOUNCEMENT });
+  const maxOrder = (settings.shopBanners as ShopBanner[]).reduce(
+    (max: number, banner: ShopBanner) => Math.max(max, banner.order ?? 0),
+    -1,
+  );
+  settings.shopBanners.push({
+    imageUrl: parsed.data.imageUrl,
+    publicId: parsed.data.publicId,
+    order: parsed.data.order ?? maxOrder + 1,
+    isActive: parsed.data.isActive ?? true,
+  });
+  await settings.save();
+
+  res.status(201).json({ item: settings.shopBanners.at(-1) });
 });
 
-router.put("/announcement-bar", adminRequired, async (req, res) => {
-  const parsed = announcementSchema.safeParse(req.body);
+router.patch("/shop-banners/:id", adminOnlyRequired, async (req, res) => {
+  const parsed = shopBannerSchema.partial().safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
 
-  const settings = await SiteSettingsModel.findOneAndUpdate(
-    { key: SETTINGS_KEY },
-    { $set: { key: SETTINGS_KEY, announcementBar: parsed.data } },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
-  ).lean();
+  const settings = await getSettings();
+  const banner = settings.shopBanners.id(req.params.id);
+  if (!banner) {
+    res.status(404).json({ error: "shop banner not found" });
+    return;
+  }
 
-  res.json({ item: settings.announcementBar });
+  Object.assign(banner, parsed.data);
+  await settings.save();
+  res.json({ item: banner });
+});
+
+router.delete("/shop-banners/:id", adminOnlyRequired, async (req, res) => {
+  const settings = await getSettings();
+  const banner = settings.shopBanners.id(req.params.id);
+  if (!banner) {
+    res.status(404).json({ error: "shop banner not found" });
+    return;
+  }
+
+  banner.deleteOne();
+  await settings.save();
+  res.status(204).end();
+});
+
+router.post("/shop-banners/reorder", adminOnlyRequired, async (req, res) => {
+  const parsed = z
+    .object({
+      order: z.array(z.object({ id: z.string(), order: z.number().int().min(0) })),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const settings = await getSettings();
+  for (const entry of parsed.data.order) {
+    const banner = settings.shopBanners.id(entry.id);
+    if (banner) banner.order = entry.order;
+  }
+  await settings.save();
+  res.json({ items: sortBanners(settings.shopBanners as ShopBanner[]) });
 });
 
 export default router;

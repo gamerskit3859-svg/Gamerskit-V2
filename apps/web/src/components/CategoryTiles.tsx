@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { optimizeCloudinaryImage } from "@/lib/images";
 import { Section } from "@/components/ui";
+import { SectionHeader } from "./SectionHeader";
 
 interface Category {
   _id: string;
@@ -78,12 +79,14 @@ function CategoryTile({ tile, index }: { tile: Tile; index: number }) {
       initial={{ opacity: 0, y: 30 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-100px" }}
-      transition={{ duration: 0.7, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
-    >
+      transition={{
+        duration: 0.7,
+        delay: index * 0.06,
+        ease: [0.16, 1, 0.3, 1],
+      }}>
       <Link
         href={`/shop?category=${tile.slug}`}
-        className="group relative block aspect-[16/10] overflow-hidden rounded-[var(--radius-xl)] bg-black"
-      >
+        className="group relative block aspect-[16/10] overflow-hidden rounded-[var(--radius-xl)] bg-black">
         {tile.featured && (
           <div className="absolute left-3 top-3 z-10 rounded-full bg-yellow-400 px-2 py-1 text-xs font-bold text-black">
             🌟 Featured
@@ -92,7 +95,10 @@ function CategoryTile({ tile, index }: { tile: Tile; index: number }) {
 
         {tile.image && (
           <Image
-            src={optimizeCloudinaryImage(tile.image, "f_auto,q_auto,c_fill,w_900")}
+            src={optimizeCloudinaryImage(
+              tile.image,
+              "f_auto,q_auto,c_fill,w_900",
+            )}
             alt={tile.label}
             fill
             sizes="(max-width: 768px) 100vw, 50vw"
@@ -124,7 +130,9 @@ export function CategoryTiles({
   initialCategories?: Category[];
 }) {
   const initialTiles = sortTiles(
-    initialCategories.filter((c) => !c.parentId && c.featured).map(categoryToTile),
+    initialCategories
+      .filter((c) => !c.parentId && c.featured)
+      .map(categoryToTile),
   );
   const [tiles, setTiles] = useState<Tile[]>(initialTiles);
   const [loading, setLoading] = useState(initialCategories.length === 0);
@@ -163,22 +171,12 @@ export function CategoryTiles({
 
   return (
     <Section spacing="md">
-      <div className="mb-10 flex items-end justify-between">
-        <div>
-          <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
-            Curated
-          </span>
-          <h2 className="mt-2 text-[clamp(36px,5vw,64px)] leading-[1.06] tracking-[-0.035em] font-semibold">
-            Pick your category.
-          </h2>
-        </div>
-        <Link
-          href="/shop"
-          className="hidden text-sm font-medium underline underline-offset-4 md:inline"
-        >
-          See everything →
-        </Link>
-      </div>
+      <SectionHeader
+        eyebrow="Curated"
+        title="Category"
+        linkHref="/shop"
+        linkLabel="See everything"
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {loading

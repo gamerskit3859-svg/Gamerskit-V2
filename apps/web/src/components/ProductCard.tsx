@@ -69,8 +69,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
         delay: Math.min(index * 0.04, 0.3),
         ease: [0.16, 1, 0.3, 1],
       }}
-      className="group flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-line bg-white transition-all duration-300 hover:border-line-strong hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]"
-    >
+      className="group flex flex-col overflow-hidden rounded-lg border border-line bg-white ">
       <Link href={`/product/${product.slug}`} className="block">
         <div className="relative aspect-square w-full overflow-hidden bg-bg-soft">
           {img ? (
@@ -109,8 +108,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
           variant="primary"
           size="sm"
           onClick={handleBuyNow}
-          className="flex-1 text-xs"
-        >
+          className="flex-1 text-xs">
           Buy now
         </Button>
         <Button
@@ -119,8 +117,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
           iconOnly
           onClick={handleAddToCart}
           aria-label={added ? "Added to cart" : "Add to cart"}
-          title={added ? "Added" : "Add to cart"}
-        >
+          title={added ? "Added" : "Add to cart"}>
           <ShoppingBag
             size={15}
             className={added ? "scale-110 transition-transform" : ""}

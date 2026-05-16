@@ -1,14 +1,10 @@
-import { createRequire } from "module";
-import express, { type Express, type RequestHandler } from "express";
+import { createRequire } from "node:module";
+import express, { type Express, type Request, type RequestHandler } from "express";
 import compression from "compression";
 import morgan from "morgan";
 import cors from "cors";
 
 import { errorHandler, notFoundHandler } from "./lib/errors.js";
-
-const require = createRequire(import.meta.url);
-const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
 
 import productsRouter from "./routes/products.js";
 import ordersRouter from "./routes/orders.js";
@@ -21,12 +17,45 @@ import heroImagesRouter from "./routes/hero-images.js";
 import settingsRouter from "./routes/settings.js";
 import fbRouter from "./routes/fb.js";
 
+const require = createRequire(import.meta.url);
+
+type MiddlewareFactory<TOptions = Record<string, unknown>> = (
+  options?: TOptions,
+) => RequestHandler;
+
+type HelmetOptions = {
+  crossOriginResourcePolicy?: boolean;
+  crossOriginOpenerPolicy?: boolean;
+};
+
+type RateLimitOptions = {
+  windowMs: number;
+  max?: number;
+  limit?: number;
+  skip?: (req: Request) => boolean;
+  standardHeaders?: boolean;
+  legacyHeaders?: boolean;
+};
+
+const helmetModule = require("helmet") as {
+  default?: MiddlewareFactory<HelmetOptions>;
+} & MiddlewareFactory<HelmetOptions>;
+const helmet = helmetModule.default ?? helmetModule;
+
+const rateLimitModule = require("express-rate-limit") as {
+  default?: MiddlewareFactory<RateLimitOptions>;
+  rateLimit?: MiddlewareFactory<RateLimitOptions>;
+} & MiddlewareFactory<RateLimitOptions>;
+const rateLimit =
+  rateLimitModule.default ?? rateLimitModule.rateLimit ?? rateLimitModule;
+
 export interface CreateAppOptions {
   beforeRoutes?: RequestHandler;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
   const app = express();
+  const isProduction = process.env.NODE_ENV === "production";
   
   // Important for Vercel and other proxies
   app.set("trust proxy", 1);
@@ -48,8 +77,10 @@ export function createApp(options: CreateAppOptions = {}): Express {
         
         if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
           callback(null, true);
-        } else {
+        } else if (!isProduction) {
           console.warn(`[cors] Rejected origin: ${origin}`);
+          callback(null, false);
+        } else {
           callback(null, false);
         }
       },
@@ -73,14 +104,17 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   // 4) Response compression + request logging.
   app.use(compression());
-  app.use(morgan("tiny"));
+  if (!isProduction) {
+    app.use(morgan("tiny"));
+  }
 
   // 5) Rate limiting on /api/*. Health check stays unmetered.
   app.use(
     "/api/",
     rateLimit({
       windowMs: 60_000,
-      max: 1000, 
+      max: 1000,
+      skip: (req: Request) => req.method === "OPTIONS",
       standardHeaders: true,
       legacyHeaders: false,
     }),

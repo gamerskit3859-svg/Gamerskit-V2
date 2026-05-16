@@ -139,7 +139,7 @@ body {
   height: 58px;
   padding: 0 16px;
   border-radius: 999px;
-  overflow: hidden;
+  overflow: visible;
   background: linear-gradient(
     135deg,
     rgba(255, 255, 255, 0.82),
@@ -204,20 +204,27 @@ body {
   position: relative;
   list-style: none;
 }
-.lg-links a {
+.lg-links a,
+.lg-nav-trigger {
   position: relative;
   z-index: 2;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 8px 15px;
   border-radius: 999px;
+  border: 0;
+  background: transparent;
   font-size: 13px;
   font-weight: 500;
   color: rgba(17, 24, 39, 0.72);
   text-decoration: none;
   white-space: nowrap;
   transition: color 0.2s ease;
+  cursor: pointer;
 }
-.lg-links a:hover { color: #111827; }
+.lg-links a:hover,
+.lg-nav-trigger:hover { color: #111827; }
 
 .lg-pill {
   position: absolute;
@@ -345,6 +352,69 @@ body {
 /* ────────────────────────────────────────────────────────────────────────────
  * Print — /admin/reports → Download PDF
  * ──────────────────────────────────────────────────────────────────────────── */
+/* Global app-router loading screen */
+.gk-loader-shell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 132px;
+  height: 132px;
+  animation: gk-loader-fade 0.28s ease-out both;
+}
+.gk-loader-logo {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 28px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.45));
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  animation:
+    gk-loader-zoom 1.8s ease-in-out infinite,
+    gk-loader-pulse 1.8s ease-in-out infinite;
+}
+.gk-loader-glow {
+  position: absolute;
+  inset: 14px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, rgba(0, 113, 227, 0.26), transparent 62%),
+    radial-gradient(circle, rgba(34, 211, 238, 0.18), transparent 70%);
+  filter: blur(16px);
+  animation: gk-loader-glow 1.8s ease-in-out infinite;
+}
+
+@keyframes gk-loader-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes gk-loader-zoom {
+  0%, 100% { transform: scale(0.96); }
+  50% { transform: scale(1.05); }
+}
+@keyframes gk-loader-pulse {
+  0%, 100% { opacity: 0.82; }
+  50% { opacity: 1; }
+}
+@keyframes gk-loader-glow {
+  0%, 100% { transform: scale(0.92); opacity: 0.55; }
+  50% { transform: scale(1.14); opacity: 0.95; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gk-loader-shell,
+  .gk-loader-logo,
+  .gk-loader-glow {
+    animation: none;
+  }
+}
+
 @media print {
   @page { margin: 12mm 10mm; size: A4; }
   html, body { background: #fff !important; color: #000 !important; }

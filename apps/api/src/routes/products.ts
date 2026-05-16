@@ -3,8 +3,11 @@ import type { SortOrder } from "mongoose";
 import { ProductModel } from "../models/Product.js";
 import { CategoryModel } from "../models/Category.js";
 import { adminRequired } from "../lib/auth.js";
+import { setPublicCache } from "../lib/http.js";
 
 const router = Router();
+const PUBLIC_PRODUCT_FIELDS =
+  "slug title description category categorySlug price compareAtPrice stock images featured createdAt updatedAt";
 
 router.get("/", async (req, res) => {
   const { category, q, featured, page = "1", limit = "20" } = req.query as Record<string, string>;
@@ -39,13 +42,16 @@ router.get("/", async (req, res) => {
       .sort(sort)
       .skip(skip)
       .limit(limitNum)
+      .select(PUBLIC_PRODUCT_FIELDS)
       .lean(),
     ProductModel.countDocuments(filter),
   ]);
   
   const totalPages = Math.ceil(total / limitNum);
   
-  res.json({ 
+  if (!q) setPublicCache(res, 60, 300);
+
+  res.json({
     items, 
     total, 
     page: pageNum, 
@@ -56,11 +62,14 @@ router.get("/", async (req, res) => {
 });
 
 router.get("/:slug", async (req, res) => {
-  const item = await ProductModel.findOne({ slug: req.params.slug }).lean();
+  const item = await ProductModel.findOne({ slug: req.params.slug })
+    .select(PUBLIC_PRODUCT_FIELDS)
+    .lean();
   if (!item) {
     res.status(404).json({ error: "not found" });
     return;
   }
+  setPublicCache(res, 120, 600);
   res.json({ item });
 });
 

@@ -2,8 +2,10 @@
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { optimizeCloudinaryImage } from "@/lib/images";
 import { LinkButton } from "@/components/ui";
+import { cn } from "@/lib/cn";
 
 interface HeroImage {
   _id: string;
@@ -37,6 +39,7 @@ const FALLBACK_IMAGES: HeroImage[] = [
 ];
 
 const SLIDE_INTERVAL_MS = 5500;
+const SWIPE_THRESHOLD = 50;
 
 export function Hero({
   initialImages = FALLBACK_IMAGES,
@@ -47,55 +50,75 @@ export function Hero({
     initialImages.length > 0 ? initialImages : FALLBACK_IMAGES,
   );
   const [index, setIndex] = useState(0);
+  const [isInteracting, setIsInteracting] = useState(false);
 
   useEffect(() => {
-    if (images.length === 0) return;
+    if (images.length <= 1 || isInteracting) return;
     const id = setInterval(() => {
-      setIndex((i) => (i + 1) % images.length);
+      setIndex((current) => (current + 1) % images.length);
     }, SLIDE_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [images]);
+  }, [images.length, isInteracting]);
+
+  function goTo(nextIndex: number) {
+    setIndex((nextIndex + images.length) % images.length);
+  }
+
+  function handleDragEnd(_: unknown, info: { offset: { x: number } }) {
+    setIsInteracting(false);
+    if (Math.abs(info.offset.x) < SWIPE_THRESHOLD) return;
+    goTo(index + (info.offset.x < 0 ? 1 : -1));
+  }
 
   if (images.length === 0) {
     return (
-      <section className="relative h-screen w-full overflow-hidden bg-black -mt-[86px]">
+      <section className="relative h-[75vh] min-h-[560px] w-full overflow-hidden bg-black -mt-[86px] md:h-screen">
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-black/85" />
       </section>
     );
   }
 
   return (
-    <section className="relative h-screen w-full overflow-hidden bg-black -mt-[86px]">
-      {images.slice(index, index + 1).map((src) => (
-        <motion.div
-          key={src._id}
-          initial={false}
-          animate={{
-            opacity: 1,
-            scale: 1.04,
-          }}
-          transition={{
-            opacity: { duration: 1.4 },
-            scale: { duration: 8, ease: "linear" },
-          }}
-          className="absolute inset-0"
-        >
-          <Image
-            src={optimizeCloudinaryImage(src.imageUrl, "f_auto,q_auto,c_fill,w_1920")}
-            alt=""
-            fill
-            priority={index === 0}
-            sizes="100vw"
-            className="object-cover"
-          />
-        </motion.div>
-      ))}
+    <section className="relative h-[75vh] min-h-[560px] w-full overflow-hidden bg-black -mt-[86px] md:h-screen">
+      <motion.div
+        drag={images.length > 1 ? "x" : false}
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.12}
+        onDragStart={() => setIsInteracting(true)}
+        onDragEnd={handleDragEnd}
+        className="absolute inset-0 cursor-grab active:cursor-grabbing"
+      >
+        {images.map((src, i) => (
+          <motion.div
+            key={src._id}
+            initial={false}
+            animate={{
+              opacity: i === index ? 1 : 0,
+              scale: i === index ? 1.04 : 1,
+            }}
+            transition={{
+              opacity: { duration: 1.4 },
+              scale: { duration: 8, ease: "linear" },
+            }}
+            className="absolute inset-0"
+          >
+            <Image
+              src={optimizeCloudinaryImage(src.imageUrl, "f_auto,q_auto,c_fill,w_1920")}
+              alt=""
+              fill
+              priority={i === 0}
+              sizes="100vw"
+              className="object-cover object-center"
+            />
+          </motion.div>
+        ))}
+      </motion.div>
 
       {/* Cinematic gradient overlays */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-black/85" />
-      <div className="absolute inset-0 bg-gradient-to-r from-black/45 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/25 to-black/80" />
+      <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/45 to-transparent" />
 
-      <div className="relative h-full flex flex-col justify-end pb-[14vh] px-5 lg:px-12 max-w-[1280px] mx-auto text-white">
+      <div className="relative mx-auto flex h-full max-w-[1280px] flex-col items-start justify-center px-5 pt-[86px] text-left text-white sm:px-8 lg:px-12">
         <motion.span
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -108,7 +131,7 @@ export function Hero({
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.85, delay: 0.1 }}
-          className="mt-3 max-w-[14ch] text-[clamp(48px,8vw,96px)] leading-[1.04] tracking-[-0.045em] font-semibold"
+          className="mt-3 max-w-[14ch] text-[clamp(40px,8vw,96px)] leading-[1.04] tracking-[-0.045em] font-semibold"
         >
           Built for the players who don&apos;t settle.
         </motion.h1>
@@ -116,7 +139,7 @@ export function Hero({
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.85, delay: 0.2 }}
-          className="mt-5 max-w-xl text-base md:text-lg text-white/80"
+          className="mt-5 max-w-xl text-base text-white/85 md:text-lg"
         >
           High-speed RC drift cars, official F1 and e-sports jerseys, gaming
           gear — delivered free across Bangladesh.
@@ -135,20 +158,44 @@ export function Hero({
           </LinkButton>
         </motion.div>
 
-        <div className="mt-10 flex gap-2">
-          {images.map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => setIndex(i)}
-              aria-label={`Slide ${i + 1}`}
-              className={`h-1 rounded-full transition-all ${
-                i === index ? "w-10 bg-white" : "w-4 bg-white/40"
-              }`}
-            />
-          ))}
-        </div>
+        {images.length > 1 && (
+          <div className="mt-10 flex gap-2">
+            {images.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => goTo(i)}
+                aria-label={`Slide ${i + 1}`}
+                className={cn(
+                  "h-1 rounded-full transition-all",
+                  i === index ? "w-10 bg-white" : "w-4 bg-white/40 hover:bg-white/70",
+                )}
+              />
+            ))}
+          </div>
+        )}
       </div>
+
+      {images.length > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={() => goTo(index - 1)}
+            className="absolute left-3 top-1/2 z-20 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/25 text-white backdrop-blur transition hover:bg-black/40 sm:flex"
+            aria-label="Previous hero slide"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <button
+            type="button"
+            onClick={() => goTo(index + 1)}
+            className="absolute right-3 top-1/2 z-20 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/25 text-white backdrop-blur transition hover:bg-black/40 sm:flex"
+            aria-label="Next hero slide"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </>
+      )}
     </section>
   );
 }

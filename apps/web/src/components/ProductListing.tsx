@@ -3,10 +3,10 @@ import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useInfiniteScroll, useDebouncedSearch } from "@/lib/hooks";
 import { SearchInput } from "./SearchInput";
-import { ProductCard } from "./ProductCard";
 import { track } from "@/lib/fb-pixel";
 import type { Product } from "@/types/shared";
 import { Button, Card, Section } from "@/components/ui";
+import { ProductGrid } from "./ProductGrid";
 
 interface ProductListingProps {
   category?: string;
@@ -53,14 +53,16 @@ function ListingHeader({
           />
         </div>
       )}
-      {countLabel && (
-        <p className="mt-4 text-sm text-fg-soft">{countLabel}</p>
-      )}
+      {countLabel && <p className="mt-4 text-sm text-fg-soft">{countLabel}</p>}
     </div>
   );
 }
 
-export function ProductListing({ category, title, subtitle }: ProductListingProps) {
+export function ProductListing({
+  category,
+  title,
+  subtitle,
+}: ProductListingProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -103,7 +105,9 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
         } else {
           setProducts((prev) => {
             const existingIds = new Set(prev.map((p) => p._id));
-            const newItems = result.items.filter((p) => !existingIds.has(p._id));
+            const newItems = result.items.filter(
+              (p) => !existingIds.has(p._id),
+            );
             return [...prev, ...newItems];
           });
         }
@@ -151,9 +155,7 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
     return (
       <Section width="default" spacing="md">
         <Card tone="soft" padding="lg" className="text-center text-fg-soft">
-          <p>
-            Nothing here yet. Check back later for awesome products!
-          </p>
+          <p>Nothing here yet. Check back later for awesome products!</p>
         </Card>
       </Section>
     );
@@ -172,8 +174,8 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
         />
         <Card tone="soft" padding="lg" className="text-center text-fg-soft">
           <p>
-            No products found for &quot;<strong>{searchQuery}</strong>&quot;. Try
-            different keywords.
+            No products found for &quot;<strong>{searchQuery}</strong>&quot;.
+            Try different keywords.
           </p>
         </Card>
       </Section>
@@ -221,11 +223,11 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
         countLabel={countLabel}
       />
 
-      <div className="grid grid-cols-2 gap-x-5 gap-y-12 md:grid-cols-3 lg:grid-cols-4">
-        {products.map((p, i) => (
-          <ProductCard key={p._id} product={p} index={i} />
-        ))}
-      </div>
+      {products.length > 0 ? (
+        <ProductGrid products={products} />
+      ) : (
+        <EmptyState />
+      )}
 
       {loadingMore && (
         <div className="mt-12 text-center">
@@ -264,5 +266,16 @@ export function ProductListing({ category, title, subtitle }: ProductListingProp
         </div>
       )}
     </Section>
+  );
+}
+
+function EmptyState() {
+  return (
+    <Card
+      tone="soft"
+      padding="lg"
+      className="text-center border-dashed text-fg-soft">
+      <p>No products yet.</p>
+    </Card>
   );
 }

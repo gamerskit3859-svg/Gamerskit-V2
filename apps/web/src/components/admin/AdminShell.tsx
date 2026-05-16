@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState, type FormEvent } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { api } from "@/lib/api";
 import {
@@ -10,7 +10,7 @@ import {
   getAdminToken,
   setAdminToken,
 } from "@/lib/admin-token";
-import { Button, Card, Input, Section } from "@/components/ui";
+import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 
 const NAV = [
@@ -29,107 +29,66 @@ const NAV = [
   { href: "/admin/notifications", label: "Notifications" },
 ];
 
-const DEFAULT_ADMIN_EMAIL = "admin@gamerskit.local";
-const DEFAULT_ADMIN_PASSWORD = "admin123";
-
-function AdminLoginForm({ onSuccess }: { onSuccess: () => void }) {
-  const [email, setEmail] = useState(DEFAULT_ADMIN_EMAIL);
-  const [password, setPassword] = useState(DEFAULT_ADMIN_PASSWORD);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      const { token } = await api.login(email, password);
-      setAdminToken(token);
-      onSuccess();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <Section width="narrow" spacing="lg" className="!max-w-md">
-      <div className="text-center mb-8">
-        <h1 className="text-2xl font-semibold">Admin Login</h1>
-        <p className="text-sm text-fg-muted mt-2">
-          Sign in to access the admin dashboard.
-        </p>
-      </div>
-
-      <Card padding="lg">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <label className="block">
-            <span className="text-xs font-medium text-fg-soft uppercase tracking-[0.18em] mb-2 block">
-              Email
-            </span>
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              className="mt-1"
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-fg-soft uppercase tracking-[0.18em] mb-2 block">
-              Password
-            </span>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-              className="mt-1"
-            />
-          </label>
-
-          {error && (
-            <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
-              {error}
-            </div>
-          )}
-
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Signing in..." : "Sign in"}
-          </Button>
-        </form>
-
-        <div className="mt-6 pt-4 border-t border-line">
-          <div className="text-xs text-fg-muted space-y-1">
-            <div>
-              <strong>Default credentials:</strong>
-            </div>
-            <div>Email: {DEFAULT_ADMIN_EMAIL}</div>
-            <div>Password: {DEFAULT_ADMIN_PASSWORD}</div>
-          </div>
-        </div>
-      </Card>
-    </Section>
-  );
-}
-
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const authToken = useAuth((s) => s.token);
+  const setSession = useAuth((s) => s.setSession);
+  const clearAuth = useAuth((s) => s.clear);
   const [token, setToken] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
+  const [unauthorized, setUnauthorized] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
-    void Promise.resolve().then(() => {
-      const t = getAdminToken();
-      setToken(t);
-      setChecking(false);
-    });
-  }, []);
+    let cancelled = false;
+
+    void (async () => {
+      setChecking(true);
+      setUnauthorized(false);
+
+      const candidate = getAdminToken() ?? authToken;
+      if (!candidate) {
+        if (!cancelled) {
+          setToken(null);
+          setChecking(false);
+        }
+        router.replace(`/?auth=login&next=${encodeURIComponent("/admin")}`);
+        return;
+      }
+
+      try {
+        const { user } = await api.me(candidate);
+        if (cancelled) return;
+
+        if (user.role !== "admin") {
+          clearAdminToken();
+          setToken(null);
+          setUnauthorized(true);
+          setChecking(false);
+          router.replace("/");
+          return;
+        }
+
+        setAdminToken(candidate);
+        setSession({ token: candidate, user });
+        setToken(candidate);
+      } catch {
+        if (!cancelled) {
+          clearAdminToken();
+          clearAuth();
+          setToken(null);
+        }
+        router.replace(`/?auth=login&next=${encodeURIComponent("/admin")}`);
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, clearAuth, router, setSession]);
 
   useEffect(() => {
     void Promise.resolve().then(() => setDrawerOpen(false));
@@ -150,10 +109,18 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (unauthorized) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center text-sm text-fg-muted">
+        Redirecting...
+      </div>
+    );
+  }
+
   if (!token) {
     return (
-      <div className="min-h-screen bg-background">
-        <AdminLoginForm onSuccess={() => setToken(getAdminToken())} />
+      <div className="flex min-h-[60vh] items-center justify-center text-sm text-fg-muted">
+        Opening sign in...
       </div>
     );
   }
@@ -174,8 +141,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               active
                 ? "bg-black text-white"
                 : "text-fg-soft hover:bg-white hover:text-foreground",
-            )}
-          >
+            )}>
             {n.label}
           </Link>
         );
@@ -194,9 +160,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <aside className="hidden min-h-screen flex-col border-r border-line bg-bg-soft lg:flex">
         <div className="p-6">
           <Link
-            href="/admin"
-            className="flex items-center gap-2 font-semibold tracking-tight"
-          >
+            href="/"
+            className="flex items-center gap-2 font-semibold tracking-tight">
             <Image
               src="/brand/logo.png"
               alt=""
@@ -215,15 +180,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <button
             type="button"
             onClick={signOut}
-            className="underline underline-offset-4"
-          >
+            className="underline underline-offset-4">
             Sign out
           </button>
         </div>
       </aside>
 
       <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-line bg-white/90 px-4 backdrop-blur lg:hidden">
-        <Link href="/admin" className="flex min-w-0 items-center gap-2 font-semibold">
+        <Link
+          href="/admin"
+          className="flex min-w-0 items-center gap-2 font-semibold">
           <Image
             src="/brand/logo.png"
             alt=""
@@ -237,8 +203,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           type="button"
           onClick={() => setDrawerOpen(true)}
           className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-bg-soft"
-          aria-label="Open admin navigation"
-        >
+          aria-label="Open admin navigation">
           <Menu size={18} />
         </button>
       </header>
@@ -253,7 +218,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           />
           <aside className="relative flex h-full w-[min(84vw,320px)] flex-col bg-bg-soft shadow-2xl">
             <div className="flex h-16 items-center justify-between border-b border-line px-4">
-              <Link href="/admin" className="flex items-center gap-2 font-semibold">
+              <Link
+                href="/admin"
+                className="flex items-center gap-2 font-semibold">
                 <Image
                   src="/brand/logo.png"
                   alt=""
@@ -267,8 +234,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 type="button"
                 onClick={() => setDrawerOpen(false)}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-line bg-white"
-                aria-label="Close admin navigation"
-              >
+                aria-label="Close admin navigation">
                 <X size={18} />
               </button>
             </div>
@@ -277,8 +243,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={signOut}
-                className="text-sm text-red-600 underline underline-offset-4"
-              >
+                className="text-sm text-red-600 underline underline-offset-4">
                 Sign out
               </button>
             </div>

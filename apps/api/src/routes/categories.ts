@@ -2,8 +2,11 @@ import { Router } from "express";
 import { CategoryModel } from "../models/Category.js";
 import { ProductModel } from "../models/Product.js";
 import { adminRequired } from "../lib/auth.js";
+import { setPublicCache } from "../lib/http.js";
 
 const router = Router();
+const PUBLIC_CATEGORY_FIELDS =
+  "slug name description image icon parentId featured order active productCount createdAt updatedAt";
 
 type CategoryTreeNode = {
   _id: { toString(): string };
@@ -17,6 +20,7 @@ router.get("/", async (req, res) => {
   try {
     const categories = await CategoryModel.find({ active: true })
       .sort({ parentId: 1, order: 1, name: 1 })
+      .select(PUBLIC_CATEGORY_FIELDS)
       .lean();
 
     // Structure categories with their subcategories
@@ -36,7 +40,7 @@ router.get("/", async (req, res) => {
         rootCategories.push(catData);
       }
     });
-
+    setPublicCache(res, 300, 1800);
     res.json({ items: rootCategories });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -50,12 +54,16 @@ router.get("/:id", async (req, res) => {
     let category = null;
 
     // First try to find by slug (more common case)
-    category = await CategoryModel.findOne({ slug: id }).lean();
+    category = await CategoryModel.findOne({ slug: id })
+      .select(PUBLIC_CATEGORY_FIELDS)
+      .lean();
 
     // If not found, try to find by ObjectId (only if it looks like a valid MongoDB ID)
     if (!category && id.match(/^[0-9a-fA-F]{24}$/)) {
       try {
-        category = await CategoryModel.findOne({ _id: id }).lean();
+        category = await CategoryModel.findOne({ _id: id })
+          .select(PUBLIC_CATEGORY_FIELDS)
+          .lean();
       } catch {
         // Ignore cast errors
       }
@@ -72,8 +80,10 @@ router.get("/:id", async (req, res) => {
       active: true,
     })
       .sort({ order: 1, name: 1 })
+      .select(PUBLIC_CATEGORY_FIELDS)
       .lean();
 
+    setPublicCache(res, 300, 1800);
     res.json({ item: { ...category, subcategories } });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

@@ -95,29 +95,30 @@ export interface HeroImageItem {
   updatedAt?: string;
 }
 
-export interface AnnouncementBarSettings {
-  enabled: boolean;
-  codText: string;
-  deliveryText: string;
-  offerText: string;
-}
-
-export interface ShopBannerSettings {
+export interface ShopBannerItem {
+  _id: string;
   imageUrl: string;
   publicId: string;
+  order: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 async function request<T>(
   path: string,
-  init?: RequestInit & { token?: string },
+  init?: RequestInit & { token?: string; next?: { revalidate?: number } },
 ): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("content-type", "application/json");
   if (init?.token) headers.set("authorization", `Bearer ${init.token}`);
+  const method = init?.method ?? "GET";
+  const cache =
+    init?.cache ?? (method === "GET" && !init?.token ? "force-cache" : "no-store");
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
-    cache: init?.cache ?? "no-store",
+    cache,
   });
   if (!res.ok) {
     let body: unknown = null;
@@ -151,12 +152,21 @@ const qs = (params: Record<string, unknown>) => {
 export const api = {
   // === Public ===
   listProducts: (params: { category?: string; q?: string; featured?: boolean; page?: number; limit?: number } = {}) =>
-    request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(`/api/products${qs(params)}`),
-  getProduct: (slug: string) => request<{ item: Product }>(`/api/products/${slug}`),
+    request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(`/api/products${qs(params)}`, {
+      ...(params.q ? { cache: "no-store" as const } : { next: { revalidate: 60 } }),
+    }),
+  getProduct: (slug: string) =>
+    request<{ item: Product }>(`/api/products/${slug}`, {
+      next: { revalidate: 120 },
+    }),
   listCategories: () =>
-    request<{ items: CategoryItem[] }>(`/api/categories`),
+    request<{ items: CategoryItem[] }>(`/api/categories`, {
+      next: { revalidate: 300 },
+    }),
   getCategory: (idOrSlug: string) =>
-    request<{ item: CategoryItem }>(`/api/categories/${idOrSlug}`),
+    request<{ item: CategoryItem }>(`/api/categories/${idOrSlug}`, {
+      next: { revalidate: 300 },
+    }),
   createOrder: (body: unknown, token?: string) =>
     request<{ order: Order; eventId: string }>(`/api/orders`, {
       method: "POST",
@@ -386,12 +396,43 @@ export const api = {
 
   // Hero Images
   getHeroImages: () => request<{ items: HeroImageItem[] }>(`/api/hero-images`),
-  getShopBanner: () =>
-    request<{ item: ShopBannerSettings }>(`/api/settings/shop-banner`),
-  updateShopBanner: (body: ShopBannerSettings, token: string) =>
-    request<{ item: ShopBannerSettings }>(`/api/settings/shop-banner`, {
-      method: "PUT",
+  getShopBanners: () =>
+    request<{ items: ShopBannerItem[] }>(`/api/settings/shop-banners`),
+  listShopBannersAdmin: (token: string) =>
+    request<{ items: ShopBannerItem[] }>(`/api/settings/shop-banners/admin/all`, {
+      token,
+    }),
+  createShopBanner: (
+    body: { imageUrl: string; publicId: string; order?: number; isActive?: boolean },
+    token: string,
+  ) =>
+    request<{ item: ShopBannerItem }>(`/api/settings/shop-banners`, {
+      method: "POST",
       body: JSON.stringify(body),
+      token,
+    }),
+  updateShopBanner: (
+    id: string,
+    body: Partial<{ imageUrl: string; publicId: string; order: number; isActive: boolean }>,
+    token: string,
+  ) =>
+    request<{ item: ShopBannerItem }>(`/api/settings/shop-banners/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      token,
+    }),
+  deleteShopBanner: (id: string, token: string) =>
+    request<void>(`/api/settings/shop-banners/${id}`, {
+      method: "DELETE",
+      token,
+    }),
+  reorderShopBanners: (
+    order: Array<{ id: string; order: number }>,
+    token: string,
+  ) =>
+    request<{ items: ShopBannerItem[] }>(`/api/settings/shop-banners/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ order }),
       token,
     }),
   listHeroImagesAdmin: (token: string) =>
@@ -424,16 +465,6 @@ export const api = {
     request<{ items: HeroImageItem[] }>(`/api/hero-images/reorder`, {
       method: "POST",
       body: JSON.stringify({ order }),
-      token,
-    }),
-
-  // Site Settings
-  getAnnouncementBar: () =>
-    request<{ item: AnnouncementBarSettings }>(`/api/settings/announcement-bar`),
-  updateAnnouncementBar: (body: AnnouncementBarSettings, token: string) =>
-    request<{ item: AnnouncementBarSettings }>(`/api/settings/announcement-bar`, {
-      method: "PUT",
-      body: JSON.stringify(body),
       token,
     }),
 };

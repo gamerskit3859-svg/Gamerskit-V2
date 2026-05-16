@@ -1,16 +1,20 @@
 import { Router } from "express";
 import { HeroImageModel } from "../models/HeroImage.js";
 import { adminRequired } from "../lib/auth.js";
+import { setPublicCache } from "../lib/http.js";
 
 const router = Router();
+const PUBLIC_HERO_FIELDS = "imageUrl publicId order isActive title subtitle link";
 
 // Get all active hero images sorted by order (public)
 router.get("/", async (req, res) => {
   try {
     const images = await HeroImageModel.find({ isActive: true })
       .sort({ order: 1 })
+      .select(PUBLIC_HERO_FIELDS)
       .lean();
 
+    setPublicCache(res, 60, 300);
     res.json({ items: images });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

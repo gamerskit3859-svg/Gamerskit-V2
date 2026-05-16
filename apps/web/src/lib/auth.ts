@@ -16,7 +16,12 @@ export const useAuth = create<AuthState>()(
       token: null,
       user: null,
       setSession: ({ token, user }) => set({ token, user }),
-      clear: () => set({ token: null, user: null }),
+      clear: () => {
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("gk-admin-token");
+        }
+        set({ token: null, user: null });
+      },
     }),
     { name: "gk-auth" },
   ),

@@ -89,6 +89,8 @@ OrderSchema.index({ status: 1, createdAt: -1 });
 OrderSchema.index({ source: 1, createdAt: -1 });
 OrderSchema.index({ userId: 1, createdAt: -1 });
 OrderSchema.index({ "customer.phone": 1, createdAt: -1 });
+OrderSchema.index({ orderNumber: 1, createdAt: -1 });
+OrderSchema.index({ "customer.name": 1 });
 
 export const OrderModel =
   mongoose.models.Order ?? mongoose.model("Order", OrderSchema);

@@ -20,9 +20,8 @@ import {
 } from "lucide-react";
 import {
   api,
-  type AnnouncementBarSettings,
   type HeroImageItem,
-  type ShopBannerSettings,
+  type ShopBannerItem,
 } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { optimizeCloudinaryImage } from "@/lib/images";
@@ -43,13 +42,6 @@ const emptyHeroForm: HeroForm = {
   title: "",
   subtitle: "",
   link: "",
-};
-
-const defaultAnnouncement: AnnouncementBarSettings = {
-  enabled: true,
-  codText: "Full Cash on Delivery",
-  deliveryText: "Free Delivery All Over Bangladesh",
-  offerText: "Offer ends in",
 };
 
 function getUploadInfo(result: CloudinaryUploadWidgetResults) {
@@ -83,17 +75,15 @@ export default function AdminHeroImages() {
   const [showHeroForm, setShowHeroForm] = useState(false);
   const [draggedFrom, setDraggedFrom] = useState<number | null>(null);
 
-  const [shopBanner, setShopBanner] = useState<ShopBannerSettings>({
-    imageUrl: "",
-    publicId: "",
-  });
-  const [announcement, setAnnouncement] =
-    useState<AnnouncementBarSettings>(defaultAnnouncement);
+  const [shopBanners, setShopBanners] = useState<ShopBannerItem[]>([]);
+  const [shopForm, setShopForm] = useState({ imageUrl: "", publicId: "" });
+  const [editingShopId, setEditingShopId] = useState<string | null>(null);
+  const [showShopForm, setShowShopForm] = useState(false);
+  const [draggedShopFrom, setDraggedShopFrom] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [savingHero, setSavingHero] = useState(false);
   const [savingShop, setSavingShop] = useState(false);
-  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -111,14 +101,12 @@ export default function AdminHeroImages() {
     setError(null);
 
     try {
-      const [heroResult, shopResult, announcementResult] = await Promise.all([
+      const [heroResult, shopResult] = await Promise.all([
         api.listHeroImagesAdmin(token),
-        api.getShopBanner(),
-        api.getAnnouncementBar(),
+        api.listShopBannersAdmin(token),
       ]);
       setImages(heroResult.items || []);
-      setShopBanner(shopResult.item);
-      setAnnouncement(announcementResult.item);
+      setShopBanners(shopResult.items || []);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -267,16 +255,30 @@ export default function AdminHeroImages() {
 
   async function saveShopBanner(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !shopBanner.imageUrl) return;
+    if (!token || !shopForm.imageUrl) return;
 
     setSavingShop(true);
     setSuccess(null);
     setError(null);
 
     try {
-      const result = await api.updateShopBanner(shopBanner, token);
-      setShopBanner(result.item);
-      setSuccess("Shop top banner saved.");
+      if (editingShopId) {
+        const result = await api.updateShopBanner(editingShopId, shopForm, token);
+        setShopBanners((prev) =>
+          prev.map((banner) =>
+            banner._id === editingShopId ? result.item : banner,
+          ),
+        );
+      } else {
+        const result = await api.createShopBanner(shopForm, token);
+        setShopBanners((prev) =>
+          [...prev, result.item].sort((a, b) => a.order - b.order),
+        );
+      }
+      setShopForm({ imageUrl: "", publicId: "" });
+      setEditingShopId(null);
+      setShowShopForm(false);
+      setSuccess(editingShopId ? "Shop banner updated." : "Shop banner added.");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -284,26 +286,89 @@ export default function AdminHeroImages() {
     }
   }
 
-  async function saveAnnouncement(e: React.FormEvent) {
-    e.preventDefault();
-    if (!token) return;
-
-    setSavingAnnouncement(true);
+  function startCreateShopBanner() {
+    setShopForm({ imageUrl: "", publicId: "" });
+    setEditingShopId(null);
     setSuccess(null);
+    setShowShopForm(true);
+  }
+
+  function startEditShopBanner(banner: ShopBannerItem) {
+    setShopForm({ imageUrl: banner.imageUrl, publicId: banner.publicId });
+    setEditingShopId(banner._id);
+    setSuccess(null);
+    setShowShopForm(true);
+  }
+
+  async function toggleShopBannerActive(banner: ShopBannerItem) {
+    if (!token) return;
     setError(null);
+    setSuccess(null);
 
     try {
-      const result = await api.updateAnnouncementBar(announcement, token);
-      setAnnouncement(result.item);
-      setSuccess("Announcement bar saved.");
+      const result = await api.updateShopBanner(
+        banner._id,
+        { isActive: !banner.isActive },
+        token,
+      );
+      setShopBanners((prev) =>
+        prev.map((item) => (item._id === banner._id ? result.item : item)),
+      );
+      setSuccess(result.item.isActive ? "Shop banner activated." : "Shop banner hidden.");
     } catch (err) {
       setError((err as Error).message);
-    } finally {
-      setSavingAnnouncement(false);
+    }
+  }
+
+  async function deleteShopBanner(id: string) {
+    if (!token || !confirm("Delete this shop banner?")) return;
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await api.deleteShopBanner(id, token);
+      setShopBanners((prev) => prev.filter((banner) => banner._id !== id));
+      setSuccess("Shop banner deleted.");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  function handleShopDragStart(index: number) {
+    setDraggedShopFrom(index);
+  }
+
+  function handleShopDragOver(index: number) {
+    if (draggedShopFrom === null || draggedShopFrom === index) return;
+
+    setShopBanners((prev) => {
+      const next = [...prev];
+      const [draggedItem] = next.splice(draggedShopFrom, 1);
+      next.splice(index, 0, draggedItem);
+      return next.map((banner, order) => ({ ...banner, order }));
+    });
+    setDraggedShopFrom(index);
+  }
+
+  async function handleShopDragEnd() {
+    setDraggedShopFrom(null);
+    if (!token) return;
+
+    try {
+      const result = await api.reorderShopBanners(
+        shopBanners.map((banner, order) => ({ id: banner._id, order })),
+        token,
+      );
+      setShopBanners(result.items.sort((a, b) => a.order - b.order));
+      setSuccess("Shop banner order saved.");
+    } catch (err) {
+      setError((err as Error).message);
+      void loadData();
     }
   }
 
   const activeCount = images.filter((image) => image.isActive).length;
+  const activeShopCount = shopBanners.filter((banner) => banner.isActive).length;
 
   return (
     <div className="min-h-screen pb-20">
@@ -315,7 +380,7 @@ export default function AdminHeroImages() {
           Hero Section
         </h1>
         <p className="mt-1 text-sm text-fg-soft">
-          Manage home hero slides, the Shop top banner, and the announcement bar.
+          Manage homepage hero slides and the separate Shop banner slider.
         </p>
       </header>
 
@@ -565,165 +630,220 @@ export default function AdminHeroImages() {
         )}
       </Card>
 
-      <Card padding="lg" className="mb-6">
-        <form
-          onSubmit={saveShopBanner}
-          className="grid gap-6 md:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]"
-        >
-          <div>
-            <h2 className="mb-1 text-lg font-semibold tracking-tight">
-              Shop Top Banner
-            </h2>
-            <p className="mb-4 text-sm text-fg-soft">
-              Single image shown at the top of the Shop page only.
-            </p>
-            {loading ? (
-              <div className="aspect-[16/6] animate-pulse rounded-lg bg-bg-soft" />
-            ) : (
-              <FieldLabel label="Shop Banner Image">
-                <CldUploadWidget
-                  uploadPreset={uploadPreset}
-                  options={{
-                    maxFiles: 1,
-                    maxFileSize: 5_000_000,
-                    resourceType: "image",
-                    clientAllowedFormats: ["jpg", "jpeg", "png", "webp"],
-                    multiple: false,
-                  }}
-                  onSuccess={(result) => {
-                    const upload = getUploadInfo(result);
-                    if (!upload) return;
-                    setShopBanner(upload);
-                  }}
-                  onError={(uploadError) => {
-                    const message =
-                      typeof uploadError === "string"
-                        ? uploadError
-                        : (uploadError as { statusText?: string })?.statusText ??
-                          "Upload failed. Please try again.";
-                    setError(message);
-                  }}
-                >
-                  {({ open, isLoading }) => (
-                    <button
-                      type="button"
-                      onClick={() => open()}
-                      disabled={!uploadPreset || isLoading}
-                      className="group relative flex aspect-[16/6] w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-line bg-bg-soft text-sm text-fg-muted transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {shopBanner.imageUrl ? (
-                        <Image
-                          src={optimizeCloudinaryImage(
-                            shopBanner.imageUrl,
-                            "f_auto,q_auto,c_fill,w_1600",
-                          )}
-                          alt="Shop banner preview"
-                          fill
-                          sizes="(max-width: 768px) 100vw, 70vw"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <span className="flex items-center gap-2">
-                          <ImageIcon size={18} />
-                          {uploadPreset ? "Upload shop banner" : "Cloudinary upload is disabled"}
-                        </span>
-                      )}
-                    </button>
-                  )}
-                </CldUploadWidget>
-              </FieldLabel>
-            )}
-          </div>
-          <div className="flex flex-col justify-end gap-3">
-            <p className="rounded-lg border border-line bg-bg-soft p-3 text-sm text-fg-soft">
-              This does not change homepage hero slides.
-            </p>
-            <Button
-              type="submit"
-              disabled={loading || savingShop || !shopBanner.imageUrl}
-              className="w-full justify-center"
-            >
-              <Save size={18} />
-              {savingShop ? "Saving..." : "Save shop banner"}
-            </Button>
-          </div>
-        </form>
-      </Card>
-
       <Card padding="lg">
-        <form onSubmit={saveAnnouncement} className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight">
-                Announcement Bar
-              </h2>
-              <p className="mt-1 text-sm text-fg-soft">
-                Controls the global top bar and daily countdown text.
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">
+              Shop Banner Slider
+            </h2>
+            <p className="mt-1 text-sm text-fg-soft">
+              Multiple Shop page banners. Active banners appear in the Shop slider only.
+            </p>
+            <div className="mt-4 grid gap-2 text-sm text-fg-soft md:grid-cols-3">
+              <p className="rounded-lg border border-line bg-bg-soft p-3">
+                Recommended size: 1920x600px or 1600x500px. Use JPG/WebP under 500KB.
+              </p>
+              <p className="rounded-lg border border-line bg-bg-soft p-3">
+                Desktop preview ratio: wide banner around 16:5 to 16:4.
+              </p>
+              <p className="rounded-lg border border-line bg-bg-soft p-3">
+                Mobile preview note: keep safe padding because mobile screens are narrow.
               </p>
             </div>
-            <label className="inline-flex items-center gap-3 rounded-full border border-line bg-bg-soft px-4 py-2 text-sm font-medium">
-              <input
-                type="checkbox"
-                checked={announcement.enabled}
-                onChange={(e) =>
-                  setAnnouncement({
-                    ...announcement,
-                    enabled: e.target.checked,
-                  })
-                }
-                className="h-4 w-4"
-              />
-              {announcement.enabled ? "Enabled" : "Disabled"}
-            </label>
           </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm text-fg-soft">
+              Active banners: <strong>{activeShopCount}</strong>
+            </span>
+            <Button type="button" onClick={startCreateShopBanner}>
+              <Plus size={18} />
+              Add banner
+            </Button>
+          </div>
+        </div>
 
-          {loading ? (
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="h-10 animate-pulse rounded bg-bg-soft" />
-              <div className="h-10 animate-pulse rounded bg-bg-soft" />
-              <div className="h-10 animate-pulse rounded bg-bg-soft" />
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-3">
-              <FieldLabel label="COD Text">
-                <Input
-                  value={announcement.codText}
-                  onChange={(e) =>
-                    setAnnouncement({ ...announcement, codText: e.target.value })
-                  }
-                />
-              </FieldLabel>
-              <FieldLabel label="Delivery Text">
-                <Input
-                  value={announcement.deliveryText}
-                  onChange={(e) =>
-                    setAnnouncement({
-                      ...announcement,
-                      deliveryText: e.target.value,
-                    })
-                  }
-                />
-              </FieldLabel>
-              <FieldLabel label="Offer Text">
-                <Input
-                  value={announcement.offerText}
-                  onChange={(e) =>
-                    setAnnouncement({ ...announcement, offerText: e.target.value })
-                  }
-                />
-              </FieldLabel>
-            </div>
-          )}
-
-          <Button
-            type="submit"
-            disabled={loading || savingAnnouncement}
-            className="justify-center"
+        {showShopForm && (
+          <form
+            onSubmit={saveShopBanner}
+            className="mb-8 grid gap-6 rounded-lg border border-line bg-bg-soft p-4 md:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]"
           >
-            <Save size={18} />
-            {savingAnnouncement ? "Saving..." : "Save announcement"}
-          </Button>
-        </form>
+            <FieldLabel label="Shop Banner Image">
+              <CldUploadWidget
+                uploadPreset={uploadPreset}
+                options={{
+                  maxFiles: 1,
+                  maxFileSize: 5_000_000,
+                  resourceType: "image",
+                  clientAllowedFormats: ["jpg", "jpeg", "png", "webp"],
+                  multiple: false,
+                }}
+                onSuccess={(result) => {
+                  const upload = getUploadInfo(result);
+                  if (!upload) return;
+                  setShopForm(upload);
+                }}
+                onError={(uploadError) => {
+                  const message =
+                    typeof uploadError === "string"
+                      ? uploadError
+                      : (uploadError as { statusText?: string })?.statusText ??
+                        "Upload failed. Please try again.";
+                  setError(message);
+                }}
+              >
+                {({ open, isLoading }) => (
+                  <button
+                    type="button"
+                    onClick={() => open()}
+                    disabled={!uploadPreset || isLoading}
+                    className="group relative flex aspect-[16/6] w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-line bg-bg-soft text-sm text-fg-muted transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {shopForm.imageUrl ? (
+                      <Image
+                        src={optimizeCloudinaryImage(
+                          shopForm.imageUrl,
+                          "f_auto,q_auto,c_fill,w_1600",
+                        )}
+                        alt="Shop banner preview"
+                        fill
+                        sizes="(max-width: 768px) 100vw, 70vw"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <ImageIcon size={18} />
+                        {uploadPreset ? "Upload shop banner" : "Cloudinary upload is disabled"}
+                      </span>
+                    )}
+                  </button>
+                )}
+              </CldUploadWidget>
+            </FieldLabel>
+            <div className="flex flex-col justify-end gap-3">
+              <p className="rounded-lg border border-line bg-white p-3 text-sm text-fg-soft">
+                This slider is separate from homepage hero slides.
+              </p>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setShowShopForm(false);
+                    setEditingShopId(null);
+                    setShopForm({ imageUrl: "", publicId: "" });
+                  }}
+                >
+                  <X size={16} />
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={savingShop || !shopForm.imageUrl}>
+                  <Save size={18} />
+                  {savingShop
+                    ? "Saving..."
+                    : editingShopId
+                      ? "Update banner"
+                      : "Create banner"}
+                </Button>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {loading ? (
+          <div className="animate-pulse rounded-lg bg-bg-soft p-12 text-center text-fg-muted">
+            Loading shop banners...
+          </div>
+        ) : shopBanners.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-line p-12 text-center text-sm text-fg-muted">
+            No shop banners yet.
+          </div>
+        ) : (
+          <div className="divide-y divide-line overflow-hidden rounded-lg border border-line">
+            {shopBanners.map((banner, index) => (
+              <div
+                key={banner._id}
+                draggable
+                onDragStart={() => handleShopDragStart(index)}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  handleShopDragOver(index);
+                }}
+                onDragEnd={handleShopDragEnd}
+                className={cn(
+                  "flex flex-col gap-4 bg-white p-4 transition-colors hover:bg-bg-soft sm:flex-row sm:items-center",
+                  draggedShopFrom === index && "bg-blue-50 opacity-40",
+                )}
+              >
+                <div className="hidden cursor-grab text-fg-muted active:cursor-grabbing sm:block">
+                  <GripVertical size={20} />
+                </div>
+                <div className="relative aspect-[16/6] w-full overflow-hidden rounded-lg border border-line bg-black sm:h-20 sm:w-40 sm:flex-shrink-0">
+                  <Image
+                    src={optimizeCloudinaryImage(
+                      banner.imageUrl,
+                      "f_auto,q_auto,c_fit,w_500",
+                    )}
+                    alt=""
+                    fill
+                    sizes="(max-width: 640px) 100vw, 160px"
+                    className="object-contain"
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="truncate font-semibold">
+                      Shop banner {index + 1}
+                    </h3>
+                    <span
+                      className={cn(
+                        "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest",
+                        banner.isActive
+                          ? "border-emerald-100 bg-emerald-50 text-emerald-600"
+                          : "border-line bg-bg-soft text-fg-muted",
+                      )}
+                    >
+                      {banner.isActive ? "Active" : "Hidden"}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate font-mono text-[11px] text-fg-muted">
+                    {banner.publicId || banner.imageUrl}
+                  </p>
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleShopBannerActive(banner)}
+                    className={cn(
+                      "rounded-lg p-2 transition-all",
+                      banner.isActive
+                        ? "text-orange-500 hover:bg-orange-50"
+                        : "text-blue-500 hover:bg-blue-50",
+                    )}
+                    aria-label={banner.isActive ? "Hide banner" : "Activate banner"}
+                  >
+                    {banner.isActive ? <XCircle size={18} /> : <CheckCircle2 size={18} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startEditShopBanner(banner)}
+                    className="rounded-lg p-2 text-fg-muted hover:bg-blue-50 hover:text-blue-600"
+                    aria-label="Edit banner"
+                  >
+                    <Pencil size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteShopBanner(banner._id)}
+                    className="rounded-lg p-2 text-fg-muted hover:bg-red-50 hover:text-red-600"
+                    aria-label="Delete banner"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   );

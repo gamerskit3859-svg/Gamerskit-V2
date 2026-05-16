@@ -27,21 +27,40 @@ export default function TrackPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emptyMessage, setEmptyMessage] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!phone.trim()) return;
+    const query = phone.trim();
+
+    if (!query) {
+      setError(null);
+      setEmptyMessage("Please enter your order phone number to start tracking.");
+      setSearched(false);
+      setOrders([]);
+      return;
+    }
 
     setLoading(true);
     setError(null);
+    setEmptyMessage(null);
     setSearched(true);
 
     try {
-      const result = await api.getOrdersByPhone(phone.trim());
+      const result = await api.getOrdersByPhone(query);
       setOrders(result.orders);
     } catch (err) {
-      setError((err as Error).message);
+      const status = (err as { status?: number }).status;
+      if (status === 404) {
+        setEmptyMessage(
+          "No order found with this tracking information. Please check your order ID or phone number and try again.",
+        );
+      } else {
+        setError(
+          "We could not search orders right now. Please try again in a moment.",
+        );
+      }
       setOrders([]);
     } finally {
       setLoading(false);
@@ -52,6 +71,7 @@ export default function TrackPage() {
     setPhone("");
     setOrders([]);
     setError(null);
+    setEmptyMessage(null);
     setSearched(false);
   }
 
@@ -88,16 +108,14 @@ export default function TrackPage() {
 
       {error && (
         <div className="mx-auto mb-8 max-w-md rounded-lg border border-red-200 bg-red-50 p-4 text-center text-red-700">
-          {error === "not found"
-            ? "No orders found for this phone number."
-            : `Error: ${error}`}
+          {error}
         </div>
       )}
 
-      {searched && !loading && orders.length === 0 && !error && (
+      {(emptyMessage || (searched && !loading && orders.length === 0 && !error)) && (
         <div className="mx-auto mb-8 max-w-md rounded-lg border border-amber-200 bg-amber-50 p-4 text-center text-amber-700">
-          No orders found for this phone number. Please check the number and try
-          again.
+          {emptyMessage ??
+            "No order found with this tracking information. Please check your order ID or phone number and try again."}
         </div>
       )}
 

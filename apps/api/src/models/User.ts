@@ -19,6 +19,9 @@ const UserSchema = new Schema(
   { timestamps: true },
 );
 
+UserSchema.index({ role: 1, createdAt: -1 });
+UserSchema.index({ phone: 1 });
+
 export const UserModel =
   mongoose.models.User ?? mongoose.model("User", UserSchema);
 

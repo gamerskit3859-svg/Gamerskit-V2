@@ -31,8 +31,10 @@ const ProductSchema = new Schema(
 
 ProductSchema.index({ title: "text", description: "text" });
 ProductSchema.index({ featured: 1, createdAt: -1 });
+ProductSchema.index({ createdAt: -1 });
 ProductSchema.index({ category: 1, featured: -1, createdAt: -1 });
 ProductSchema.index({ categorySlug: 1, featured: -1, createdAt: -1 });
+ProductSchema.index({ category: 1, stock: 1, createdAt: -1 });
 ProductSchema.index({ stock: 1 });
 
 export const ProductModel =

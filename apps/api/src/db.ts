@@ -1,18 +1,50 @@
 import mongoose from "mongoose";
 import { env } from "./env.js";
 
-let connected = false;
+type MongooseCache = {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+};
+
+const globalForMongoose = globalThis as typeof globalThis & {
+  __gamerskitMongoose?: MongooseCache;
+};
+
+const cached =
+  globalForMongoose.__gamerskitMongoose ??
+  (globalForMongoose.__gamerskitMongoose = { conn: null, promise: null });
 
 export async function connectDb(): Promise<typeof mongoose> {
-  if (connected) return mongoose;
+  if (cached.conn && mongoose.connection.readyState === 1) {
+    return cached.conn;
+  }
+
   mongoose.set("strictQuery", true);
-  await mongoose.connect(env.MONGODB_URI, {
-    autoIndex: env.NODE_ENV !== "production",
-  });
-  connected = true;
-  console.log(`[db] connected to ${mongoose.connection.host}/${mongoose.connection.name}`);
-  await runMigrations();
-  return mongoose;
+  mongoose.set("bufferCommands", false);
+
+  if (!cached.promise) {
+    cached.promise = mongoose.connect(env.MONGODB_URI, {
+      autoIndex: env.NODE_ENV !== "production",
+      maxPoolSize: env.NODE_ENV === "production" ? 5 : 10,
+      minPoolSize: 0,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 15000,
+      maxIdleTimeMS: 30000,
+    });
+  }
+
+  try {
+    cached.conn = await cached.promise;
+  } catch (err) {
+    cached.promise = null;
+    throw err;
+  }
+
+  if (process.env.RUN_DB_MIGRATIONS === "true") {
+    await runMigrations();
+  }
+
+  return cached.conn;
 }
 
 /**

@@ -54,11 +54,11 @@ export function AuthDrawer({
 
   function redirectByRole(token: string, user: AuthUser) {
     setSession({ token, user });
-    if (user.role === "admin" || user.role === "staff") {
+    if (user.role === "admin") {
       setAdminToken(token);
       router.replace(nextParam ?? "/admin");
     } else {
-      router.replace(nextParam ?? "/account");
+      router.replace(nextParam === "/admin" ? "/account" : nextParam ?? "/account");
     }
     onClose();
   }

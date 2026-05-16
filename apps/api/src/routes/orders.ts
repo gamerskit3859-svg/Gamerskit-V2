@@ -6,8 +6,11 @@ import { ProductModel } from "../models/Product.js";
 import { CouponModel } from "../models/Coupon.js";
 import { adminRequired, verifyToken } from "../lib/auth.js";
 import { hashUserData, newEventId, sendCapiEvent } from "../lib/fb.js";
+import { setPrivateNoStore } from "../lib/http.js";
 
 const router = Router();
+const TRACKING_ORDER_FIELDS =
+  "orderNumber customer.name customer.phone items.title items.image items.unitPrice items.quantity subtotal shippingFee discount total advance remaining paymentMethod paymentStatus status source createdAt updatedAt";
 
 const lineSchema = z.object({
   productId: z.string().optional(),
@@ -90,7 +93,9 @@ router.post("/", async (req, res) => {
       (id): id is string => !!id && mongoose.isValidObjectId(id),
     );
   const products = productIds.length
-    ? await ProductModel.find({ _id: { $in: productIds } }).lean()
+    ? await ProductModel.find({ _id: { $in: productIds } })
+        .select("title images price")
+        .lean()
     : [];
   const productById = new Map(products.map((p) => [String(p._id), p]));
 
@@ -141,22 +146,23 @@ router.post("/", async (req, res) => {
     userId,
   });
 
-  // decrement stock for non-custom lines
-  for (const line of data.items) {
-    if (line.productId && !line.custom) {
-      await ProductModel.findByIdAndUpdate(line.productId, {
-        $inc: { stock: -line.quantity },
-      }).catch(() => null);
-    }
-  }
+  const stockUpdates = data.items
+    .filter((line) => line.productId && !line.custom)
+    .map((line) =>
+      ProductModel.updateOne(
+        { _id: line.productId },
+        { $inc: { stock: -line.quantity } },
+      ).catch(() => null),
+    );
 
-  // increment coupon redemption count
-  if (data.couponCode) {
-    await CouponModel.findOneAndUpdate(
-      { code: data.couponCode.toUpperCase() },
-      { $inc: { redeemed: 1 } },
-    ).catch(() => null);
-  }
+  const couponUpdate = data.couponCode
+    ? CouponModel.findOneAndUpdate(
+        { code: data.couponCode.toUpperCase() },
+        { $inc: { redeemed: 1 } },
+      ).catch(() => null)
+    : null;
+
+  await Promise.all([...stockUpdates, couponUpdate].filter(Boolean));
 
   // Fire CAPI Purchase event (deduplicated with Pixel via eventId)
   const [firstName, ...rest] = data.customer.name.split(" ");
@@ -200,11 +206,14 @@ router.post("/", async (req, res) => {
 });
 
 router.get("/by-number/:orderNumber", async (req, res) => {
-  const order = await OrderModel.findOne({ orderNumber: req.params.orderNumber }).lean();
+  const order = await OrderModel.findOne({ orderNumber: req.params.orderNumber })
+    .select(TRACKING_ORDER_FIELDS)
+    .lean();
   if (!order) {
     res.status(404).json({ error: "not found" });
     return;
   }
+  setPrivateNoStore(res);
   res.json({ order });
 });
 
@@ -212,11 +221,13 @@ router.get("/by-phone/:phone", async (req, res) => {
   const orders = await OrderModel.find({ "customer.phone": req.params.phone })
     .sort({ createdAt: -1 })
     .limit(10)
+    .select(TRACKING_ORDER_FIELDS)
     .lean();
   if (orders.length === 0) {
     res.status(404).json({ error: "not found" });
     return;
   }
+  setPrivateNoStore(res);
   res.json({ orders });
 });
 

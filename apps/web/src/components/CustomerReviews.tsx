@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { Quote, Star } from "lucide-react";
 import { Section } from "./ui";
+import { SectionHeader } from "./SectionHeader";
 
 const reviews = [
   {
@@ -81,14 +82,7 @@ export function CustomerReviews() {
   return (
     <Section spacing="md">
       {/* Category Header Section */}
-      <div className="pb-10">
-        <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">
-          Curated
-        </span>
-        <h2 className="mt-2 text-[clamp(36px,5vw,64px)] font-bold leading-[1.06] tracking-[-0.035em] text-neutral-950">
-          Pick your category.
-        </h2>
-      </div>
+      <SectionHeader eyebrow="Reviews" title="Customer Feedback." />
 
       <div className="relative z-10 text-center 2xl:container 2xl:mx-auto">
         <div className="overflow-hidden">
@@ -104,7 +98,11 @@ export function CustomerReviews() {
                 style={{ width: `${100 / slidesPerView}%` }}>
                 {/* Pure White Background Card with clean Black and Gray elements */}
                 <div className="flex h-full min-h-[280px] flex-col rounded-2xl border border-neutral-200 bg-white p-6 text-left">
-                  <Quote className="mb-4 h-8 w-8 text-neutral-950" />
+                  {/* Updated Quote icon with fill */}
+                  <Quote
+                    className="mb-4 h-8 w-8 text-neutral-950"
+                    fill="currentColor"
+                  />
                   <p className="flex-grow text-base italic leading-relaxed text-neutral-800">
                     &quot;{item.review}&quot;
                   </p>
