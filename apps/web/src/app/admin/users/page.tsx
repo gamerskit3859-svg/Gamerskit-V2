@@ -2,18 +2,14 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { getAdminToken } from "@/lib/admin-token";
-import { API_BASE } from "@/lib/api";
+import { api } from "@/lib/api";
 import { Button, Card } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import type { AdminUserSummary } from "@/types/shared";
 
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: "customer" | "staff" | "admin";
+type User = AdminUserSummary & {
   avatar?: string;
-  createdAt: string;
-}
+};
 
 const ROLE_DESCRIPTIONS: Record<User["role"], string> = {
   customer: "Regular customer account",
@@ -41,12 +37,8 @@ export default function AdminUsersPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${API_BASE}/api/admin/users`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!response.ok) throw new Error("Failed to load users");
-        const data = await response.json();
-        setUsers(data.items || []);
+        const data = await api.users({ role: "all" }, token);
+        setUsers((data.items || []) as User[]);
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -60,21 +52,9 @@ export default function AdminUsersPage() {
     const token = getAdminToken();
     if (!token) return;
     try {
-      const response = await fetch(
-        `${API_BASE}/api/admin/users/${userId}/role`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ role }),
-        },
-      );
-      if (!response.ok) throw new Error("Failed to update role");
-      const data = await response.json();
+      const data = await api.updateUser(userId, { role }, token);
       setUsers(
-        users.map((u) => (u.id === userId ? { ...u, role: data.user.role } : u)),
+        users.map((u) => (u._id === userId ? { ...u, role: data.item.role } : u)),
       );
       setSelectedUser(null);
     } catch (err) {
@@ -155,7 +135,7 @@ export default function AdminUsersPage() {
                 ) : (
                   users.map((user) => (
                     <tr
-                      key={user.id}
+                      key={user._id}
                       className="transition-colors hover:bg-bg-soft"
                     >
                       <td className="whitespace-nowrap px-6 py-4">
@@ -257,7 +237,7 @@ export default function AdminUsersPage() {
                 Cancel
               </Button>
               <Button
-                onClick={() => handleRoleChange(selectedUser.id, newRole)}
+                onClick={() => handleRoleChange(selectedUser._id, newRole)}
                 className="flex-1"
               >
                 Update role

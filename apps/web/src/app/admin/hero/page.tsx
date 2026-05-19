@@ -15,6 +15,7 @@ import {
   Plus,
   Save,
   Trash2,
+  Video,
   X,
   XCircle,
 } from "lucide-react";
@@ -29,7 +30,8 @@ import { Button, Card, FieldLabel, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
 type HeroForm = {
-  imageUrl: string;
+  mediaUrl: string;
+  mediaType: "image" | "video";
   publicId: string;
   title: string;
   subtitle: string;
@@ -37,20 +39,31 @@ type HeroForm = {
 };
 
 const emptyHeroForm: HeroForm = {
-  imageUrl: "",
+  mediaUrl: "",
+  mediaType: "image",
   publicId: "",
   title: "",
   subtitle: "",
   link: "",
 };
 
-function getUploadInfo(result: CloudinaryUploadWidgetResults) {
+function getUploadInfo(result: CloudinaryUploadWidgetResults): {
+  imageUrl: string;
+  mediaUrl: string;
+  mediaType: "image" | "video";
+  publicId: string;
+} | null {
   const info = result.info;
   if (!info || typeof info !== "object") return null;
   if (!("secure_url" in info) || typeof info.secure_url !== "string") return null;
 
   return {
     imageUrl: info.secure_url,
+    mediaUrl: info.secure_url,
+    mediaType:
+      "resource_type" in info && info.resource_type === "video"
+        ? "video"
+        : "image",
     publicId:
       "public_id" in info && typeof info.public_id === "string"
         ? info.public_id
@@ -60,7 +73,8 @@ function getUploadInfo(result: CloudinaryUploadWidgetResults) {
 
 function heroToForm(image: HeroImageItem): HeroForm {
   return {
-    imageUrl: image.imageUrl,
+    mediaUrl: image.mediaUrl || image.imageUrl,
+    mediaType: image.mediaType || "image",
     publicId: image.publicId,
     title: image.title,
     subtitle: image.subtitle,
@@ -140,7 +154,7 @@ export default function AdminHeroImages() {
 
   async function saveHeroSlide(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !heroForm.imageUrl) return;
+    if (!token || !heroForm.mediaUrl) return;
 
     setSavingHero(true);
     setSuccess(null);
@@ -148,7 +162,9 @@ export default function AdminHeroImages() {
 
     try {
       const body = {
-        imageUrl: heroForm.imageUrl,
+        imageUrl: heroForm.mediaUrl,
+        mediaUrl: heroForm.mediaUrl,
+        mediaType: heroForm.mediaType,
         publicId: heroForm.publicId || "hero-slide",
         title: heroForm.title,
         subtitle: heroForm.subtitle,
@@ -425,14 +441,14 @@ export default function AdminHeroImages() {
             onSubmit={saveHeroSlide}
             className="mb-8 grid gap-6 rounded-lg border border-line bg-bg-soft p-4 md:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]"
           >
-            <FieldLabel label="Slide Image">
+            <FieldLabel label="Slide Media">
               <CldUploadWidget
                 uploadPreset={uploadPreset}
                 options={{
                   maxFiles: 1,
-                  maxFileSize: 5_000_000,
-                  resourceType: "image",
-                  clientAllowedFormats: ["jpg", "jpeg", "png", "webp"],
+                  maxFileSize: 30_000_000,
+                  resourceType: "auto",
+                  clientAllowedFormats: ["jpg", "jpeg", "png", "webp", "mp4", "webm", "mov"],
                   multiple: false,
                 }}
                 onSuccess={(result) => {
@@ -456,21 +472,33 @@ export default function AdminHeroImages() {
                     disabled={!uploadPreset || isLoading}
                     className="group relative flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-line bg-white text-sm text-fg-muted transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {heroForm.imageUrl ? (
-                      <Image
-                        src={optimizeCloudinaryImage(
-                          heroForm.imageUrl,
-                          "f_auto,q_auto,c_fill,w_1200",
-                        )}
-                        alt="Home hero slide preview"
-                        fill
-                        sizes="(max-width: 768px) 100vw, 70vw"
-                        className="object-cover"
-                      />
+                    {heroForm.mediaUrl ? (
+                      heroForm.mediaType === "video" ? (
+                        <video
+                          src={heroForm.mediaUrl}
+                          className="h-full w-full object-cover"
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                        />
+                      ) : (
+                        <Image
+                          src={optimizeCloudinaryImage(
+                            heroForm.mediaUrl,
+                            "f_auto,q_auto,c_fill,w_1200",
+                          )}
+                          alt="Home hero slide preview"
+                          fill
+                          sizes="(max-width: 768px) 100vw, 70vw"
+                          className="object-cover"
+                        />
+                      )
                     ) : (
                       <span className="flex items-center gap-2">
                         <ImageIcon size={18} />
-                        {uploadPreset ? "Upload slide image" : "Cloudinary upload is disabled"}
+                        <Video size={18} />
+                        {uploadPreset ? "Upload slide image or video" : "Cloudinary upload is disabled"}
                       </span>
                     )}
                   </button>
@@ -511,7 +539,7 @@ export default function AdminHeroImages() {
                   <X size={16} />
                   Cancel
                 </Button>
-                <Button type="submit" disabled={savingHero || !heroForm.imageUrl}>
+                <Button type="submit" disabled={savingHero || !heroForm.mediaUrl}>
                   <Save size={18} />
                   {savingHero
                     ? "Saving..."
@@ -554,16 +582,29 @@ export default function AdminHeroImages() {
                 </div>
 
                 <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-line bg-bg-soft sm:h-20 sm:w-32 sm:flex-shrink-0">
-                  <Image
-                    src={optimizeCloudinaryImage(
-                      image.imageUrl,
-                      "f_auto,q_auto,c_fill,w_500",
-                    )}
-                    alt=""
-                    fill
-                    sizes="(max-width: 640px) 100vw, 128px"
-                    className="object-cover"
-                  />
+                  {(image.mediaType || "image") === "video" ? (
+                    <video
+                      src={image.mediaUrl || image.imageUrl}
+                      className="h-full w-full object-cover"
+                      muted
+                      playsInline
+                      preload="metadata"
+                    />
+                  ) : (
+                    <Image
+                      src={optimizeCloudinaryImage(
+                        image.mediaUrl || image.imageUrl,
+                        "f_auto,q_auto,c_fill,w_500",
+                      )}
+                      alt=""
+                      fill
+                      sizes="(max-width: 640px) 100vw, 128px"
+                      className="object-cover"
+                    />
+                  )}
+                  <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-white">
+                    {image.mediaType || "image"}
+                  </span>
                 </div>
 
                 <div className="min-w-0 flex-1">
@@ -641,7 +682,7 @@ export default function AdminHeroImages() {
             </p>
             <div className="mt-4 grid gap-2 text-sm text-fg-soft md:grid-cols-3">
               <p className="rounded-lg border border-line bg-bg-soft p-3">
-                Recommended size: 1920x600px or 1600x500px. Use JPG/WebP under 500KB.
+                Recommended size: 1920x600px or 1600x500px. Keep important content centered with safe padding. Use JPG/WebP under 500KB.
               </p>
               <p className="rounded-lg border border-line bg-bg-soft p-3">
                 Desktop preview ratio: wide banner around 16:5 to 16:4.
@@ -707,7 +748,7 @@ export default function AdminHeroImages() {
                         alt="Shop banner preview"
                         fill
                         sizes="(max-width: 768px) 100vw, 70vw"
-                        className="object-cover"
+                        className="object-contain"
                       />
                     ) : (
                       <span className="flex items-center gap-2">

@@ -14,6 +14,7 @@ import { Upload, X, AlertCircle, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
+import { useDebouncedSearch } from "@/lib/hooks";
 import type { Product } from "@/types/shared";
 import {
   Button,
@@ -49,7 +50,10 @@ interface DraftProduct {
   stock: number;
   description: string;
   images: string[];
-  featured: boolean;
+  variants: NonNullable<Product["variants"]>;
+  isFeatured: boolean;
+  isBestSelling: boolean;
+  isNewArrival: boolean;
 }
 
 const blank = (firstCategorySlug?: string): DraftProduct => ({
@@ -61,8 +65,13 @@ const blank = (firstCategorySlug?: string): DraftProduct => ({
   stock: 0,
   description: "",
   images: [],
-  featured: false,
+  variants: [],
+  isFeatured: false,
+  isBestSelling: false,
+  isNewArrival: false,
 });
+
+const PAGE_SIZE = 30;
 
 function getProductCategoryValue(category: ProductCategory): string {
   if (!category) return "";
@@ -92,7 +101,10 @@ function fromProduct(p: Product, categories: Category[]): DraftProduct {
     stock: p.stock,
     description: p.description ?? "",
     images: p.images ?? [],
-    featured: !!p.featured,
+    variants: p.variants ?? [],
+    isFeatured: !!(p.isFeatured ?? p.featured),
+    isBestSelling: !!p.isBestSelling,
+    isNewArrival: !!p.isNewArrival,
   };
 }
 
@@ -102,13 +114,34 @@ function stockColor(stock: number): string {
   return "text-red-600";
 }
 
+function variantTotalStock(product: Product): number {
+  const groups = product.variants ?? [];
+  if (!groups.some((group) => group.options?.length)) return product.stock;
+  return groups.reduce(
+    (sum, group) =>
+      sum +
+      group.options.reduce(
+        (optionSum, option) => optionSum + Math.max(0, Number(option.stock) || 0),
+        0,
+      ),
+    0,
+  );
+}
+
 export default function AdminProductsPage() {
   const [items, setItems] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
 
-  const [q, setQ] = useState("");
+  const {
+    value: q,
+    setValue: setQ,
+    debouncedValue: searchQuery,
+  } = useDebouncedSearch("");
   const [category, setCategory] = useState("all");
 
   const [draft, setDraft] = useState<DraftProduct>(blank());
@@ -134,7 +167,7 @@ export default function AdminProductsPage() {
       setCategoriesLoading(true);
 
       try {
-        const result = await api.listCategories();
+        const result = await api.listCategoriesFresh();
 
         if (!cancelled) {
           const topLevel = (result.items as Category[]).filter(
@@ -175,17 +208,22 @@ export default function AdminProductsPage() {
 
       try {
         const r = await api.listProducts({
-          q: q || undefined,
+          q: searchQuery || undefined,
           category: category === "all" ? undefined : category,
-          limit: 200,
+          page,
+          limit: PAGE_SIZE,
         });
 
         if (!cancelled) {
           setItems(r.items);
+          setTotal(r.total);
+          setTotalPages(Math.max(1, r.totalPages));
         }
       } catch {
         if (!cancelled) {
           setItems([]);
+          setTotal(0);
+          setTotalPages(1);
         }
       } finally {
         if (!cancelled) {
@@ -197,7 +235,7 @@ export default function AdminProductsPage() {
     return () => {
       cancelled = true;
     };
-  }, [q, category]);
+  }, [searchQuery, category, page]);
 
   function startCreate() {
     setEditing(null);
@@ -241,6 +279,35 @@ export default function AdminProductsPage() {
       return;
     }
 
+    for (const group of draft.variants) {
+      if (!group.name.trim()) {
+        setError("Variant group name is required.");
+        setBusy(false);
+        return;
+      }
+      const seen = new Set<string>();
+      for (const option of group.options) {
+        const value = option.value.trim();
+        if (!value) {
+          setError(`Variant option value is required for ${group.name}.`);
+          setBusy(false);
+          return;
+        }
+        const key = value.toLowerCase();
+        if (seen.has(key)) {
+          setError(`Duplicate option "${value}" in ${group.name}.`);
+          setBusy(false);
+          return;
+        }
+        seen.add(key);
+        if (option.stock < 0) {
+          setError("Variant stock cannot be negative.");
+          setBusy(false);
+          return;
+        }
+      }
+    }
+
     const body: Partial<Product> = {
       title: draft.title.trim(),
       slug:
@@ -252,7 +319,11 @@ export default function AdminProductsPage() {
       stock: Number(draft.stock),
       description: draft.description,
       images: draft.images,
-      featured: draft.featured,
+      variants: draft.variants,
+      featured: draft.isFeatured,
+      isFeatured: draft.isFeatured,
+      isBestSelling: draft.isBestSelling,
+      isNewArrival: draft.isNewArrival,
     };
 
     try {
@@ -291,6 +362,96 @@ export default function AdminProductsPage() {
     setItems((prev) => prev.filter((x) => x._id !== p._id));
   }
 
+  function addVariantGroup() {
+    setDraft((prev) => ({
+      ...prev,
+      variants: [
+        ...prev.variants,
+        { name: "", options: [{ value: "", stock: 0, sku: "", price: undefined }] },
+      ],
+    }));
+  }
+
+  function updateVariantGroup(index: number, name: string) {
+    setDraft((prev) => ({
+      ...prev,
+      variants: prev.variants.map((group, i) =>
+        i === index ? { ...group, name } : group,
+      ),
+    }));
+  }
+
+  function removeVariantGroup(index: number) {
+    setDraft((prev) => ({
+      ...prev,
+      variants: prev.variants.filter((_, i) => i !== index),
+    }));
+  }
+
+  function addVariantOption(groupIndex: number) {
+    setDraft((prev) => ({
+      ...prev,
+      variants: prev.variants.map((group, i) =>
+        i === groupIndex
+          ? {
+              ...group,
+              options: [
+                ...group.options,
+                { value: "", stock: 0, sku: "", price: undefined },
+              ],
+            }
+          : group,
+      ),
+    }));
+  }
+
+  function updateVariantOption(
+    groupIndex: number,
+    optionIndex: number,
+    field: "value" | "stock" | "sku" | "price",
+    value: string,
+  ) {
+    setDraft((prev) => ({
+      ...prev,
+      variants: prev.variants.map((group, i) =>
+        i === groupIndex
+          ? {
+              ...group,
+              options: group.options.map((option, j) =>
+                j === optionIndex
+                  ? {
+                      ...option,
+                      [field]:
+                        field === "stock"
+                          ? Math.max(0, Number(value) || 0)
+                          : field === "price"
+                            ? value === ""
+                              ? undefined
+                              : Math.max(0, Number(value) || 0)
+                            : value,
+                    }
+                  : option,
+              ),
+            }
+          : group,
+      ),
+    }));
+  }
+
+  function removeVariantOption(groupIndex: number, optionIndex: number) {
+    setDraft((prev) => ({
+      ...prev,
+      variants: prev.variants.map((group, i) =>
+        i === groupIndex
+          ? {
+              ...group,
+              options: group.options.filter((_, j) => j !== optionIndex),
+            }
+          : group,
+      ),
+    }));
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -308,7 +469,7 @@ export default function AdminProductsPage() {
           </h1>
 
           <p className="mt-1 text-sm text-fg-soft">
-            {items.length} products.
+            {total} products.
           </p>
 
           {error && !open && (
@@ -321,18 +482,24 @@ export default function AdminProductsPage() {
         </Button>
       </header>
 
-      <div className="mb-5 mt-3 flex flex-wrap gap-3">
+      <div className="mb-5 mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         <Input
-          className="!w-72"
+          className="!w-full sm:!w-72"
           placeholder="Search…"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setPage(1);
+            setQ(e.target.value);
+          }}
         />
 
         <Select
-          className="!w-auto"
+          className="!w-full sm:!w-auto"
           value={category}
-          onChange={(e) => setCategory(e.target.value)}
+          onChange={(e) => {
+            setPage(1);
+            setCategory(e.target.value);
+          }}
           disabled={categoriesLoading}
         >
           <option value="all">All categories</option>
@@ -361,7 +528,7 @@ export default function AdminProductsPage() {
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3">Price</th>
                   <th className="px-4 py-3">Stock</th>
-                  <th className="px-4 py-3">Featured</th>
+                  <th className="px-4 py-3">Home sections</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -414,13 +581,39 @@ export default function AdminProductsPage() {
                       </td>
 
                       <td className="px-4 py-3">
-                        <span className={cn("text-xs", stockColor(p.stock))}>
-                          {p.stock}
+                        <span className={cn("text-xs", stockColor(variantTotalStock(p)))}>
+                          {variantTotalStock(p)}
                         </span>
+                        {p.variants?.some((group) => group.options?.length) && (
+                          <div className="mt-1 text-[11px] text-fg-muted">
+                            {p.variants.length} variant group
+                            {p.variants.length !== 1 ? "s" : ""}
+                          </div>
+                        )}
                       </td>
 
                       <td className="px-4 py-3 text-xs">
-                        {p.featured ? "Yes" : "—"}
+                        <div className="flex flex-wrap gap-1">
+                          {(p.isFeatured ?? p.featured) && (
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                              Featured
+                            </span>
+                          )}
+                          {p.isBestSelling && (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">
+                              Best
+                            </span>
+                          )}
+                          {p.isNewArrival && (
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700">
+                              New
+                            </span>
+                          )}
+                          {!(p.isFeatured ?? p.featured) &&
+                            !p.isBestSelling &&
+                            !p.isNewArrival &&
+                            "—"}
+                        </div>
                       </td>
 
                       <td className="space-x-3 whitespace-nowrap px-4 py-3 text-right">
@@ -457,6 +650,32 @@ export default function AdminProductsPage() {
           </div>
         )}
       </Card>
+
+      {!loading && totalPages > 1 && (
+        <div className="mt-4 flex flex-col gap-3 text-sm text-fg-soft sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            Page {page} of {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
 
       <AnimatePresence>
         {open && (
@@ -734,19 +953,198 @@ export default function AdminProductsPage() {
                   />
                 </FieldLabel>
 
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={draft.featured}
-                    onChange={(e) =>
-                      setDraft({
-                        ...draft,
-                        featured: e.target.checked,
-                      })
-                    }
-                  />
-                  Featured on landing page
-                </label>
+                <div className="rounded-lg border border-line bg-white p-4">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        Product variants
+                      </p>
+                      <p className="text-xs text-fg-muted">
+                        Add groups like Size, Color, Storage, Edition, or
+                        Material. Variant stock is used instead of base stock.
+                      </p>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={addVariantGroup}>
+                      Add variant group
+                    </Button>
+                  </div>
+
+                  {draft.variants.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-line p-4 text-sm text-fg-muted">
+                      No variants. This product will use the base stock field.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {draft.variants.map((group, groupIndex) => {
+                        const duplicateValues = new Set<string>();
+                        const seenValues = new Set<string>();
+                        group.options.forEach((option) => {
+                          const key = option.value.trim().toLowerCase();
+                          if (!key) return;
+                          if (seenValues.has(key)) duplicateValues.add(key);
+                          seenValues.add(key);
+                        });
+
+                        return (
+                          <div
+                            key={groupIndex}
+                            className="rounded-lg border border-line bg-bg-soft p-3">
+                            <div className="mb-3 flex gap-2">
+                              <Input
+                                placeholder="Variant name e.g. Size"
+                                value={group.name}
+                                onChange={(e) =>
+                                  updateVariantGroup(groupIndex, e.target.value)
+                                }
+                              />
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => removeVariantGroup(groupIndex)}>
+                                Remove
+                              </Button>
+                            </div>
+
+                            <div className="space-y-2">
+                              {group.options.map((option, optionIndex) => {
+                                const duplicate = duplicateValues.has(
+                                  option.value.trim().toLowerCase(),
+                                );
+                                return (
+                                  <div
+                                    key={optionIndex}
+                                    className="grid gap-2 sm:grid-cols-[1.2fr_100px_1fr_120px_auto]">
+                                    <Input
+                                      placeholder="Option value"
+                                      value={option.value}
+                                      onChange={(e) =>
+                                        updateVariantOption(
+                                          groupIndex,
+                                          optionIndex,
+                                          "value",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className={duplicate ? "border-red-300" : ""}
+                                    />
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      placeholder="Stock"
+                                      value={option.stock}
+                                      onChange={(e) =>
+                                        updateVariantOption(
+                                          groupIndex,
+                                          optionIndex,
+                                          "stock",
+                                          e.target.value,
+                                        )
+                                      }
+                                    />
+                                    <Input
+                                      placeholder="SKU optional"
+                                      value={option.sku ?? ""}
+                                      onChange={(e) =>
+                                        updateVariantOption(
+                                          groupIndex,
+                                          optionIndex,
+                                          "sku",
+                                          e.target.value,
+                                        )
+                                      }
+                                    />
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      placeholder="Price override"
+                                      value={option.price ?? ""}
+                                      onChange={(e) =>
+                                        updateVariantOption(
+                                          groupIndex,
+                                          optionIndex,
+                                          "price",
+                                          e.target.value,
+                                        )
+                                      }
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() =>
+                                        removeVariantOption(
+                                          groupIndex,
+                                          optionIndex,
+                                        )
+                                      }>
+                                      Remove
+                                    </Button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <Button
+                              className="mt-3"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => addVariantOption(groupIndex)}>
+                              Add option
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-line bg-bg-soft p-4">
+                  <p className="mb-3 text-sm font-semibold text-foreground">
+                    Homepage sections
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={draft.isFeatured}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            isFeatured: e.target.checked,
+                          })
+                        }
+                      />
+                      Featured Product
+                    </label>
+
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={draft.isBestSelling}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            isBestSelling: e.target.checked,
+                          })
+                        }
+                      />
+                      Best Selling Product
+                    </label>
+
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={draft.isNewArrival}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            isNewArrival: e.target.checked,
+                          })
+                        }
+                      />
+                      New Arrival Product
+                    </label>
+                  </div>
+                </div>
 
                 {error && <p className="text-sm text-red-600">{error}</p>}
               </div>

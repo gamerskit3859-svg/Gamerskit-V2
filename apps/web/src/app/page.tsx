@@ -7,28 +7,40 @@ import { ProductGrid } from "@/components/ProductGrid";
 import { StorySection } from "@/components/StorySection";
 import { CustomerReviews } from "@/components/CustomerReviews";
 import { Section, Card } from "@/components/ui";
+import { createMetadata } from "@/lib/seo";
 
 type Product = Awaited<ReturnType<typeof api.listProducts>>["items"][number];
 type Category = Awaited<ReturnType<typeof api.listCategories>>["items"][number];
 type HeroImage = Awaited<ReturnType<typeof api.getHeroImages>>["items"][number];
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const metadata = createMetadata({
+  title: "GamersKit | Gaming Store in Bangladesh",
+  description:
+    "Shop RC drift cars, F1 jerseys, e-sports apparel, gaming gear, and accessories in Bangladesh with free delivery and cash on delivery.",
+  path: "/",
+  keywords: ["RC drift car", "F1 jersey", "gaming gear Bangladesh"],
+});
 
 export default async function Home() {
   let featured: Product[] = [];
   let bestSellers: Product[] = [];
+  let newArrivals: Product[] = [];
   let categories: Category[] = [];
   let heroImages: HeroImage[] = [];
 
   try {
-    const [f, all, categoryList, hero] = await Promise.all([
-      api.listProducts({ featured: true, limit: 4 }),
-      api.listProducts({ limit: 20 }),
-      api.listCategories(),
+    const [f, all, newest, categoryList, hero] = await Promise.all([
+      api.listProductsFresh({ isFeatured: true, limit: 12 }),
+      api.listProductsFresh({ isBestSelling: true, limit: 8 }),
+      api.listProductsFresh({ isNewArrival: true, limit: 8 }),
+      api.listCategoriesFresh(),
       api.getHeroImages(),
     ]);
     featured = f.items;
-    bestSellers = all.items.filter((p) => p.stock > 0).slice(0, 8);
+    bestSellers = all.items;
+    newArrivals = newest.items;
     categories = categoryList.items;
     heroImages = hero.items;
   } catch (err) {
@@ -57,6 +69,13 @@ export default async function Home() {
       </Section>
 
       <CategoryTiles initialCategories={categories} />
+
+      {newArrivals.length > 0 && (
+        <Section spacing="md" className="border-t border-line">
+          <SectionHeader eyebrow="Fresh drop" title="New arrivals." />
+          <ProductGrid products={newArrivals} />
+        </Section>
+      )}
 
       <Section spacing="md" className="border-t border-line">
         <SectionHeader eyebrow="Most loved" title="Best sellers." />

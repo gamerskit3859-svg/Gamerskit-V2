@@ -72,7 +72,7 @@ export function DateRangePicker({
   }, [value.from, value.to]);
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex w-full max-w-full flex-wrap items-center gap-2">
       {PRESETS.map((p) => {
         const r = rangeFromPreset(p);
         const active = value.from === r.from && value.to === r.to;
@@ -103,19 +103,19 @@ export function DateRangePicker({
         Custom range
       </button>
       {showCustom && (
-        <div className="flex w-full flex-wrap items-center gap-2 sm:ml-2 sm:w-auto">
+        <div className="flex w-full flex-col gap-2 sm:ml-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           <Input
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            className="!w-[140px] !py-1 !text-xs"
+            className="!w-full !py-1 !text-xs sm:!w-[140px]"
           />
-          <span className="text-xs">to</span>
+          <span className="hidden text-xs sm:inline">to</span>
           <Input
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="!w-[140px] !py-1 !text-xs"
+            className="!w-full !py-1 !text-xs sm:!w-[140px]"
           />
           <Button
             size="sm"

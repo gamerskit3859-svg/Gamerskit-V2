@@ -4,7 +4,16 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { track } from "@/lib/fb-pixel";
 import type { Product } from "@/types/shared";
 
+export type SelectedVariants = Record<string, string>;
+
+export type CartVariantSelection = {
+  selectedVariants?: SelectedVariants;
+  unitPrice?: number;
+  variantSku?: string;
+};
+
 export type CartLine = {
+  id: string;
   productId: string;
   slug: string;
   title: string;
@@ -12,29 +21,41 @@ export type CartLine = {
   unitPrice: number;
   quantity: number;
   category: string;
+  selectedVariants?: SelectedVariants;
+  variantSku?: string;
 };
 
 type CartState = {
   lines: CartLine[];
-  add: (p: Product, qty?: number) => void;
-  remove: (productId: string) => void;
-  setQty: (productId: string, qty: number) => void;
+  add: (p: Product, qty?: number, selection?: CartVariantSelection) => void;
+  remove: (lineId: string) => void;
+  setQty: (lineId: string, qty: number) => void;
   clear: () => void;
   subtotal: () => number;
   count: () => number;
 };
 
+function variantKey(selectedVariants?: SelectedVariants) {
+  if (!selectedVariants || Object.keys(selectedVariants).length === 0) return "";
+  return Object.entries(selectedVariants)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, value]) => `${name}:${value}`)
+    .join("|");
+}
+
 export const useCart = create<CartState>()(
   persist(
     (set, get) => ({
       lines: [],
-      add: (p, qty = 1) =>
+      add: (p, qty = 1, selection = {}) =>
         set((s) => {
-          const existing = s.lines.find((l) => l.productId === p._id);
+          const selectedVariants = selection.selectedVariants;
+          const id = `${p._id}${variantKey(selectedVariants) ? `::${variantKey(selectedVariants)}` : ""}`;
+          const existing = s.lines.find((l) => (l.id ?? l.productId) === id);
           if (existing) {
             return {
               lines: s.lines.map((l) =>
-                l.productId === p._id ? { ...l, quantity: l.quantity + qty } : l,
+                (l.id ?? l.productId) === id ? { ...l, id, quantity: l.quantity + qty } : l,
               ),
             };
           }
@@ -42,30 +63,33 @@ export const useCart = create<CartState>()(
             lines: [
               ...s.lines,
               {
+                id,
                 productId: p._id,
                 slug: p.slug,
                 title: p.title,
                 image: p.images[0] ?? "",
-                unitPrice: p.price,
+                unitPrice: selection.unitPrice ?? p.price,
                 quantity: qty,
                 category: p.category,
+                selectedVariants,
+                variantSku: selection.variantSku,
               },
             ],
           };
         }),
-      remove: (productId) =>
+      remove: (lineId) =>
         set((s) => {
-          const line = s.lines.find((l) => l.productId === productId);
+          const line = s.lines.find((l) => (l.id ?? l.productId) === lineId);
           if (line) {
             track({
               event: "RemoveFromCart",
-              contentIds: [productId],
+              contentIds: [line.productId],
               contentName: line.title,
               value: line.unitPrice * line.quantity,
               currency: "BDT",
               items: [
                 {
-                  id: productId,
+                  id: line.productId,
                   name: line.title,
                   category: line.category,
                   price: line.unitPrice,
@@ -74,24 +98,24 @@ export const useCart = create<CartState>()(
               ],
             });
           }
-          return { lines: s.lines.filter((l) => l.productId !== productId) };
+          return { lines: s.lines.filter((l) => (l.id ?? l.productId) !== lineId) };
         }),
-      setQty: (productId, qty) =>
+      setQty: (lineId, qty) =>
         set((s) => {
           const newQty = Math.max(0, qty);
-          const line = s.lines.find((l) => l.productId === productId);
+          const line = s.lines.find((l) => (l.id ?? l.productId) === lineId);
           
           // Track removal if quantity goes to 0
           if (line && newQty === 0) {
             track({
               event: "RemoveFromCart",
-              contentIds: [productId],
+              contentIds: [line.productId],
               contentName: line.title,
               value: line.unitPrice * line.quantity,
               currency: "BDT",
               items: [
                 {
-                  id: productId,
+                  id: line.productId,
                   name: line.title,
                   category: line.category,
                   price: line.unitPrice,
@@ -104,7 +128,7 @@ export const useCart = create<CartState>()(
           return {
             lines: s.lines
               .map((l) =>
-                l.productId === productId ? { ...l, quantity: newQty } : l,
+                (l.id ?? l.productId) === lineId ? { ...l, quantity: newQty } : l,
               )
               .filter((l) => l.quantity > 0),
           };

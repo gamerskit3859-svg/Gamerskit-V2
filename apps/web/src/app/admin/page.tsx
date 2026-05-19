@@ -4,6 +4,8 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
+import { useAuth } from "@/lib/auth";
+import { getBalanceAmount } from "@/lib/courier";
 import { formatBDT, formatDateTime } from "@/lib/format";
 import {
   DateRangePicker,
@@ -24,6 +26,7 @@ interface Category {
 }
 
 export default function AdminDashboard() {
+  const user = useAuth((s) => s.user);
   const [range, setRange] = useState<DateRange>(defaultRange());
   const [stats, setStats] = useState<Stats | null>(null);
   const [recent, setRecent] = useState<Order[]>([]);
@@ -31,6 +34,8 @@ export default function AdminDashboard() {
     Array<{ _id: string; qty: number; revenue: number }>
   >([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [steadfastBalance, setSteadfastBalance] = useState<number | null>(null);
+  const [steadfastError, setSteadfastError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,20 +47,50 @@ export default function AdminDashboard() {
       setLoading(true);
       setError(null);
       try {
-        const [s, t, recentRes, catsRes] = await Promise.all([
-          api.stats({ from: range.from, to: range.to }, token),
-          api.topProducts({ from: range.from, to: range.to }, token),
-          api.listOrdersAdmin(
-            { from: range.from, to: range.to, limit: 8 },
+        if (user?.role === "staff") {
+          const pending = await api.listOrdersAdmin(
+            { status: "pending", page: 1, limit: 12 },
             token,
-          ),
-          api.listCategories(),
-        ]);
+          );
+          if (cancelled) return;
+          setRecent(pending.items);
+          return;
+        }
+
+        const [statsResult, topResult, recentResult, categoriesResult] =
+          await Promise.allSettled([
+            api.stats({ from: range.from, to: range.to }, token),
+            api.topProducts({ from: range.from, to: range.to }, token),
+            api.listOrdersAdmin(
+              { from: range.from, to: range.to, limit: 8 },
+              token,
+            ),
+            api.listCategoriesFresh(),
+          ]);
+        const balanceResult = await api.getSteadfastBalance(token).catch((err) => err);
         if (cancelled) return;
-        setStats(s);
-        setTop(t.items);
-        setRecent(recentRes.items);
-        setCategories(catsRes.items || []);
+        if (statsResult.status === "fulfilled") setStats(statsResult.value);
+        if (topResult.status === "fulfilled") setTop(topResult.value.items);
+        if (recentResult.status === "fulfilled") {
+          setRecent(recentResult.value.items);
+        }
+        if (categoriesResult.status === "fulfilled") {
+          setCategories(categoriesResult.value.items || []);
+        }
+        if (balanceResult instanceof Error) {
+          setSteadfastBalance(null);
+          setSteadfastError("Could not load balance");
+        } else {
+          setSteadfastBalance(getBalanceAmount(balanceResult.item));
+          setSteadfastError(null);
+        }
+        if (
+          statsResult.status === "rejected" ||
+          topResult.status === "rejected" ||
+          recentResult.status === "rejected"
+        ) {
+          setError("Some dashboard data could not be loaded. Please refresh.");
+        }
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -66,7 +101,87 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [range.from, range.to]);
+  }, [range.from, range.to, user?.role]);
+
+  if (user?.role === "staff") {
+    return (
+      <div>
+        <header className="mb-8">
+          <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+            Staff
+          </span>
+          <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight">
+                Pending orders
+              </h1>
+              <p className="mt-1 text-sm text-fg-soft">
+                Orders waiting for confirmation or processing.
+              </p>
+            </div>
+            <LinkButton href="/admin/orders/new">+ Custom order</LinkButton>
+          </div>
+        </header>
+
+        {error && (
+          <UICard tone="soft" padding="sm" className="mb-6 text-sm text-red-600">
+            {error}
+          </UICard>
+        )}
+
+        <PanelCard title="Pending orders">
+          {loading ? (
+            <div className="text-sm text-fg-muted">Loading pending orders...</div>
+          ) : recent.length === 0 ? (
+            <div className="text-sm text-fg-muted">No pending orders right now.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-[720px] w-full text-sm">
+                <thead className="text-left text-xs text-fg-soft">
+                  <tr>
+                    <th className="py-2 pr-3">Order</th>
+                    <th className="py-2 pr-3">Customer</th>
+                    <th className="py-2 pr-3">Total</th>
+                    <th className="py-2 pr-3">Status</th>
+                    <th className="py-2 pr-3">Placed</th>
+                    <th className="py-2 pr-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recent.map((o) => (
+                    <tr key={o._id} className="border-t border-line">
+                      <td className="py-2 pr-3 font-mono text-xs">
+                        {o.orderNumber}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <div className="font-medium">{o.customer?.name ?? "Customer"}</div>
+                        <div className="text-xs text-fg-muted">
+                          {o.customer?.phone ?? "No phone"}
+                        </div>
+                      </td>
+                      <td className="py-2 pr-3">{formatBDT(o.total)}</td>
+                      <td className="py-2 pr-3 capitalize">{o.status}</td>
+                      <td className="py-2 pr-3 text-fg-soft">
+                        {formatDateTime(o.createdAt)}
+                      </td>
+                      <td className="py-2 pr-3 text-right">
+                        <Link
+                          href={`/admin/orders/${o._id}`}
+                          className="font-medium text-blue-600 hover:text-blue-800"
+                        >
+                          View
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </PanelCard>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -94,7 +209,7 @@ export default function AdminDashboard() {
         </UICard>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <StatCard
           label="Revenue"
           value={formatBDT(stats?.revenue ?? 0)}
@@ -113,6 +228,14 @@ export default function AdminDashboard() {
         <StatCard
           label="Items sold"
           value={(stats?.productsSold ?? 0).toString()}
+          loading={loading}
+        />
+        <StatCard
+          label="Steadfast Balance"
+          value={
+            steadfastBalance === null ? "Unavailable" : formatBDT(steadfastBalance)
+          }
+          hint={steadfastError ?? "Courier account"}
           loading={loading}
         />
       </div>

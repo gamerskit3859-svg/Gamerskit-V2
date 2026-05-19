@@ -4,13 +4,21 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDateTime } from "@/lib/format";
+import { useDebouncedSearch } from "@/lib/hooks";
 import type { AdminCustomer } from "@/types/shared";
-import { Card, Input } from "@/components/ui";
+import { Button, Card, Input } from "@/components/ui";
+
+const PAGE_SIZE = 30;
 
 export default function CustomersPage() {
   const [items, setItems] = useState<AdminCustomer[]>([]);
   const [total, setTotal] = useState(0);
-  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const {
+    value: q,
+    setValue: setQ,
+    debouncedValue: searchQuery,
+  } = useDebouncedSearch("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -20,7 +28,10 @@ export default function CustomersPage() {
     void (async () => {
       setLoading(true);
       try {
-        const r = await api.customers({ q: q || undefined, limit: 100 }, token);
+        const r = await api.customers(
+          { q: searchQuery || undefined, page, limit: PAGE_SIZE },
+          token,
+        );
         if (cancelled) return;
         setItems(r.items);
         setTotal(r.total);
@@ -31,7 +42,9 @@ export default function CustomersPage() {
     return () => {
       cancelled = true;
     };
-  }, [q]);
+  }, [searchQuery, page]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <motion.div
@@ -49,10 +62,13 @@ export default function CustomersPage() {
         </p>
         <div className="mt-5">
           <Input
-            className="!w-80"
+            className="!w-full sm:!w-80"
             placeholder="Search by name, phone, or email…"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setQ(e.target.value);
+            }}
           />
         </div>
       </header>
@@ -107,6 +123,32 @@ export default function CustomersPage() {
           </div>
         )}
       </Card>
+
+      {!loading && totalPages > 1 && (
+        <div className="mt-4 flex flex-col gap-3 text-sm text-fg-soft sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            Page {page} of {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

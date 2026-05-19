@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Clock, ShieldCheck, Truck } from "lucide-react";
+import { Clock, Truck } from "lucide-react";
 
-const COD_TEXT = "Full Cash on Delivery";
 const DELIVERY_TEXT = "Free Delivery All Over Bangladesh";
 const OFFER_TEXT = "Offer ends in";
 
@@ -27,7 +26,7 @@ function formatDuration(totalSeconds: number) {
 
 export function AnnouncementBar() {
   const pathname = usePathname();
-  const [secondsLeft, setSecondsLeft] = useState(getSecondsUntilReset);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
   useEffect(() => {
     const update = () => setSecondsLeft(getSecondsUntilReset());
@@ -36,30 +35,33 @@ export function AnnouncementBar() {
     return () => window.clearInterval(id);
   }, []);
 
-  const timer = useMemo(() => formatDuration(secondsLeft), [secondsLeft]);
+  const timer = useMemo(
+    () => (secondsLeft === null ? "00:00:00" : formatDuration(secondsLeft)),
+    [secondsLeft],
+  );
 
   if (pathname?.startsWith("/admin")) return null;
 
   return (
     <div
-      className="relative z-10 border-b border-cyan-300/20 bg-[linear-gradient(90deg,#050505,#15151a_45%,#050505)] text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]"
+      className="fixed left-0 right-0 top-0 z-[60] h-10 overflow-hidden border-b border-cyan-300/20 bg-[linear-gradient(90deg,#050505,#15151a_45%,#050505)] text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]"
       role="status"
       aria-live="polite">
-      <div className="mx-auto flex min-h-[38px] max-w-[1280px] items-center justify-center gap-3 overflow-hidden px-3 text-[11px] font-semibold uppercase tracking-[0.12em] sm:gap-5 sm:text-xs">
-        <span className="flex min-w-0 items-center gap-1.5 text-cyan-100">
-          <ShieldCheck size={14} className="shrink-0 text-cyan-300" />
-          <span className="truncate">{COD_TEXT}</span>
-        </span>
-        <span className="hidden h-4 w-px bg-white/18 sm:block" />
-        <span className="hidden min-w-0 items-center gap-1.5 text-lime-100 sm:flex">
+      <div className="mx-auto flex flex-col md:flex-row h-10 max-w-[1280px] flex-nowrap items-center justify-center gap-x-3 overflow-hidden px-3 text-center text-[10px] font-semibold uppercase tracking-[0.08em] sm:gap-x-6 sm:px-4 sm:text-xs sm:tracking-[0.12em]">
+        {/* Delivery Segment */}
+        <span className="flex items-center justify-center gap-1.5 text-lime-100">
           <Truck size={14} className="shrink-0 text-lime-300" />
-          <span className="truncate">{DELIVERY_TEXT}</span>
+          <span>{DELIVERY_TEXT}</span>
         </span>
-        <span className="h-4 w-px bg-white/18" />
-        <span className="flex shrink-0 items-center gap-1.5 text-amber-100">
-          <Clock size={14} className="text-amber-300" />
-          <span className="hidden md:inline">{OFFER_TEXT}</span>
-          <span className="font-mono text-[12px] tracking-[0.08em] text-amber-300 sm:text-sm">
+
+        {/* Separator Line - Only visible on desktop/tablets where text stays on one line */}
+        <span className="hidden h-3 w-px bg-white/20 sm:block" />
+
+        {/* Timer Segment */}
+        <span className="flex items-center justify-center gap-1.5 text-amber-100">
+          <Clock size={14} className="shrink-0 text-amber-300" />
+          <span>{OFFER_TEXT}</span>
+          <span className="font-mono text-[12px] tracking-[0.05em] text-amber-300 sm:text-sm">
             {timer}
           </span>
         </span>

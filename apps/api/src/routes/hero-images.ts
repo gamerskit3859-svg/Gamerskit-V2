@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { HeroImageModel } from "../models/HeroImage.js";
 import { adminRequired } from "../lib/auth.js";
-import { setPublicCache } from "../lib/http.js";
+import { setPrivateNoStore } from "../lib/http.js";
 
 const router = Router();
-const PUBLIC_HERO_FIELDS = "imageUrl publicId order isActive title subtitle link";
+const PUBLIC_HERO_FIELDS = "imageUrl mediaUrl mediaType publicId order isActive title subtitle link";
 
 // Get all active hero images sorted by order (public)
 router.get("/", async (req, res) => {
@@ -14,7 +14,7 @@ router.get("/", async (req, res) => {
       .select(PUBLIC_HERO_FIELDS)
       .lean();
 
-    setPublicCache(res, 60, 300);
+    setPrivateNoStore(res);
     res.json({ items: images });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -24,6 +24,7 @@ router.get("/", async (req, res) => {
 // Get all hero images including inactive (admin only)
 router.get("/admin/all", adminRequired, async (req, res) => {
   try {
+    setPrivateNoStore(res);
     const images = await HeroImageModel.find({})
       .sort({ order: 1 })
       .lean();
@@ -37,10 +38,25 @@ router.get("/admin/all", adminRequired, async (req, res) => {
 // Create hero image (admin only)
 router.post("/", adminRequired, async (req, res) => {
   try {
-    const { imageUrl, publicId, order, isActive, title, subtitle, link } = req.body;
+    const {
+      imageUrl,
+      mediaUrl,
+      mediaType = "image",
+      publicId,
+      order,
+      isActive,
+      title,
+      subtitle,
+      link,
+    } = req.body;
+    const finalMediaUrl = mediaUrl || imageUrl;
 
-    if (!imageUrl || publicId === undefined) {
-      res.status(400).json({ error: "imageUrl and publicId are required" });
+    if (!finalMediaUrl || publicId === undefined) {
+      res.status(400).json({ error: "mediaUrl and publicId are required" });
+      return;
+    }
+    if (mediaType !== "image" && mediaType !== "video") {
+      res.status(400).json({ error: "mediaType must be image or video" });
       return;
     }
 
@@ -51,7 +67,9 @@ router.post("/", adminRequired, async (req, res) => {
     }
 
     const image = await HeroImageModel.create({
-      imageUrl,
+      imageUrl: finalMediaUrl,
+      mediaUrl: finalMediaUrl,
+      mediaType,
       publicId,
       order: finalOrder,
       isActive: isActive ?? true,
@@ -69,10 +87,21 @@ router.post("/", adminRequired, async (req, res) => {
 // Update hero image (admin only)
 router.patch("/:id", adminRequired, async (req, res) => {
   try {
-    const { imageUrl, order, isActive, title, subtitle, link } = req.body;
+    const { imageUrl, mediaUrl, mediaType, order, isActive, title, subtitle, link } = req.body;
 
     const updateData: Record<string, unknown> = {};
-    if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
+    if (mediaUrl !== undefined || imageUrl !== undefined) {
+      const finalMediaUrl = mediaUrl ?? imageUrl;
+      updateData.mediaUrl = finalMediaUrl;
+      updateData.imageUrl = finalMediaUrl;
+    }
+    if (mediaType !== undefined) {
+      if (mediaType !== "image" && mediaType !== "video") {
+        res.status(400).json({ error: "mediaType must be image or video" });
+        return;
+      }
+      updateData.mediaType = mediaType;
+    }
     if (order !== undefined) updateData.order = order;
     if (isActive !== undefined) updateData.isActive = isActive;
     if (title !== undefined) updateData.title = title;

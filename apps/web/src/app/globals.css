@@ -84,6 +84,8 @@ body {
   font-family: var(--font-sans);
   letter-spacing: -0.01em;
   font-feature-settings: "ss01", "cv11";
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -114,18 +116,26 @@ body {
  * gradients + multiple inset highlights + a pseudo-element that aren't
  * cleanly expressible with arbitrary-value Tailwind utilities. */
 .lg-navbar {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  top: 40px;
   left: 0;
   right: 0;
-  z-index: 500;
+  z-index: 50;
   display: flex;
   justify-content: center;
-  padding: 14px 16px;
+  padding: 8px 12px;
   pointer-events: none;
-  transition: padding 0.3s ease;
+  transform: translateY(0);
+  transition:
+    top 0.2s ease,
+    padding 0.3s ease,
+    transform 0.22s ease;
+  will-change: transform;
 }
 .lg-navbar.scrolled { padding: 8px 16px; }
+.lg-navbar.nav-hidden {
+  transform: translateY(-100%);
+}
 
 .lg-inner {
   pointer-events: auto;
@@ -222,6 +232,15 @@ body {
   white-space: nowrap;
   transition: color 0.2s ease;
   cursor: pointer;
+}
+
+@media (min-width: 768px) {
+  .lg-navbar {
+    padding: 14px 16px;
+  }
+  .lg-navbar.scrolled {
+    padding: 8px 16px;
+  }
 }
 .lg-links a:hover,
 .lg-nav-trigger:hover { color: #111827; }
@@ -347,6 +366,14 @@ body {
   background: rgba(0, 0, 0, 0.32);
   background-clip: padding-box;
   border: 2px solid transparent;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────

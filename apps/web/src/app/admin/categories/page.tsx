@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   CldUploadWidget,
@@ -46,6 +46,28 @@ const blankForm = {
   featured: false,
 };
 
+function flattenCategories(
+  items: Category[],
+  depth = 0,
+): Array<Category & { depth: number }> {
+  return items.flatMap((item) => [
+    { ...item, depth },
+    ...flattenCategories(item.subcategories || [], depth + 1),
+  ]);
+}
+
+function collectDescendantIds(category: Category | undefined): Set<string> {
+  const ids = new Set<string>();
+  const stack = [...(category?.subcategories || [])];
+  while (stack.length > 0) {
+    const item = stack.pop();
+    if (!item || ids.has(item._id)) continue;
+    ids.add(item._id);
+    stack.push(...(item.subcategories || []));
+  }
+  return ids;
+}
+
 export default function AdminCategories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,14 +79,12 @@ export default function AdminCategories() {
 
   const token = getAdminToken();
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
-
-  async function loadCategories() {
+  const loadCategories = useCallback(async () => {
     try {
       setLoading(true);
-      const result = await api.listCategories();
+      const result = token
+        ? await api.listCategoriesAdmin(token)
+        : await api.listCategoriesFresh();
       setCategories(result.items);
       setError(null);
     } catch (err) {
@@ -72,7 +92,11 @@ export default function AdminCategories() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [token]);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadCategories);
+  }, [loadCategories]);
 
   function resetForm() {
     setFormData(blankForm);
@@ -99,6 +123,10 @@ export default function AdminCategories() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
+    if (editingId && formData.parentId === editingId) {
+      setError("A category cannot be its own parent.");
+      return;
+    }
 
     setIsCreating(true);
     try {
@@ -183,6 +211,14 @@ export default function AdminCategories() {
         </div>
       ))}
     </>
+  );
+
+  const flatCategories = flattenCategories(categories);
+  const editingCategory = flatCategories.find((cat) => cat._id === editingId);
+  const blockedParentIds = collectDescendantIds(editingCategory);
+  if (editingId) blockedParentIds.add(editingId);
+  const parentOptions = flatCategories.filter(
+    (cat) => !blockedParentIds.has(cat._id),
   );
 
   return (
@@ -367,8 +403,10 @@ export default function AdminCategories() {
                     }
                   >
                     <option value="">None (Root category)</option>
-                    {categories.map((cat) => (
+                    {parentOptions.map((cat) => (
                       <option key={cat._id} value={cat._id}>
+                        {"  ".repeat(cat.depth)}
+                        {cat.depth > 0 ? "- " : ""}
                         {cat.name}
                       </option>
                     ))}

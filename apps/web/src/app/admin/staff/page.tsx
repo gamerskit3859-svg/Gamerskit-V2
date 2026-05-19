@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatDateTime } from "@/lib/format";
+import { useDebouncedSearch } from "@/lib/hooks";
 import type { AdminUserSummary, UserRole } from "@/types/shared";
 import {
   Button,
@@ -15,7 +16,11 @@ import {
 
 export default function StaffPage() {
   const [items, setItems] = useState<AdminUserSummary[]>([]);
-  const [q, setQ] = useState("");
+  const {
+    value: q,
+    setValue: setQ,
+    debouncedValue: searchQuery,
+  } = useDebouncedSearch("");
   const [role, setRole] = useState<UserRole | "all">("all");
   const [loading, setLoading] = useState(true);
   const [openCreate, setOpenCreate] = useState(false);
@@ -37,7 +42,10 @@ export default function StaffPage() {
       setLoading(true);
       try {
         const r = await api.users(
-          { role: role === "all" ? undefined : role, q: q || undefined },
+          {
+            role: role === "all" ? undefined : role,
+            q: searchQuery || undefined,
+          },
           token,
         );
         if (!cancelled) setItems(r.items);
@@ -48,7 +56,7 @@ export default function StaffPage() {
     return () => {
       cancelled = true;
     };
-  }, [q, role]);
+  }, [searchQuery, role]);
 
   async function changeRole(id: string, newRole: UserRole) {
     const token = getAdminToken();
@@ -105,9 +113,9 @@ export default function StaffPage() {
         <Button onClick={() => setOpenCreate(true)}>+ Invite member</Button>
       </header>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <Select
-          className="!w-auto"
+          className="!w-full sm:!w-auto"
           value={role}
           onChange={(e) => setRole(e.target.value as UserRole | "all")}
         >
@@ -117,7 +125,7 @@ export default function StaffPage() {
           <option value="customer">Customers</option>
         </Select>
         <Input
-          className="!ml-auto !w-72"
+          className="!w-full sm:!ml-auto sm:!w-72"
           placeholder="Search…"
           value={q}
           onChange={(e) => setQ(e.target.value)}

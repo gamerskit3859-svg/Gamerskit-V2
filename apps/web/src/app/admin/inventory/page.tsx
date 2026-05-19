@@ -1,22 +1,59 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
+import { useDebouncedSearch } from "@/lib/hooks";
 import type { Product } from "@/types/shared";
 import { Button, Card, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
 const LOW_THRESHOLD = 3;
+const PAGE_SIZE = 30;
+
+function hasVariants(product: Product): boolean {
+  return product.variants?.some((group) => group.options?.length) ?? false;
+}
+
+function totalStock(product: Product): number {
+  if (!hasVariants(product)) return product.stock;
+  return (product.variants ?? []).reduce(
+    (sum, group) =>
+      sum +
+      group.options.reduce(
+        (optionSum, option) => optionSum + Math.max(0, Number(option.stock) || 0),
+        0,
+      ),
+    0,
+  );
+}
+
+function stockColor(stock: number): string {
+  if (stock <= 0) return "text-red-600";
+  if (stock <= LOW_THRESHOLD) return "text-yellow-700";
+  return "text-foreground";
+}
 
 export default function InventoryPage() {
   const [items, setItems] = useState<Product[]>([]);
+  const [summary, setSummary] = useState({
+    total: 0,
+    low: 0,
+    out: 0,
+    stockValue: 0,
+  });
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "low" | "out">("all");
-  const [q, setQ] = useState("");
+  const {
+    value: q,
+    setValue: setQ,
+    debouncedValue: searchQuery,
+  } = useDebouncedSearch("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,8 +63,20 @@ export default function InventoryPage() {
     void (async () => {
       setLoading(true);
       try {
-        const r = await api.listProducts({ q: q || undefined, limit: 200 });
-        if (!cancelled) setItems(r.items);
+        const [r, summaryResult] = await Promise.all([
+          api.listProducts({
+            q: searchQuery || undefined,
+            stock: filter === "all" ? undefined : filter,
+            page,
+            limit: PAGE_SIZE,
+          }),
+          api.inventorySummary(token),
+        ]);
+        if (!cancelled) {
+          setItems(r.items);
+          setSummary(summaryResult);
+          setTotalPages(Math.max(1, r.totalPages));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -35,27 +84,7 @@ export default function InventoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [q]);
-
-  const filtered = useMemo(() => {
-    if (filter === "low")
-      return items.filter((p) => p.stock > 0 && p.stock <= LOW_THRESHOLD);
-    if (filter === "out") return items.filter((p) => p.stock <= 0);
-    return items;
-  }, [items, filter]);
-
-  const counts = useMemo(
-    () => ({
-      total: items.length,
-      low: items.filter((p) => p.stock > 0 && p.stock <= LOW_THRESHOLD).length,
-      out: items.filter((p) => p.stock <= 0).length,
-      stockValue: items.reduce(
-        (n, p) => n + p.price * Math.max(0, p.stock),
-        0,
-      ),
-    }),
-    [items],
-  );
+  }, [searchQuery, filter, page]);
 
   async function adjust(id: string, delta: number) {
     const token = getAdminToken();
@@ -64,6 +93,8 @@ export default function InventoryPage() {
     try {
       const r = await api.adjustStock(id, delta, token);
       setItems((prev) => prev.map((p) => (p._id === id ? r.item : p)));
+      const summaryResult = await api.inventorySummary(token);
+      setSummary(summaryResult);
     } finally {
       setBusyId(null);
     }
@@ -72,6 +103,7 @@ export default function InventoryPage() {
   async function setExactStock(id: string, value: number) {
     const product = items.find((p) => p._id === id);
     if (!product) return;
+    if (hasVariants(product)) return;
     const delta = value - product.stock;
     if (delta === 0) return;
     await adjust(id, delta);
@@ -84,6 +116,8 @@ export default function InventoryPage() {
     try {
       const r = await api.updateProduct(id, { price: value }, token);
       setItems((prev) => prev.map((p) => (p._id === id ? r.item : p)));
+      const summaryResult = await api.inventorySummary(token);
+      setSummary(summaryResult);
     } finally {
       setBusyId(null);
     }
@@ -91,8 +125,8 @@ export default function InventoryPage() {
 
   const filters = [
     { key: "all", label: "All" },
-    { key: "low", label: `Low (${counts.low})` },
-    { key: "out", label: `Out (${counts.out})` },
+    { key: "low", label: `Low (${summary.low})` },
+    { key: "out", label: `Out (${summary.out})` },
   ] as const;
 
   return (
@@ -109,10 +143,10 @@ export default function InventoryPage() {
           Inventory
         </h1>
         <p className="mt-1 text-sm text-fg-soft">
-          {counts.total} SKUs · {counts.low} low · {counts.out} out · stock
+          {summary.total} SKUs · {summary.low} low · {summary.out} out · stock
           value{" "}
           <span className="font-medium text-foreground">
-            {formatBDT(counts.stockValue)}
+            {formatBDT(summary.stockValue)}
           </span>
         </p>
       </header>
@@ -123,23 +157,29 @@ export default function InventoryPage() {
             key={key}
             size="sm"
             variant={filter === key ? "primary" : "ghost"}
-            onClick={() => setFilter(key)}
+            onClick={() => {
+              setPage(1);
+              setFilter(key);
+            }}
           >
             {label}
           </Button>
         ))}
         <Input
-          className="!ml-auto !w-72"
+          className="!w-full sm:!ml-auto sm:!w-72"
           placeholder="Search…"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setPage(1);
+            setQ(e.target.value);
+          }}
         />
       </div>
 
       <Card tone="soft" padding="none" className="overflow-hidden">
         {loading ? (
           <div className="p-8 text-sm text-fg-muted">Loading…</div>
-        ) : filtered.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="p-8 text-center text-sm text-fg-muted">
             No products in this view.
           </div>
@@ -156,7 +196,7 @@ export default function InventoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => (
+                {items.map((p) => (
                   <tr
                     key={p._id}
                     className="border-t border-line bg-white align-middle"
@@ -199,6 +239,16 @@ export default function InventoryPage() {
                       />
                     </td>
                     <td className="px-4 py-3">
+                      {hasVariants(p) ? (
+                        <div className="space-y-1">
+                          <span className={cn("text-sm font-medium", stockColor(totalStock(p)))}>
+                            {totalStock(p)}
+                          </span>
+                          <div className="text-xs text-fg-muted">
+                            Variant stock. Edit product variants to adjust.
+                          </div>
+                        </div>
+                      ) : (
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -236,6 +286,7 @@ export default function InventoryPage() {
                           +
                         </button>
                       </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <Link
@@ -253,6 +304,32 @@ export default function InventoryPage() {
           </div>
         )}
       </Card>
+
+      {!loading && totalPages > 1 && (
+        <div className="mt-4 flex flex-col gap-3 text-sm text-fg-soft sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            Page {page} of {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

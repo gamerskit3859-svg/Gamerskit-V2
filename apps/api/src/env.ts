@@ -15,7 +15,7 @@ export const env = {
   MONGODB_URI: required("MONGODB_URI", "mongodb://127.0.0.1:27017/gamerskit"),
   JWT_SECRET: required("JWT_SECRET", "dev-secret-change-me"),
   CORS_ORIGIN: process.env.CORS_ORIGIN ?? "*",
-  FB_PIXEL_ID: process.env.FB_PIXEL_ID ?? "",
+  FB_PIXEL_ID: process.env.FB_PIXEL_ID ?? "649455848240895",
   FB_CAPI_TOKEN: process.env.FB_CAPI_TOKEN ?? "",
   FB_TEST_EVENT_CODE: process.env.FB_TEST_EVENT_CODE ?? "",
   ADMIN_EMAIL: process.env.ADMIN_EMAIL ?? "admin@gamerskit.local",
@@ -27,4 +27,8 @@ export const env = {
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? "",
   FACEBOOK_APP_ID: process.env.FACEBOOK_APP_ID ?? "",
   FACEBOOK_APP_SECRET: process.env.FACEBOOK_APP_SECRET ?? "",
+  STEADFAST_API_KEY: process.env.STEADFAST_API_KEY ?? "",
+  STEADFAST_SECRET_KEY: process.env.STEADFAST_SECRET_KEY ?? "",
+  STEADFAST_BASE_URL:
+    process.env.STEADFAST_BASE_URL ?? "https://portal.packzy.com/api/v1",
 };

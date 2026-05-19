@@ -10,6 +10,58 @@ export type JwtPayload = {
   role: "customer" | "staff" | "admin";
 };
 
+const AUTH_COOKIE = "gk_session";
+
+function parseCookies(header = ""): Record<string, string> {
+  return Object.fromEntries(
+    header
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const index = part.indexOf("=");
+        if (index === -1) return [part, ""];
+        return [
+          decodeURIComponent(part.slice(0, index)),
+          decodeURIComponent(part.slice(index + 1)),
+        ];
+      }),
+  );
+}
+
+export function setAuthCookie(res: Response, token: string): void {
+  const isProduction = env.NODE_ENV === "production";
+  res.cookie(AUTH_COOKIE, token, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    path: "/",
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+}
+
+export function clearAuthCookie(res: Response): void {
+  const isProduction = env.NODE_ENV === "production";
+  res.clearCookie(AUTH_COOKIE, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    path: "/",
+  });
+}
+
+function tokenFromRequest(req: Request): string | null {
+  const cookies = parseCookies(req.header("cookie") ?? "");
+  if (cookies[AUTH_COOKIE]) return cookies[AUTH_COOKIE];
+  const header = req.header("authorization") ?? "";
+  return header.startsWith("Bearer ") ? header.slice(7) : null;
+}
+
+export function authPayloadFromRequest(req: Request): JwtPayload | null {
+  const token = tokenFromRequest(req);
+  return token ? verifyToken(token) : null;
+}
+
 export function signToken(p: JwtPayload): string {
   return jwt.sign(p, env.JWT_SECRET, { expiresIn: "30d" });
 }
@@ -37,13 +89,12 @@ declare module "express-serve-static-core" {
 }
 
 export function authRequired(req: Request, res: Response, next: NextFunction): void {
-  const header = req.header("authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  const token = tokenFromRequest(req);
   if (!token) {
     res.status(401).json({ error: "missing token" });
     return;
   }
-  const payload = verifyToken(token);
+  const payload = authPayloadFromRequest(req);
   if (!payload) {
     res.status(401).json({ error: "invalid token" });
     return;
@@ -107,5 +158,7 @@ export async function ensureAdmin(): Promise<void> {
     name: "Admin",
     role: "admin",
   });
-  console.log(`[auth] bootstrap admin created: ${env.ADMIN_EMAIL}`);
+  if (env.NODE_ENV !== "production") {
+    console.info(`[auth] bootstrap admin created: ${env.ADMIN_EMAIL}`);
+  }
 }

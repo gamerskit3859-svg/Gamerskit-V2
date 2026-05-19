@@ -2,7 +2,14 @@ import { Router } from "express";
 import { z } from "zod";
 import { UserModel } from "../models/User.js";
 import { OrderModel } from "../models/Order.js";
-import { authRequired, comparePassword, hashPassword, signToken } from "../lib/auth.js";
+import {
+  authRequired,
+  clearAuthCookie,
+  comparePassword,
+  hashPassword,
+  setAuthCookie,
+  signToken,
+} from "../lib/auth.js";
 
 const router = Router();
 
@@ -41,8 +48,8 @@ router.post("/register", async (req, res) => {
     phone: parsed.data.phone ?? "",
   });
   const token = signToken({ sub: String(user._id), email: user.email, role: user.role });
+  setAuthCookie(res, token);
   res.status(201).json({
-    token,
     user: { id: user._id, email: user.email, role: user.role, name: user.name },
   });
 });
@@ -59,8 +66,8 @@ router.post("/login", async (req, res) => {
     return;
   }
   const token = signToken({ sub: String(user._id), email: user.email, role: user.role });
+  setAuthCookie(res, token);
   res.json({
-    token,
     user: { id: user._id, email: user.email, role: user.role, name: user.name },
   });
 });
@@ -96,8 +103,8 @@ router.post("/oauth/google", async (req, res) => {
   }
 
   const token = signToken({ sub: String(user._id), email: user.email, role: user.role });
+  setAuthCookie(res, token);
   res.json({
-    token,
     user: { id: user._id, email: user.email, role: user.role, name: user.name },
   });
 });
@@ -132,10 +139,15 @@ router.post("/oauth/facebook", async (req, res) => {
   }
 
   const token = signToken({ sub: String(user._id), email: user.email, role: user.role });
+  setAuthCookie(res, token);
   res.json({
-    token,
     user: { id: user._id, email: user.email, role: user.role, name: user.name },
   });
+});
+
+router.post("/logout", (_req, res) => {
+  clearAuthCookie(res);
+  res.status(204).end();
 });
 
 router.get("/me", authRequired, async (req, res) => {

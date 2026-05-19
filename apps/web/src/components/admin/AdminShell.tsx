@@ -1,44 +1,74 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
 import { api } from "@/lib/api";
 import {
   clearAdminToken,
-  getAdminToken,
   setAdminToken,
 } from "@/lib/admin-token";
 import { useAuth } from "@/lib/auth";
+import { COOKIE_SESSION } from "@/lib/auth";
 import { cn } from "@/lib/cn";
+import type { UserRole } from "@/types/shared";
 
 const NAV = [
-  { href: "/admin", label: "Dashboard" },
-  { href: "/admin/orders", label: "Orders" },
-  { href: "/admin/orders/new", label: "New custom order" },
-  { href: "/admin/products", label: "Products" },
-  { href: "/admin/hero", label: "Hero Section" },
-  { href: "/admin/categories", label: "Categories" },
-  { href: "/admin/inventory", label: "Inventory" },
-  { href: "/admin/customers", label: "Customers" },
-  { href: "/admin/coupons", label: "Coupons" },
-  { href: "/admin/reports", label: "Accounting" },
-  { href: "/admin/users", label: "Users & Roles" },
-  { href: "/admin/staff", label: "Staff" },
-  { href: "/admin/notifications", label: "Notifications" },
+  { href: "/admin", label: "Dashboard", roles: ["admin", "staff"] },
+  { href: "/admin/orders", label: "Orders", roles: ["admin", "staff"] },
+  { href: "/admin/orders/new", label: "New custom order", roles: ["admin", "staff"] },
+  { href: "/admin/products", label: "Products", roles: ["admin", "staff"] },
+  { href: "/admin/hero", label: "Hero Section", roles: ["admin", "staff"] },
+  { href: "/admin/categories", label: "Categories", roles: ["admin"] },
+  { href: "/admin/inventory", label: "Inventory", roles: ["admin"] },
+  { href: "/admin/customers", label: "Customers", roles: ["admin"] },
+  { href: "/admin/coupons", label: "Coupons", roles: ["admin"] },
+  { href: "/admin/reports", label: "Accounting", roles: ["admin"] },
+  { href: "/admin/users", label: "Users & Roles", roles: ["admin"] },
+  { href: "/admin/staff", label: "Staff", roles: ["admin"] },
+  { href: "/admin/notifications", label: "Notifications", roles: ["admin"] },
 ];
+
+function isStaffAllowedPath(pathname: string) {
+  return (
+    pathname === "/admin" ||
+    pathname === "/admin/orders" ||
+    pathname === "/admin/orders/new" ||
+    pathname.startsWith("/admin/orders/") ||
+    pathname === "/admin/products" ||
+    pathname.startsWith("/admin/products/") ||
+    pathname === "/admin/hero"
+  );
+}
+
+function isActivePath(pathname: string, href: string) {
+  if (href === "/admin") return pathname === "/admin";
+  if (href === "/admin/orders") {
+    return (
+      pathname === "/admin/orders" ||
+      (pathname.startsWith("/admin/orders/") && pathname !== "/admin/orders/new")
+    );
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const authToken = useAuth((s) => s.token);
   const setSession = useAuth((s) => s.setSession);
   const clearAuth = useAuth((s) => s.clear);
   const [token, setToken] = useState<string | null>(null);
+  const [role, setRole] = useState<UserRole | null>(null);
   const [checking, setChecking] = useState(true);
   const [unauthorized, setUnauthorized] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const clearAdminSession = useCallback(() => {
+    clearAdminToken();
+    clearAuth();
+  }, [clearAuth]);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,37 +77,33 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       setChecking(true);
       setUnauthorized(false);
 
-      const candidate = getAdminToken() ?? authToken;
-      if (!candidate) {
-        if (!cancelled) {
-          setToken(null);
-          setChecking(false);
-        }
-        router.replace(`/?auth=login&next=${encodeURIComponent("/admin")}`);
-        return;
-      }
-
       try {
-        const { user } = await api.me(candidate);
+        const { user } = await api.me();
         if (cancelled) return;
 
-        if (user.role !== "admin") {
-          clearAdminToken();
+        if (user.role !== "admin" && user.role !== "staff") {
+          clearAdminSession();
           setToken(null);
+          setRole(null);
           setUnauthorized(true);
           setChecking(false);
           router.replace("/");
           return;
         }
 
-        setAdminToken(candidate);
-        setSession({ token: candidate, user });
-        setToken(candidate);
+        setAdminToken();
+        setSession({ token: COOKIE_SESSION, user });
+        setToken(COOKIE_SESSION);
+        setRole(user.role);
+
+        if (user.role === "staff" && !isStaffAllowedPath(pathname)) {
+          router.replace("/admin/orders");
+        }
       } catch {
         if (!cancelled) {
-          clearAdminToken();
-          clearAuth();
+          clearAdminSession();
           setToken(null);
+          setRole(null);
         }
         router.replace(`/?auth=login&next=${encodeURIComponent("/admin")}`);
       } finally {
@@ -88,7 +114,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [authToken, clearAuth, router, setSession]);
+  }, [clearAdminSession, pathname, router, setSession]);
+
+  useEffect(() => {
+    if (role === "staff" && !isStaffAllowedPath(pathname)) {
+      router.replace("/admin/orders");
+    }
+  }, [pathname, role, router]);
 
   useEffect(() => {
     void Promise.resolve().then(() => setDrawerOpen(false));
@@ -126,12 +158,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   const nav = (
-    <nav className="flex flex-col gap-1 px-2">
-      {NAV.map((n) => {
-        const active =
-          n.href === "/admin"
-            ? pathname === "/admin"
-            : pathname.startsWith(n.href);
+    <nav className="flex min-h-0 flex-col gap-1 px-2">
+      {NAV.filter((n) => !role || n.roles.includes(role)).map((n) => {
+        const active = isActivePath(pathname, n.href);
         return (
           <Link
             key={n.href}
@@ -150,18 +179,21 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   );
 
   const signOut = () => {
-    clearAdminToken();
+    setLoggingOut(true);
+    void api.logout().catch(() => null);
+    clearAdminSession();
     setToken(null);
     setDrawerOpen(false);
+    router.replace("/?auth=login");
   };
 
   return (
-    <div className="min-h-screen bg-background lg:grid lg:grid-cols-[220px_minmax(0,1fr)]">
-      <aside className="hidden min-h-screen flex-col border-r border-line bg-bg-soft lg:flex">
-        <div className="p-6">
+    <div className="min-h-screen w-full overflow-x-clip bg-background lg:flex">
+      <aside className="hidden h-screen w-[260px] shrink-0 flex-col border-r border-line bg-white lg:sticky lg:top-0 lg:flex">
+        <div className="flex h-16 shrink-0 items-center border-b border-line px-5">
           <Link
             href="/"
-            className="flex items-center gap-2 font-semibold tracking-tight">
+            className="flex min-w-0 items-center gap-2 font-semibold tracking-tight">
             <Image
               src="/brand/logo.png"
               alt=""
@@ -169,19 +201,21 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               height={26}
               className="h-[26px] w-[26px] object-contain"
             />
-            <span>
+            <span className="truncate">
               GamersKit
               <span className="font-normal text-fg-muted"> · Admin</span>
             </span>
           </Link>
         </div>
-        {nav}
-        <div className="mt-auto p-4 text-xs text-fg-muted">
+        <div className="min-h-0 flex-1 overflow-y-auto py-4">{nav}</div>
+        <div className="shrink-0 border-t border-line p-4 text-xs text-fg-muted">
           <button
             type="button"
             onClick={signOut}
-            className="underline underline-offset-4">
-            Sign out
+            disabled={loggingOut}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 py-2.5 text-sm font-medium text-red-600 transition hover:border-red-200 hover:bg-red-50 disabled:cursor-wait disabled:opacity-70">
+            <LogOut size={15} />
+            {loggingOut ? "Signing out..." : "Logout"}
           </button>
         </div>
       </aside>
@@ -216,10 +250,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             onClick={() => setDrawerOpen(false)}
             aria-label="Close admin navigation"
           />
-          <aside className="relative flex h-full w-[min(84vw,320px)] flex-col bg-bg-soft shadow-2xl">
-            <div className="flex h-16 items-center justify-between border-b border-line px-4">
+          <aside className="relative flex h-full min-h-0 w-[min(84vw,320px)] flex-col bg-bg-soft shadow-2xl">
+            <div className="flex h-16 shrink-0 items-center justify-between border-b border-line px-4">
               <Link
-                href="/admin"
+                href="/"
                 className="flex items-center gap-2 font-semibold">
                 <Image
                   src="/brand/logo.png"
@@ -238,21 +272,23 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 <X size={18} />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto py-3">{nav}</div>
-            <div className="border-t border-line p-4">
+            <div className="min-h-0 flex-1 overflow-y-auto py-3">{nav}</div>
+            <div className="shrink-0 border-t border-line p-4">
               <button
                 type="button"
                 onClick={signOut}
-                className="text-sm text-red-600 underline underline-offset-4">
-                Sign out
+                disabled={loggingOut}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 py-3 text-sm font-medium text-red-600 transition hover:border-red-200 hover:bg-red-50 disabled:cursor-wait disabled:opacity-70">
+                <LogOut size={16} />
+                {loggingOut ? "Signing out..." : "Logout"}
               </button>
             </div>
           </aside>
         </div>
       )}
 
-      <main className="min-w-0 overflow-hidden px-4 py-5 sm:px-6 lg:px-10 lg:py-10">
-        <div className="mx-auto w-full max-w-[1440px] min-w-0">{children}</div>
+      <main className="w-full min-w-0 max-w-full flex-1 overflow-x-clip px-4 py-5 sm:px-6 lg:px-10 lg:py-8 xl:px-12">
+        <div className="mx-auto w-full min-w-0 max-w-[1440px]">{children}</div>
       </main>
     </div>
   );

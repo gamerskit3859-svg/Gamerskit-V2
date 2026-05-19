@@ -12,7 +12,9 @@ async function startServer() {
     const app = createApp();
 
     app.listen(env.PORT, () => {
-      console.log(`[api] Local server running at http://localhost:${env.PORT}`);
+      if (env.NODE_ENV !== "production") {
+        console.info(`[api] Local server running at http://localhost:${env.PORT}`);
+      }
     });
   } catch (err) {
     console.error("[api] Fatal error during startup:", err);

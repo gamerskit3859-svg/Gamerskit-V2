@@ -5,6 +5,7 @@ import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash2, Plus, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
 import type { Product } from "@/types/shared";
 import {
@@ -17,6 +18,7 @@ import {
 import { cn } from "@/lib/cn";
 
 type PaymentMethod = "cod" | "bkash" | "nagad" | "card" | "manual";
+type PaymentType = "full" | "partial";
 
 const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
   { value: "cod", label: "Cash on Delivery" },
@@ -54,9 +56,11 @@ export default function CustomOrderPage() {
   const [discount, setDiscount] = useState(0);
   const [advance, setAdvance] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
+  const [paymentType, setPaymentType] = useState<PaymentType>("partial");
   const [customer, setCustomer] = useState({
     name: "",
     phone: "",
+    alternativePhone: "",
     email: "",
     address: "",
     district: "Dhaka",
@@ -133,7 +137,9 @@ export default function CustomOrderPage() {
 
   const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
   const total = Math.max(0, subtotal + shippingFee - discount);
-  const remaining = Math.max(0, total - advance);
+  const onlinePayment = paymentMethod === "bkash" || paymentMethod === "nagad";
+  const paidAmount = onlinePayment && paymentType === "full" ? total : advance;
+  const remaining = Math.max(0, total - paidAmount);
 
   async function submit() {
     if (lines.length === 0) {
@@ -144,11 +150,37 @@ export default function CustomOrderPage() {
       setError("Customer name, phone, and address are required.");
       return;
     }
+    if (onlinePayment) {
+      const senderDigits = customer.phone.replace(/\D/g, "");
+      if (!/^01[3-9]\d{8}$/.test(senderDigits)) {
+        setError("Customer phone must be a valid Bangladesh mobile number for bKash/Nagad orders.");
+        return;
+      }
+      if (paymentType === "partial" && (advance <= 0 || advance >= total)) {
+        setError("Partial paid amount must be greater than 0 and less than the total.");
+        return;
+      }
+    }
     setSubmitting(true);
     setError(null);
     try {
+      const token = getAdminToken();
+      const noteParts = [
+        notes.trim(),
+        customer.alternativePhone.trim()
+          ? `Alternative phone: ${customer.alternativePhone.trim()}`
+          : "",
+      ].filter(Boolean);
+      const customerPayload = {
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        address: customer.address,
+        district: customer.district,
+        thana: customer.thana,
+      };
       const r = await api.createOrder({
-        customer,
+        customer: customerPayload,
         items: lines.map((l) => ({
           productId: l.productId,
           title: l.title,
@@ -160,12 +192,16 @@ export default function CustomOrderPage() {
         })),
         shippingFee,
         discount,
-        advance,
+        advance: paidAmount,
         paymentMethod,
+        paymentType: onlinePayment ? paymentType : null,
+        paidAmount,
+        dueAmount: remaining,
+        senderNumber: onlinePayment ? customer.phone : null,
         source: "manual",
-        notes,
-      });
-      router.push(`/admin/orders?highlight=${r.order.orderNumber}`);
+        notes: noteParts.join("\n"),
+      }, token ?? undefined);
+      router.push(`/admin/orders/${r.order._id}`);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -299,7 +335,6 @@ export default function CustomOrderPage() {
               onChange={setShippingFee}
             />
             <NumField label="Discount" value={discount} onChange={setDiscount} />
-            <NumField label="Advance paid" value={advance} onChange={setAdvance} />
             <div className="flex flex-col gap-1">
               <span className={eyebrow}>Payment</span>
               <Select
@@ -315,6 +350,28 @@ export default function CustomOrderPage() {
                 ))}
               </Select>
             </div>
+            {onlinePayment && (
+              <div className="flex flex-col gap-1">
+                <span className={eyebrow}>Payment type</span>
+                <Select
+                  value={paymentType}
+                  onChange={(e) => {
+                    const next = e.target.value as PaymentType;
+                    setPaymentType(next);
+                    if (next === "full") setAdvance(total);
+                  }}
+                >
+                  <option value="partial">Partial Payment</option>
+                  <option value="full">Full Payment</option>
+                </Select>
+              </div>
+            )}
+            <NumField
+              label={onlinePayment ? "Paid amount" : "Advance paid"}
+              value={paidAmount}
+              disabled={onlinePayment && paymentType === "full"}
+              onChange={setAdvance}
+            />
           </div>
         </Card>
 
@@ -334,6 +391,13 @@ export default function CustomOrderPage() {
                 value={customer.phone}
                 onChange={(e) =>
                   setCustomer({ ...customer, phone: e.target.value })
+                }
+              />
+              <Input
+                placeholder="Alternative phone (optional)"
+                value={customer.alternativePhone}
+                onChange={(e) =>
+                  setCustomer({ ...customer, alternativePhone: e.target.value })
                 }
               />
               <Input
@@ -379,10 +443,10 @@ export default function CustomOrderPage() {
             <Row label="Subtotal" value={subtotal} />
             <Row label="Shipping" value={shippingFee} />
             <Row label="Discount" value={-discount} />
-            <Row label="Advance" value={-advance} />
+            <Row label="Paid" value={-paidAmount} />
             <div className="mt-2 border-t border-line pt-2">
               <Row label="Total" value={total} bold />
-              <Row label="Remaining" value={remaining} bold />
+              <Row label="Due" value={remaining} bold />
             </div>
             {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
             <Button
@@ -474,10 +538,12 @@ export default function CustomOrderPage() {
 function NumField({
   label,
   value,
+  disabled,
   onChange,
 }: {
   label: string;
   value: number;
+  disabled?: boolean;
   onChange: (n: number) => void;
 }) {
   return (
@@ -487,6 +553,7 @@ function NumField({
         className="text-right"
         type="number"
         min={0}
+        disabled={disabled}
         value={value}
         onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
       />

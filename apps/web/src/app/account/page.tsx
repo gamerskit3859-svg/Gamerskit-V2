@@ -4,28 +4,32 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { COOKIE_SESSION, useAuth } from "@/lib/auth";
 import { formatBDT, formatDateTime } from "@/lib/format";
 import type { Order } from "@/types/shared";
 import { Button, LinkButton, Card, Section } from "@/components/ui";
 
 export default function AccountPage() {
   const router = useRouter();
-  const { token, user, clear } = useAuth();
+  const { token, user, clear, setSession } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!token) {
-      router.replace("/");
-      return;
-    }
     let cancelled = false;
     void (async () => {
       try {
-        const r = await api.myOrders(token);
+        let currentUser = user;
+        if (!currentUser) {
+          const me = await api.me();
+          currentUser = me.user;
+          setSession({ token: COOKIE_SESSION, user: currentUser });
+        }
+        const r = await api.myOrders();
         if (!cancelled) setOrders(r.items);
       } catch {
+        clear();
+        router.replace("/");
         if (!cancelled) setOrders([]);
       } finally {
         if (!cancelled) setLoading(false);
@@ -34,8 +38,9 @@ export default function AccountPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, router]);
+  }, [clear, router, setSession, user]);
 
+  if (loading && !user) return null;
   if (!token || !user) return null;
 
   return (
@@ -58,6 +63,7 @@ export default function AccountPage() {
           <Button
             variant="ghost"
             onClick={() => {
+              void api.logout().catch(() => null);
               clear();
               router.replace("/");
             }}

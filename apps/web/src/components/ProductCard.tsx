@@ -8,7 +8,7 @@ import { ShoppingBag } from "lucide-react";
 import type { Product } from "@/types/shared";
 import { formatBDT } from "@/lib/format";
 import { useCart } from "@/lib/cart";
-import { track } from "@/lib/fb-pixel";
+import { trackAddToCart } from "@/lib/fb-pixel";
 import { optimizeCloudinaryImage } from "@/lib/images";
 import { Button } from "@/components/ui";
 
@@ -26,28 +26,17 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
   const router = useRouter();
   const add = useCart((s) => s.add);
   const [added, setAdded] = useState(false);
+  const hasVariants = product.variants?.some((group) => group.options?.length) ?? false;
 
   function handleAddToCart(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    if (hasVariants) {
+      router.push(`/product/${product.slug}`);
+      return;
+    }
     add(product, 1);
-    track({
-      event: "AddToCart",
-      contentIds: [product._id],
-      contentName: product.title,
-      contentCategory: product.category,
-      value: product.price,
-      currency: "BDT",
-      items: [
-        {
-          id: product._id,
-          name: product.title,
-          category: product.category,
-          price: product.price,
-          quantity: 1,
-        },
-      ],
-    });
+    trackAddToCart(product, 1);
     setAdded(true);
     setTimeout(() => setAdded(false), 1400);
   }
@@ -55,7 +44,12 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
   function handleBuyNow(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    if (hasVariants) {
+      router.push(`/product/${product.slug}`);
+      return;
+    }
     add(product, 1);
+    trackAddToCart(product, 1);
     router.push("/checkout");
   }
 
@@ -85,7 +79,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
               No image
             </div>
           )}
-          {product.featured && (
+          {(product.isFeatured ?? product.featured) && (
             <span className="absolute top-3 left-3 glass-dark text-white text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border-white/20">
               Featured
             </span>

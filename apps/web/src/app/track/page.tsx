@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { getCourierStatusText, getCourierTrackUrl } from "@/lib/courier";
 import { formatBDT, formatDateTime } from "@/lib/format";
 import type { Order, OrderStatus } from "@/types/shared";
 import { Button, LinkButton, Card, Section, Input } from "@/components/ui";
@@ -90,7 +91,7 @@ export default function TrackPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="mx-auto mb-12 max-w-md">
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <Input
             type="tel"
             placeholder="01XXXXXXXXX"
@@ -100,7 +101,11 @@ export default function TrackPage() {
             title="Enter a valid Bangladeshi phone number (e.g., 01712345678)"
             className="flex-1"
           />
-          <Button type="submit" disabled={loading || !phone.trim()}>
+          <Button
+            type="submit"
+            disabled={loading || !phone.trim()}
+            className="w-full sm:w-auto"
+          >
             {loading ? "Searching..." : "Find Orders"}
           </Button>
         </div>
@@ -136,9 +141,9 @@ export default function TrackPage() {
 
           {orders.map((order) => (
             <Card key={order._id} tone="soft">
-              <div className="mb-4 flex items-start justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <h3 className="break-words text-lg font-semibold">
                     Order {order.orderNumber}
                   </h3>
                   <p className="mt-1 text-sm text-fg-soft">
@@ -148,7 +153,7 @@ export default function TrackPage() {
                     Customer: {order.customer.name}
                   </p>
                 </div>
-                <div className="text-right">
+                <div className="sm:text-right">
                   <div className="font-semibold">{formatBDT(order.total)}</div>
                   <div
                     className={cn(
@@ -165,9 +170,37 @@ export default function TrackPage() {
               {/* Status timeline */}
               <StatusTimeline status={order.status} />
 
+              <div className="mb-4 rounded-lg border border-line bg-white p-4 text-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h4 className="font-semibold">Delivery Tracking</h4>
+                    <p className="mt-1 text-fg-soft">
+                      {order.courier
+                        ? `Steadfast · ${getCourierStatusText(order.courier)}`
+                        : "Courier tracking is not available yet."}
+                    </p>
+                    {order.courier?.trackingCode && (
+                      <p className="mt-1 font-mono text-xs text-fg-muted">
+                        {order.courier.trackingCode}
+                      </p>
+                    )}
+                  </div>
+                  {getCourierTrackUrl(order.courier?.trackingCode) && (
+                    <a
+                      href={getCourierTrackUrl(order.courier?.trackingCode) ?? "#"}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-black/10 px-4 text-xs font-semibold hover:bg-neutral-100"
+                    >
+                      Track Delivery
+                    </a>
+                  )}
+                </div>
+              </div>
+
               {/* Order items summary */}
               <div className="border-t border-line pt-4">
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-fg-soft">
                     {order.items.length} item
                     {order.items.length !== 1 ? "s" : ""}
@@ -198,8 +231,8 @@ function StatusTimeline({ status }: { status: OrderStatus }) {
   const currentIndex = STATUSES.findIndex((s) => s.key === status);
 
   return (
-    <div className="mb-4">
-      <div className="flex items-center gap-2 text-sm">
+    <div className="mb-4 overflow-x-auto pb-1">
+      <div className="flex min-w-[520px] items-center gap-2 text-sm">
         {STATUSES.map((s, i) => {
           const isCompleted = i <= currentIndex;
           const isCurrent = i === currentIndex;
@@ -225,7 +258,7 @@ function StatusTimeline({ status }: { status: OrderStatus }) {
           );
         })}
       </div>
-      <div className="mt-1 flex justify-between text-xs text-fg-soft">
+      <div className="mt-1 flex min-w-[520px] justify-between text-xs text-fg-soft">
         {STATUSES.map((s) => (
           <span key={s.key}>{s.label}</span>
         ))}

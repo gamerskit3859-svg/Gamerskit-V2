@@ -85,6 +85,8 @@ export interface CategoryItem {
 export interface HeroImageItem {
   _id: string;
   imageUrl: string;
+  mediaUrl?: string;
+  mediaType?: "image" | "video";
   publicId: string;
   order: number;
   isActive: boolean;
@@ -105,21 +107,40 @@ export interface ShopBannerItem {
   updatedAt?: string;
 }
 
+export interface SteadfastStatusResponse {
+  item: unknown;
+  order?: Order;
+}
+
 async function request<T>(
   path: string,
-  init?: RequestInit & { token?: string; next?: { revalidate?: number } },
+  init?: RequestInit & {
+    token?: string;
+    next?: { revalidate?: number };
+    timeoutMs?: number;
+  },
 ): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("content-type", "application/json");
-  if (init?.token) headers.set("authorization", `Bearer ${init.token}`);
-  const method = init?.method ?? "GET";
-  const cache =
-    init?.cache ?? (method === "GET" && !init?.token ? "force-cache" : "no-store");
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-    cache,
-  });
+  const cache = init?.cache ?? "no-store";
+  const timeoutMs = init?.timeoutMs ?? 12_000;
+  const controller =
+    !init?.signal && timeoutMs > 0 ? new AbortController() : null;
+  const timeoutId = controller
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      cache,
+      credentials: "include",
+      signal: init?.signal ?? controller?.signal,
+    });
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
   if (!res.ok) {
     let body: unknown = null;
     try {
@@ -151,21 +172,37 @@ const qs = (params: Record<string, unknown>) => {
 
 export const api = {
   // === Public ===
-  listProducts: (params: { category?: string; q?: string; featured?: boolean; page?: number; limit?: number } = {}) =>
+  listProducts: (params: { category?: string; q?: string; featured?: boolean; isFeatured?: boolean; bestSelling?: boolean; isBestSelling?: boolean; newArrival?: boolean; isNewArrival?: boolean; stock?: "low" | "out"; page?: number; limit?: number } = {}) =>
     request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(`/api/products${qs(params)}`, {
-      ...(params.q ? { cache: "no-store" as const } : { next: { revalidate: 60 } }),
+      cache: "no-store",
     }),
+  listProductsFresh: (params: { category?: string; q?: string; featured?: boolean; isFeatured?: boolean; bestSelling?: boolean; isBestSelling?: boolean; newArrival?: boolean; isNewArrival?: boolean; stock?: "low" | "out"; page?: number; limit?: number } = {}) =>
+    request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(
+      `/api/products${qs(params)}`,
+      { cache: "no-store" },
+    ),
   getProduct: (slug: string) =>
     request<{ item: Product }>(`/api/products/${slug}`, {
-      next: { revalidate: 120 },
+      cache: "no-store",
     }),
   listCategories: () =>
     request<{ items: CategoryItem[] }>(`/api/categories`, {
-      next: { revalidate: 300 },
+      cache: "no-store",
+      timeoutMs: 8_000,
+    }),
+  listCategoriesFresh: () =>
+    request<{ items: CategoryItem[] }>(`/api/categories`, {
+      cache: "no-store",
+      timeoutMs: 8_000,
     }),
   getCategory: (idOrSlug: string) =>
     request<{ item: CategoryItem }>(`/api/categories/${idOrSlug}`, {
-      next: { revalidate: 300 },
+      cache: "no-store",
+    }),
+  getCategoryFresh: (idOrSlug: string) =>
+    request<{ item: CategoryItem }>(`/api/categories/${idOrSlug}`, {
+      cache: "no-store",
+      timeoutMs: 8_000,
     }),
   createOrder: (body: unknown, token?: string) =>
     request<{ order: Order; eventId: string }>(`/api/orders`, {
@@ -173,8 +210,14 @@ export const api = {
       body: JSON.stringify(body),
       token,
     }),
-  getOrder: (orderNumber: string) => request<{ order: Order }>(`/api/orders/by-number/${orderNumber}`),
-  getOrdersByPhone: (phone: string) => request<{ orders: Order[] }>(`/api/orders/by-phone/${phone}`),
+  getOrder: (orderNumber: string) =>
+    request<{ order: Order }>(`/api/orders/by-number/${orderNumber}`, {
+      cache: "no-store",
+    }),
+  getOrdersByPhone: (phone: string) =>
+    request<{ orders: Order[] }>(`/api/orders/by-phone/${phone}`, {
+      cache: "no-store",
+    }),
   validateCoupon: (code: string, subtotal: number) =>
     request<{ coupon: { code: string; type: "percent" | "fixed"; value: number; discount: number } }>(
       `/api/coupons/validate`,
@@ -183,27 +226,34 @@ export const api = {
 
   // === Customer auth ===
   register: (body: { email: string; password: string; name?: string; phone?: string }) =>
-    request<{ token: string; user: AuthUser }>(`/api/auth/register`, {
+    request<{ user: AuthUser }>(`/api/auth/register`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
   login: (email: string, password: string) =>
-    request<{ token: string; user: AuthUser }>(`/api/auth/login`, {
+    request<{ user: AuthUser }>(`/api/auth/login`, {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
   loginGoogle: (body: { email: string; name: string; avatar?: string; providerId: string }) =>
-    request<{ token: string; user: AuthUser }>(`/api/auth/oauth/google`, {
+    request<{ user: AuthUser }>(`/api/auth/oauth/google`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
   loginFacebook: (body: { email: string; name: string; avatar?: string; providerId: string }) =>
-    request<{ token: string; user: AuthUser }>(`/api/auth/oauth/facebook`, {
+    request<{ user: AuthUser }>(`/api/auth/oauth/facebook`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  me: (token: string) => request<{ user: AuthUser }>(`/api/auth/me`, { token }),
-  myOrders: (token: string) => request<{ items: Order[] }>(`/api/auth/orders`, { token }),
+  me: (token?: string | null) => {
+    void token;
+    return request<{ user: AuthUser }>(`/api/auth/me`, { cache: "no-store" });
+  },
+  logout: () => request<void>(`/api/auth/logout`, { method: "POST" }),
+  myOrders: (token?: string | null) => {
+    void token;
+    return request<{ items: Order[] }>(`/api/auth/orders`, { cache: "no-store" });
+  },
 
   // === Admin ===
   listOrdersAdmin: (
@@ -230,6 +280,64 @@ export const api = {
       body: JSON.stringify(body),
       token,
     }),
+  sendOrderToSteadfast: (orderId: string, token: string) =>
+    request<{ item: unknown; order: Order }>(
+      `/api/admin/steadfast/orders/${orderId}/create`,
+      {
+        method: "POST",
+        token,
+      },
+    ),
+  getCourierStatus: async (
+    orderId: string,
+    token: string,
+  ): Promise<SteadfastStatusResponse> => {
+    const { order } = await api.getOrderAdmin(orderId, token);
+    const courier = order.courier;
+    if (!courier) {
+      throw new Error("Courier tracking is not available yet.");
+    }
+    if (courier.consignmentId) {
+      const result = await request<{ item: unknown }>(
+        `/api/admin/steadfast/status/consignment/${encodeURIComponent(courier.consignmentId)}`,
+        { token, cache: "no-store" },
+      );
+      return { ...result, order };
+    }
+    if (courier.trackingCode) {
+      const result = await request<{ item: unknown }>(
+        `/api/admin/steadfast/status/tracking/${encodeURIComponent(courier.trackingCode)}`,
+        { token, cache: "no-store" },
+      );
+      return { ...result, order };
+    }
+    if (courier.invoice || order.orderNumber) {
+      const result = await request<{ item: unknown }>(
+        `/api/admin/steadfast/status/invoice/${encodeURIComponent(courier.invoice || order.orderNumber)}`,
+        { token, cache: "no-store" },
+      );
+      return { ...result, order };
+    }
+    throw new Error("Courier tracking is missing tracking identifiers.");
+  },
+  syncCourierStatus: (orderId: string, token: string) =>
+    api.getCourierStatus(orderId, token),
+  getSteadfastBalance: (token: string) =>
+    request<{ item: unknown }>(`/api/admin/steadfast/balance`, {
+      token,
+      cache: "no-store",
+    }),
+  bulkSendOrdersToSteadfast: async (orderIds: string[], token: string) => {
+    const results = await Promise.allSettled(
+      orderIds.map((id) => api.sendOrderToSteadfast(id, token)),
+    );
+    return {
+      successful: results.filter((r) => r.status === "fulfilled").length,
+      failed: results.filter((r) => r.status === "rejected").length,
+      skipped: 0,
+      results,
+    };
+  },
 
   stats: (params: { from?: string; to?: string }, token: string) =>
     request<{
@@ -311,6 +419,11 @@ export const api = {
     request<{ items: Order[] }>(`/api/admin/recent-orders`, { token }),
   notifications: (token: string) =>
     request<{ items: NotificationItem[] }>(`/api/admin/notifications`, { token }),
+  inventorySummary: (token: string) =>
+    request<{ total: number; low: number; out: number; stockValue: number }>(
+      `/api/admin/inventory-summary`,
+      { token },
+    ),
 
   // Inventory
   adjustStock: (id: string, delta: number, token: string) =>
@@ -335,6 +448,11 @@ export const api = {
     request<void>(`/api/products/${id}`, { method: "DELETE", token }),
 
   // Categories
+  listCategoriesAdmin: (token: string) =>
+    request<{ items: CategoryItem[] }>(`/api/categories/admin/all`, {
+      token,
+      cache: "no-store",
+    }),
   createCategory: (body: Partial<CategoryItem>, token: string) =>
     request<{ item: CategoryItem }>(`/api/categories`, {
       method: "POST",
@@ -395,9 +513,14 @@ export const api = {
     request<void>(`/api/admin/coupons/${id}`, { method: "DELETE", token }),
 
   // Hero Images
-  getHeroImages: () => request<{ items: HeroImageItem[] }>(`/api/hero-images`),
+  getHeroImages: () =>
+    request<{ items: HeroImageItem[] }>(`/api/hero-images`, {
+      cache: "no-store",
+    }),
   getShopBanners: () =>
-    request<{ items: ShopBannerItem[] }>(`/api/settings/shop-banners`),
+    request<{ items: ShopBannerItem[] }>(`/api/settings/shop-banners`, {
+      cache: "no-store",
+    }),
   listShopBannersAdmin: (token: string) =>
     request<{ items: ShopBannerItem[] }>(`/api/settings/shop-banners/admin/all`, {
       token,
@@ -438,7 +561,7 @@ export const api = {
   listHeroImagesAdmin: (token: string) =>
     request<{ items: HeroImageItem[] }>(`/api/hero-images/admin/all`, { token }),
   createHeroImage: (
-    body: { imageUrl: string; publicId: string; order?: number; isActive?: boolean; title?: string; subtitle?: string; link?: string },
+    body: { imageUrl: string; mediaUrl?: string; mediaType?: "image" | "video"; publicId: string; order?: number; isActive?: boolean; title?: string; subtitle?: string; link?: string },
     token: string,
   ) =>
     request<{ item: HeroImageItem }>(`/api/hero-images`, {
@@ -448,7 +571,7 @@ export const api = {
     }),
   updateHeroImage: (
     id: string,
-    body: Partial<{ imageUrl: string; order: number; isActive: boolean; title: string; subtitle: string; link: string }>,
+    body: Partial<{ imageUrl: string; mediaUrl: string; mediaType: "image" | "video"; order: number; isActive: boolean; title: string; subtitle: string; link: string }>,
     token: string,
   ) =>
     request<{ item: HeroImageItem }>(`/api/hero-images/${id}`, {

@@ -3,6 +3,13 @@ import mongoose, { Schema } from "mongoose";
 const HeroImageSchema = new Schema(
   {
     imageUrl: { type: String, required: true },
+    mediaUrl: { type: String },
+    mediaType: {
+      type: String,
+      enum: ["image", "video"],
+      default: "image",
+      index: true,
+    },
     publicId: { type: String, required: true }, // Cloudinary public ID for deletion
     order: { type: Number, required: true, index: true },
     isActive: { type: Boolean, default: true, index: true },
@@ -22,6 +29,8 @@ export const HeroImageModel =
 export interface HeroImageDocument {
   _id: string;
   imageUrl: string;
+  mediaUrl: string;
+  mediaType: "image" | "video";
   publicId: string;
   order: number;
   isActive: boolean;

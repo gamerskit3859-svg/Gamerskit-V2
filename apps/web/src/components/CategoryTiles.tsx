@@ -145,7 +145,7 @@ export function CategoryTiles({
 
     async function loadCategories() {
       try {
-        const result = await api.listCategories();
+        const result = await api.listCategoriesFresh();
         if (cancelled) return;
         const featured = (result.items as Category[]).filter(
           (c) => !c.parentId && c.featured,

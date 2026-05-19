@@ -3,12 +3,12 @@ import Link from "next/link";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ShoppingBag, Search, User, Menu, X } from "lucide-react";
 import { api, type CategoryItem } from "@/lib/api";
 import { useCart } from "@/lib/cart";
-import { useAuth } from "@/lib/auth";
+import { COOKIE_SESSION, useAuth } from "@/lib/auth";
 import { clearAdminToken } from "@/lib/admin-token";
 import { cn } from "@/lib/cn";
 
@@ -24,19 +24,28 @@ const NAV_LINKS = [
 ];
 
 const MD_BREAKPOINT = 768;
+const NAVBAR_VISIBLE_EVENT = "gamerskit:navbar-visibility";
+const ANNOUNCEMENT_BAR_HEIGHT = 40;
+const NAVBAR_MOBILE_HEIGHT = 64;
+const NAVBAR_DESKTOP_HEIGHT = 72;
 
 type NavCategory = Pick<CategoryItem, "_id" | "name" | "slug" | "active"> & {
   subcategories?: NavCategory[];
 };
 
-function collectValidCategories(items: NavCategory[]): NavCategory[] {
-  return items.flatMap((item) => {
-    const current = item.active !== false && item.slug ? [item] : [];
-    const children = item.subcategories
-      ? collectValidCategories(item.subcategories)
-      : [];
-    return [...current, ...children];
-  });
+function filterCategoryTree(items: NavCategory[]): NavCategory[] {
+  return items
+    .filter((item) => item.active !== false && item.slug)
+    .map((item) => ({
+      ...item,
+      subcategories: item.subcategories
+        ? filterCategoryTree(item.subcategories)
+        : [],
+    }));
+}
+
+function getAnnouncementTopOffset() {
+  return ANNOUNCEMENT_BAR_HEIGHT;
 }
 
 export function Header() {
@@ -46,16 +55,22 @@ export function Header() {
   const authParam = searchParams.get("auth");
   const count = useCart((s) => s.lines.reduce((n, l) => n + l.quantity, 0));
   const user = useAuth((s) => s.user);
+  const setSession = useAuth((s) => s.setSession);
   const clear = useAuth((s) => s.clear);
-  const accountHref = user?.role === "admin" ? "/admin" : "/account";
+  const isAdminUser = user?.role === "admin" || user?.role === "staff";
+  const accountHref = isAdminUser ? "/admin" : "/account";
 
   const [scrolled, setScrolled] = useState(false);
+  const [navVisible, setNavVisible] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [pillStyle, setPillStyle] = useState({ left: 0, width: 0 });
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [mobileCategoriesOpen, setMobileCategoriesOpen] = useState(false);
   const [authDrawerOpen, setAuthDrawerOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [expandedMobileCategories, setExpandedMobileCategories] = useState<Record<string, boolean>>({});
   const [categories, setCategories] = useState<NavCategory[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesFailed, setCategoriesFailed] = useState(false);
@@ -65,13 +80,105 @@ export function Header() {
 
   const navRef = useRef<HTMLUListElement>(null);
   const itemRefs = useRef<(HTMLLIElement | null)[]>([]);
+  const lastScrollYRef = useRef(0);
+  const tickingRef = useRef(false);
+  const navVisibleRef = useRef(true);
+  const mobileDrawerOpenRef = useRef(false);
+
+  const publishNavState = useCallback((visible: boolean, topOffset: number) => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent(NAVBAR_VISIBLE_EVENT, {
+        detail: {
+          visible,
+          topOffset,
+          mobileHeight: NAVBAR_MOBILE_HEIGHT,
+          desktopHeight: NAVBAR_DESKTOP_HEIGHT,
+        },
+      }),
+    );
+  }, []);
+
+  const publishCurrentNavState = useCallback(
+    (
+      visible = navVisibleRef.current,
+      topOffset = getAnnouncementTopOffset(),
+    ) => {
+      publishNavState(visible, topOffset);
+    },
+    [publishNavState],
+  );
+
+  const setNavbarVisible = useCallback(
+    (
+      visible: boolean,
+      topOffset = getAnnouncementTopOffset(),
+    ) => {
+      publishNavState(visible, topOffset);
+      if (navVisibleRef.current === visible) return;
+      navVisibleRef.current = visible;
+      setNavVisible(visible);
+    },
+    [publishNavState],
+  );
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
+    if (user) return;
+    let cancelled = false;
+    api
+      .me()
+      .then(({ user: currentUser }) => {
+        if (!cancelled) setSession({ token: COOKIE_SESSION, user: currentUser });
+      })
+      .catch(() => null);
+    return () => {
+      cancelled = true;
+    };
+  }, [setSession, user]);
+
+  useEffect(() => {
+    mobileDrawerOpenRef.current = mobileDrawerOpen;
+    if (mobileDrawerOpen) {
+      setNavbarVisible(true);
+    }
+  }, [mobileDrawerOpen, setNavbarVisible]);
+
+  useEffect(() => {
+    const update = () => {
+      const currentY = Math.max(0, window.scrollY);
+      const previousY = lastScrollYRef.current;
+      const topOffset = getAnnouncementTopOffset();
+
+      setScrolled(currentY > 20);
+
+      if (mobileDrawerOpenRef.current || currentY <= 10) {
+        setNavbarVisible(true, topOffset);
+      } else if (currentY < previousY) {
+        setNavbarVisible(true, topOffset);
+      } else if (currentY > previousY && currentY > 80) {
+        setNavbarVisible(false, topOffset);
+      } else {
+        publishCurrentNavState(navVisibleRef.current, topOffset);
+      }
+
+      lastScrollYRef.current = currentY;
+      tickingRef.current = false;
+    };
+
+    const onScroll = () => {
+      if (tickingRef.current) return;
+      tickingRef.current = true;
+      window.requestAnimationFrame(update);
+    };
+
+    lastScrollYRef.current = Math.max(0, window.scrollY);
+    publishCurrentNavState(true, getAnnouncementTopOffset());
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [publishCurrentNavState, setNavbarVisible]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < MD_BREAKPOINT);
@@ -105,9 +212,9 @@ export function Header() {
       setCategoriesFailed(false);
 
       try {
-        const result = await api.listCategories();
+        const result = await api.listCategoriesFresh();
         if (!cancelled) {
-          setCategories(collectValidCategories(result.items));
+          setCategories(filterCategoryTree(result.items));
         }
       } catch {
         if (!cancelled) {
@@ -137,8 +244,121 @@ export function Header() {
 
   function openAuth(tab: "login" | "register") {
     setMobileDrawerOpen(false);
+    setMobileCategoriesOpen(false);
     setAuthDrawerTab(tab);
     setAuthDrawerOpen(true);
+  }
+
+  function renderDesktopCategoryTree(items: NavCategory[], depth = 0) {
+    return items.map((category) => {
+      const children = category.subcategories || [];
+      const hasChildren = children.length > 0;
+      const expanded = expandedCategories[category._id] ?? depth === 0;
+
+      return (
+        <div key={category._id}>
+          <div
+            className="flex items-center gap-1"
+            style={{ paddingLeft: depth * 14 }}
+          >
+            <Link
+              href={`/shop?category=${encodeURIComponent(category.slug)}`}
+              onClick={() => setCategoriesOpen(false)}
+              className={cn(
+                "min-w-0 flex-1 rounded-xl px-3 py-2 text-sm no-underline hover:bg-bg-soft",
+                depth === 0
+                  ? "font-semibold text-foreground"
+                  : "font-medium text-fg-soft hover:text-foreground",
+              )}
+            >
+              <span className="block truncate">{category.name}</span>
+            </Link>
+            {hasChildren && (
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedCategories((prev) => ({
+                    ...prev,
+                    [category._id]: !expanded,
+                  }))
+                }
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-muted hover:bg-bg-soft hover:text-foreground"
+                aria-label={`${expanded ? "Collapse" : "Expand"} ${category.name}`}
+                aria-expanded={expanded}
+              >
+                <ChevronDown
+                  size={14}
+                  className={cn("transition-transform", expanded && "rotate-180")}
+                />
+              </button>
+            )}
+          </div>
+          {hasChildren && expanded && (
+            <div className="mt-0.5">
+              {renderDesktopCategoryTree(children, depth + 1)}
+            </div>
+          )}
+        </div>
+      );
+    });
+  }
+
+  function renderMobileCategoryTree(items: NavCategory[], depth = 0) {
+    return items.map((category) => {
+      const children = category.subcategories || [];
+      const hasChildren = children.length > 0;
+      const expanded = expandedMobileCategories[category._id] ?? depth === 0;
+
+      return (
+        <li key={category._id}>
+          <div
+            className="flex items-center gap-1"
+            style={{ paddingLeft: depth * 12 }}
+          >
+            <Link
+              href={`/shop?category=${encodeURIComponent(category.slug)}`}
+              onClick={() => {
+                setMobileDrawerOpen(false);
+                setMobileCategoriesOpen(false);
+              }}
+              className={cn(
+                "flex min-h-11 min-w-0 flex-1 items-center rounded-xl px-3 py-2.5 text-[14px] no-underline hover:bg-bg-soft",
+                depth === 0
+                  ? "font-semibold text-foreground"
+                  : "font-medium text-fg-soft",
+              )}
+            >
+              <span className="truncate">{category.name}</span>
+            </Link>
+            {hasChildren && (
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedMobileCategories((prev) => ({
+                    ...prev,
+                    [category._id]: !expanded,
+                  }))
+                }
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-fg-muted hover:bg-bg-soft"
+                aria-label={`${expanded ? "Collapse" : "Expand"} ${category.name}`}
+                aria-expanded={expanded}
+              >
+                <ChevronDown
+                  size={16}
+                  strokeWidth={1.8}
+                  className={cn("transition-transform", expanded && "rotate-180")}
+                />
+              </button>
+            )}
+          </div>
+          {hasChildren && expanded && (
+            <ul className="m-0 flex flex-col gap-1 p-0">
+              {renderMobileCategoryTree(children, depth + 1)}
+            </ul>
+          )}
+        </li>
+      );
+    });
   }
 
   if (pathname?.startsWith("/admin")) return null;
@@ -146,7 +366,11 @@ export function Header() {
   return (
     <>
       <nav
-        className={cn("lg-navbar", scrolled && "scrolled")}
+        className={cn(
+          "lg-navbar",
+          scrolled && "scrolled",
+          !navVisible && "nav-hidden",
+        )}
         aria-label="Primary"
       >
         <div className="lg-inner pt-5">
@@ -215,7 +439,7 @@ export function Header() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 8 }}
                       transition={{ duration: 0.16 }}
-                      className="absolute left-1/2 top-full z-[700] mt-3 w-64 -translate-x-1/2 rounded-2xl border border-white/70 bg-white/95 p-2 shadow-[0_18px_60px_rgba(0,0,0,0.18)] backdrop-blur-xl"
+                      className="absolute left-1/2 top-full z-[70] mt-3 w-64 -translate-x-1/2 rounded-2xl border border-white/70 bg-white/95 p-2 shadow-[0_18px_60px_rgba(0,0,0,0.18)] backdrop-blur-xl"
                     >
                       {categoriesLoading ? (
                         <div className="space-y-2 p-2">
@@ -230,17 +454,8 @@ export function Header() {
                             : "No categories yet."}
                         </div>
                       ) : (
-                        <div className="max-h-[320px] overflow-y-auto">
-                          {categories.map((category) => (
-                            <Link
-                              key={category._id}
-                              href={`/shop?category=${encodeURIComponent(category.slug)}`}
-                              onClick={() => setCategoriesOpen(false)}
-                              className="block rounded-xl px-3 py-2 text-sm font-medium text-foreground no-underline hover:bg-bg-soft"
-                            >
-                              {category.name}
-                            </Link>
-                          ))}
+                        <div className="max-h-[360px] overflow-y-auto">
+                          {renderDesktopCategoryTree(categories)}
                         </div>
                       )}
                     </motion.div>
@@ -262,7 +477,7 @@ export function Header() {
                 <Link
                   href={accountHref}
                   className="lg-icon-btn"
-                  aria-label={user.role === "admin" ? "Admin dashboard" : "My account"}
+                  aria-label={isAdminUser ? "Admin dashboard" : "My account"}
                 >
                   <User size={16} strokeWidth={1.8} />
                 </Link>
@@ -285,7 +500,10 @@ export function Header() {
             {isMobile && (
               <button
                 type="button"
-                onClick={() => setMobileDrawerOpen(true)}
+                onClick={() => {
+                  setNavbarVisible(true);
+                  setMobileDrawerOpen(true);
+                }}
                 className="lg-icon-btn"
                 aria-label="Open menu"
               >
@@ -306,7 +524,7 @@ export function Header() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.22 }}
               onClick={() => setMobileDrawerOpen(false)}
-              className="fixed inset-0 z-40 bg-black/35 backdrop-blur-sm"
+              className="fixed inset-0 z-[90] bg-black/35 backdrop-blur-sm"
               aria-hidden
             />
 
@@ -316,7 +534,7 @@ export function Header() {
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              className="fixed bottom-0 left-0 top-0 z-[999] flex w-[280px] flex-col bg-[linear-gradient(160deg,rgba(255,255,255,0.97),rgba(245,245,247,0.99))] shadow-[4px_0_40px_rgba(0,0,0,0.14)] backdrop-blur-[40px] backdrop-saturate-200"
+              className="fixed bottom-0 left-0 top-0 z-[100] flex w-[min(320px,calc(100vw-24px))] flex-col bg-[linear-gradient(160deg,rgba(255,255,255,0.97),rgba(245,245,247,0.99))] shadow-[4px_0_40px_rgba(0,0,0,0.14)] backdrop-blur-[40px] backdrop-saturate-200"
               aria-label="Mobile navigation"
             >
               <div className="flex h-[76px] items-center justify-between border-b border-line/60 px-5">
@@ -352,7 +570,10 @@ export function Header() {
                     <li key={link.label}>
                       <Link
                         href={link.href}
-                        onClick={() => setMobileDrawerOpen(false)}
+                        onClick={() => {
+                          setMobileDrawerOpen(false);
+                          setMobileCategoriesOpen(false);
+                        }}
                         className={cn(
                           "flex items-center rounded-xl px-4 py-3 text-[15px] font-medium",
                           pathname === link.href
@@ -365,35 +586,53 @@ export function Header() {
                     </li>
                   ))}
                   <li>
-                    <div className="px-4 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-[0.14em] text-fg-muted">
-                      Categories
-                    </div>
-                    {categoriesLoading ? (
-                      <div className="space-y-2 px-4">
-                        <div className="h-9 animate-pulse rounded-xl bg-bg-soft" />
-                        <div className="h-9 animate-pulse rounded-xl bg-bg-soft" />
-                      </div>
-                    ) : categories.length === 0 ? (
-                      <div className="rounded-xl px-4 py-3 text-sm text-fg-muted">
-                        {categoriesFailed
-                          ? "Categories could not load."
-                          : "No categories yet."}
-                      </div>
-                    ) : (
-                      <ul className="m-0 flex flex-col gap-1 p-0">
-                        {categories.map((category) => (
-                          <li key={category._id}>
-                            <Link
-                              href={`/shop?category=${encodeURIComponent(category.slug)}`}
-                              onClick={() => setMobileDrawerOpen(false)}
-                              className="flex items-center rounded-xl px-4 py-3 text-[15px] font-medium text-foreground hover:bg-bg-soft"
-                            >
-                              {category.name}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setMobileCategoriesOpen((open) => !open)}
+                      className="mt-1 flex min-h-12 w-full items-center justify-between rounded-xl px-4 py-3 text-left text-[15px] font-medium text-foreground hover:bg-bg-soft"
+                      aria-expanded={mobileCategoriesOpen}
+                    >
+                      <span>Categories</span>
+                      <ChevronDown
+                        size={17}
+                        strokeWidth={1.8}
+                        className={cn(
+                          "transition-transform duration-200",
+                          mobileCategoriesOpen && "rotate-180",
+                        )}
+                      />
+                    </button>
+
+                    <AnimatePresence initial={false}>
+                      {mobileCategoriesOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.22, ease: "easeOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className="pb-1 pl-3 pt-1">
+                            {categoriesLoading ? (
+                              <div className="space-y-2 px-3 py-2">
+                                <div className="h-9 animate-pulse rounded-xl bg-bg-soft" />
+                                <div className="h-9 animate-pulse rounded-xl bg-bg-soft" />
+                              </div>
+                            ) : categories.length === 0 ? (
+                              <div className="rounded-xl px-3 py-3 text-sm text-fg-muted">
+                                {categoriesFailed
+                                  ? "Categories could not load."
+                                  : "No categories yet."}
+                              </div>
+                            ) : (
+                              <ul className="m-0 flex flex-col gap-1 p-0">
+                                {renderMobileCategoryTree(categories)}
+                              </ul>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </li>
                 </ul>
               </nav>
@@ -410,11 +649,12 @@ export function Header() {
                       className="flex items-center gap-3 rounded-xl bg-black/[0.04] px-4 py-3 text-[15px] font-medium text-foreground no-underline"
                     >
                       <User size={16} strokeWidth={1.8} />
-                      {user.role === "admin" ? "Admin Dashboard" : "My Account"}
+                      {isAdminUser ? "Admin Dashboard" : "My Account"}
                     </Link>
                     <button
                       type="button"
                       onClick={() => {
+                        void api.logout().catch(() => null);
                         clearAdminToken();
                         clear();
                         setMobileDrawerOpen(false);
@@ -448,6 +688,8 @@ export function Header() {
           </>
         )}
       </AnimatePresence>
+
+      {pathname !== "/" && <div className="h-[72px] md:h-[76px]" aria-hidden />}
 
       <AuthDrawer
         key={authDrawerOpen ? authDrawerTab : "closed"}

@@ -1,17 +1,14 @@
 "use client";
-const KEY = "gk-admin-token";
+import { COOKIE_SESSION } from "@/lib/auth";
 
 export function getAdminToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(KEY);
+  return typeof window === "undefined" ? null : COOKIE_SESSION;
 }
 
-export function setAdminToken(t: string) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(KEY, t);
+export function setAdminToken() {
+  // Auth is stored in a secure HTTP-only cookie by the API.
 }
 
 export function clearAdminToken() {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(KEY);
+  // Auth is cleared through /api/auth/logout.
 }

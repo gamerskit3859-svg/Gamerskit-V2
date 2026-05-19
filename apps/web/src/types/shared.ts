@@ -35,9 +35,15 @@ export const PAYMENT_STATUSES = ["unpaid", "partial", "paid", "refunded"] as con
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export interface ProductVariant {
-  size?: string;
-  color?: string;
+  name: string;
+  options: ProductVariantOption[];
+}
+
+export interface ProductVariantOption {
+  value: string;
   stock: number;
+  sku?: string;
+  price?: number;
 }
 
 export interface Product {
@@ -55,6 +61,10 @@ export interface Product {
   stock: number;
   images: string[];
   variants?: ProductVariant[];
+  isFeatured?: boolean;
+  isBestSelling?: boolean;
+  isNewArrival?: boolean;
+  /** Legacy homepage flag kept for older products. Prefer isFeatured. */
   featured?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -66,6 +76,9 @@ export interface OrderLineItem {
   image?: string;
   unitPrice: number;
   quantity: number;
+  selectedVariants?: Record<string, string>;
+  variantSku?: string;
+  variantPrice?: number;
   custom?: boolean; // true for ad-hoc line items added by admin
   note?: string;
 }
@@ -74,7 +87,11 @@ export interface OrderCustomer {
   name: string;
   phone: string;
   email?: string;
-  address: string;
+  address?: string;
+  shippingAddress?: string;
+  deliveryAddress?: string;
+  location?: string;
+  customerAddress?: string;
   /** Legacy / admin custom-order field. */
   city?: string;
   /** Legacy / admin custom-order field. */
@@ -89,6 +106,10 @@ export interface Order {
   _id: string;
   orderNumber: string;
   customer: OrderCustomer;
+  shippingAddress?: string;
+  deliveryAddress?: string;
+  location?: string;
+  customerAddress?: string;
   items: OrderLineItem[];
   subtotal: number;
   shippingFee: number;
@@ -96,11 +117,28 @@ export interface Order {
   total: number;
   advance: number;
   remaining: number;
+  paymentType?: "full" | "partial" | null;
+  paidAmount?: number;
+  dueAmount?: number;
+  senderNumber?: string | null;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   status: OrderStatus;
   source: "storefront" | "manual"; // manual = admin-created custom order
   notes?: string;
+  courier?: {
+    provider?: string;
+    invoice?: string;
+    consignmentId?: string;
+    trackingCode?: string;
+    status?: string;
+    deliveryStatus?: string;
+    courierStatus?: string;
+    response?: unknown;
+    error?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  } | null;
   fbEventId?: string;
   /** Set when a signed-in customer placed the order. */
   userId?: string;

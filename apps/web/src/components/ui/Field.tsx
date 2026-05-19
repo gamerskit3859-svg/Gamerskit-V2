@@ -7,7 +7,7 @@ import {
 import { cn } from "@/lib/cn";
 
 const base =
-  "w-full bg-white border border-line rounded-[10px] px-3 py-2.5 text-sm text-foreground " +
+  "w-full bg-white border border-line rounded-[22px] px-3 py-2.5 text-sm text-foreground " +
   "placeholder:text-fg-muted transition-[border-color,box-shadow] duration-150 " +
   "focus:outline-none focus:border-foreground focus:ring-4 focus:ring-black/5 " +
   "disabled:bg-bg-soft disabled:text-fg-muted disabled:cursor-not-allowed";

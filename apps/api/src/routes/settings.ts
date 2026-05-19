@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
-import { adminOnlyRequired } from "../lib/auth.js";
+import { adminRequired } from "../lib/auth.js";
 import { SiteSettingsModel } from "../models/SiteSettings.js";
-import { setPublicCache } from "../lib/http.js";
+import { setPrivateNoStore } from "../lib/http.js";
 
 const router = Router();
 const SETTINGS_KEY = "global";
@@ -50,16 +50,17 @@ router.get("/shop-banners", async (_req, res) => {
       (banner) => banner.isActive && banner.imageUrl,
     ),
   );
-  setPublicCache(res, 60, 300);
+  setPrivateNoStore(res);
   res.json({ items });
 });
 
-router.get("/shop-banners/admin/all", adminOnlyRequired, async (_req, res) => {
+router.get("/shop-banners/admin/all", adminRequired, async (_req, res) => {
+  setPrivateNoStore(res);
   const settings = await getSettings();
   res.json({ items: sortBanners(settings.shopBanners as ShopBanner[]) });
 });
 
-router.post("/shop-banners", adminOnlyRequired, async (req, res) => {
+router.post("/shop-banners", adminRequired, async (req, res) => {
   const parsed = shopBannerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -82,7 +83,7 @@ router.post("/shop-banners", adminOnlyRequired, async (req, res) => {
   res.status(201).json({ item: settings.shopBanners.at(-1) });
 });
 
-router.patch("/shop-banners/:id", adminOnlyRequired, async (req, res) => {
+router.patch("/shop-banners/:id", adminRequired, async (req, res) => {
   const parsed = shopBannerSchema.partial().safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -101,7 +102,7 @@ router.patch("/shop-banners/:id", adminOnlyRequired, async (req, res) => {
   res.json({ item: banner });
 });
 
-router.delete("/shop-banners/:id", adminOnlyRequired, async (req, res) => {
+router.delete("/shop-banners/:id", adminRequired, async (req, res) => {
   const settings = await getSettings();
   const banner = settings.shopBanners.id(req.params.id);
   if (!banner) {
@@ -114,7 +115,7 @@ router.delete("/shop-banners/:id", adminOnlyRequired, async (req, res) => {
   res.status(204).end();
 });
 
-router.post("/shop-banners/reorder", adminOnlyRequired, async (req, res) => {
+router.post("/shop-banners/reorder", adminRequired, async (req, res) => {
   const parsed = z
     .object({
       order: z.array(z.object({ id: z.string(), order: z.number().int().min(0) })),

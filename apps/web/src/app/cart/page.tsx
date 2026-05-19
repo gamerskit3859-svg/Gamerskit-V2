@@ -33,7 +33,7 @@ export default function CartPage() {
               {lines.map((l) => (
                 <motion.div
                   layout
-                  key={l.productId}
+                  key={l.id ?? l.productId}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
@@ -60,11 +60,19 @@ export default function CartPage() {
                       <div className="text-sm capitalize text-fg-muted">
                         {l.category.replace(/-/g, " ")}
                       </div>
+                      {l.selectedVariants &&
+                        Object.keys(l.selectedVariants).length > 0 && (
+                          <div className="mt-1 text-xs text-fg-muted">
+                            {Object.entries(l.selectedVariants)
+                              .map(([name, value]) => `${name}: ${value}`)
+                              .join(" / ")}
+                          </div>
+                        )}
                       <div className="mt-3 flex items-center gap-3">
                         <div className="flex items-center rounded-full border border-line-strong">
                           <button
                             type="button"
-                            onClick={() => setQty(l.productId, l.quantity - 1)}
+                            onClick={() => setQty(l.id ?? l.productId, l.quantity - 1)}
                             className="h-8 w-8 rounded-l-full transition-colors hover:bg-bg-soft"
                             aria-label="Decrease quantity"
                           >
@@ -73,7 +81,7 @@ export default function CartPage() {
                           <span className="w-8 text-center text-sm">{l.quantity}</span>
                           <button
                             type="button"
-                            onClick={() => setQty(l.productId, l.quantity + 1)}
+                            onClick={() => setQty(l.id ?? l.productId, l.quantity + 1)}
                             className="h-8 w-8 rounded-r-full transition-colors hover:bg-bg-soft"
                             aria-label="Increase quantity"
                           >
@@ -82,7 +90,7 @@ export default function CartPage() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => remove(l.productId)}
+                          onClick={() => remove(l.id ?? l.productId)}
                           className="text-sm text-fg-muted underline underline-offset-4 transition-colors hover:text-foreground"
                         >
                           Remove

@@ -6,11 +6,16 @@ import { ProductModel } from "../models/Product.js";
 import { UserModel } from "../models/User.js";
 import { CouponModel } from "../models/Coupon.js";
 import { AccountingOverrideModel } from "../models/AccountingOverride.js";
-import { adminRequired, hashPassword } from "../lib/auth.js";
+import { adminOnlyRequired, adminRequired, hashPassword } from "../lib/auth.js";
+import { setPrivateNoStore } from "../lib/http.js";
 
 const router = Router();
 
 router.use(adminRequired);
+router.use((_req, res, next) => {
+  setPrivateNoStore(res);
+  next();
+});
 
 function parseLocalDate(value: string): Date {
   const [year, month, day] = value.split("-").map(Number);
@@ -29,7 +34,7 @@ function buildDateFilter(from?: string, to?: string): Record<string, Date> | und
   return range;
 }
 
-router.get("/stats", async (req, res) => {
+router.get("/stats", adminOnlyRequired, async (req, res) => {
   const { from, to } = req.query as Record<string, string>;
   const dateFilter = buildDateFilter(from, to);
   const orderMatch: Record<string, unknown> = {};
@@ -128,7 +133,7 @@ router.get("/stats", async (req, res) => {
   });
 });
 
-router.get("/top-products", async (req, res) => {
+router.get("/top-products", adminOnlyRequired, async (req, res) => {
   const { from, to, limit = "10" } = req.query as Record<string, string>;
   const dateFilter = buildDateFilter(from, to);
   const match: Record<string, unknown> = { status: { $nin: ["cancelled", "refunded"] } };
@@ -149,13 +154,13 @@ router.get("/top-products", async (req, res) => {
   res.json({ items });
 });
 
-router.get("/recent-orders", async (req, res) => {
+router.get("/recent-orders", adminOnlyRequired, async (req, res) => {
   const items = await OrderModel.find().sort({ createdAt: -1 }).limit(10).lean();
   res.json({ items });
 });
 
 // === Reports ===
-router.get("/reports", async (req, res) => {
+router.get("/reports", adminOnlyRequired, async (req, res) => {
   const { from, to } = req.query as Record<string, string>;
   const dateFilter = buildDateFilter(from, to);
   const match: Record<string, unknown> = { status: { $nin: ["cancelled", "refunded"] } };
@@ -297,7 +302,7 @@ function rangeKey(from: string, to: string): string {
   return `${fk}..${tk}`;
 }
 
-router.get("/accounting", async (req, res) => {
+router.get("/accounting", adminOnlyRequired, async (req, res) => {
   const { from, to } = req.query as Record<string, string>;
   if (!from || !to) {
     res.status(400).json({ error: "from and to are required" });
@@ -321,7 +326,7 @@ router.get("/accounting", async (req, res) => {
   });
 });
 
-router.put("/accounting", async (req, res) => {
+router.put("/accounting", adminOnlyRequired, async (req, res) => {
   const parsed = accountingSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -344,7 +349,7 @@ router.put("/accounting", async (req, res) => {
 });
 
 // === Customers ===
-router.get("/customers", async (req, res) => {
+router.get("/customers", adminOnlyRequired, async (req, res) => {
   const { q, page = "1", limit = "30" } = req.query as Record<string, string>;
   const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
   const lim = Math.min(Number(limit) || 30, 200);
@@ -375,22 +380,20 @@ router.get("/customers", async (req, res) => {
       },
     });
   }
+  const countPipeline: PipelineStage[] = [...pipeline, { $count: "n" }];
   pipeline.push({ $sort: { revenue: -1 } });
   pipeline.push({ $skip: skip });
   pipeline.push({ $limit: lim });
 
   const [items, totalAgg] = await Promise.all([
     OrderModel.aggregate(pipeline),
-    OrderModel.aggregate([
-      { $group: { _id: { $ifNull: ["$customer.phone", "$customer.email"] } } },
-      { $count: "n" },
-    ]),
+    OrderModel.aggregate(countPipeline),
   ]);
   res.json({ items, total: totalAgg[0]?.n ?? 0 });
 });
 
 // === Notifications (derived feed) ===
-router.get("/notifications", async (_req, res) => {
+router.get("/notifications", adminOnlyRequired, async (_req, res) => {
   const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
   const [recentOrders, lowStock, recentSignups] = await Promise.all([
     OrderModel.find({ createdAt: { $gte: since } })
@@ -446,13 +449,40 @@ router.get("/notifications", async (_req, res) => {
   res.json({ items: events });
 });
 
+router.get("/inventory-summary", adminOnlyRequired, async (_req, res) => {
+  const [total, low, out, stockValueAgg] = await Promise.all([
+    ProductModel.countDocuments(),
+    ProductModel.countDocuments({ stock: { $gt: 0, $lte: 3 } }),
+    ProductModel.countDocuments({ stock: { $lte: 0 } }),
+    ProductModel.aggregate([
+      {
+        $group: {
+          _id: null,
+          value: {
+            $sum: {
+              $multiply: ["$price", { $max: ["$stock", 0] }],
+            },
+          },
+        },
+      },
+    ]),
+  ]);
+
+  res.json({
+    total,
+    low,
+    out,
+    stockValue: stockValueAgg[0]?.value ?? 0,
+  });
+});
+
 // === Inventory: stock adjust ===
 const stockAdjustSchema = z.object({
   delta: z.number().int(),
   reason: z.string().max(200).optional(),
 });
 
-router.post("/products/:id/stock", async (req, res) => {
+router.post("/products/:id/stock", adminOnlyRequired, async (req, res) => {
   const parsed = stockAdjustSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -482,12 +512,12 @@ const couponSchema = z.object({
   active: z.boolean().optional(),
 });
 
-router.get("/coupons", async (_req, res) => {
+router.get("/coupons", adminOnlyRequired, async (_req, res) => {
   const items = await CouponModel.find().sort({ createdAt: -1 }).lean();
   res.json({ items });
 });
 
-router.post("/coupons", async (req, res) => {
+router.post("/coupons", adminOnlyRequired, async (req, res) => {
   const parsed = couponSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -501,7 +531,7 @@ router.post("/coupons", async (req, res) => {
   }
 });
 
-router.patch("/coupons/:id", async (req, res) => {
+router.patch("/coupons/:id", adminOnlyRequired, async (req, res) => {
   const updated = await CouponModel.findByIdAndUpdate(req.params.id, req.body, {
     new: true,
   }).lean();
@@ -512,15 +542,17 @@ router.patch("/coupons/:id", async (req, res) => {
   res.json({ item: updated });
 });
 
-router.delete("/coupons/:id", async (req, res) => {
+router.delete("/coupons/:id", adminOnlyRequired, async (req, res) => {
   await CouponModel.findByIdAndDelete(req.params.id);
   res.status(204).end();
 });
 
 // Public-ish: validate coupon code (still admin-protected for simplicity here;
 // the /api/coupons/validate route below is the public one).
-router.get("/coupons/:code", async (req, res) => {
-  const item = await CouponModel.findOne({ code: req.params.code.toUpperCase() }).lean();
+router.get("/coupons/:code", adminOnlyRequired, async (req, res) => {
+  const item = await CouponModel.findOne({
+    code: String(req.params.code).toUpperCase(),
+  }).lean();
   if (!item) {
     res.status(404).json({ error: "not found" });
     return;
@@ -537,7 +569,7 @@ const staffSchema = z.object({
   role: z.enum(["staff", "admin"]),
 });
 
-router.get("/users", async (req, res) => {
+router.get("/users", adminOnlyRequired, async (req, res) => {
   const { role, q } = req.query as Record<string, string>;
   const filter: Record<string, unknown> = {};
   if (role && role !== "all") filter.role = role;
@@ -556,7 +588,7 @@ router.get("/users", async (req, res) => {
   res.json({ items });
 });
 
-router.post("/users", async (req, res) => {
+router.post("/users", adminOnlyRequired, async (req, res) => {
   const parsed = staffSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -594,7 +626,7 @@ const userPatchSchema = z.object({
   password: z.string().min(6).optional(),
 });
 
-router.patch("/users/:id", async (req, res) => {
+router.patch("/users/:id", adminOnlyRequired, async (req, res) => {
   const parsed = userPatchSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -615,7 +647,7 @@ router.patch("/users/:id", async (req, res) => {
   res.json({ item: updated });
 });
 
-router.delete("/users/:id", async (req, res) => {
+router.delete("/users/:id", adminOnlyRequired, async (req, res) => {
   if (req.user?.sub === req.params.id) {
     res.status(400).json({ error: "cannot delete yourself" });
     return;

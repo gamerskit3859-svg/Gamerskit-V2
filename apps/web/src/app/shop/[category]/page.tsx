@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { CategoryNav } from "@/components/CategoryNav";
 import { ProductListing } from "@/components/ProductListing";
 import { Section } from "@/components/ui";
+import { createMetadata, truncateDescription } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -23,10 +24,24 @@ export async function generateMetadata({
 }) {
   const { category } = await params;
   try {
-    const res = await api.getCategory(category);
-    return { title: res.item?.name ?? "Shop" };
+    const res = await api.getCategoryFresh(category);
+    const item = res.item;
+    return createMetadata({
+      title: `${item.name} | Shop GamersKit`,
+      description: truncateDescription(
+        item.description ||
+          `Shop ${item.name} at GamersKit with cash on delivery across Bangladesh.`,
+      ),
+      path: `/shop?category=${encodeURIComponent(item.slug)}`,
+      keywords: [item.name, `${item.name} Bangladesh`, "GamersKit category"],
+      image: item.image || "/brand/logo.png",
+    });
   } catch {
-    return { title: "Shop" };
+    return createMetadata({
+      title: "Shop GamersKit",
+      description: "Browse GamersKit products in Bangladesh.",
+      path: `/shop?category=${encodeURIComponent(category)}`,
+    });
   }
 }
 
@@ -42,8 +57,8 @@ export default async function CategoryPage({
 
   try {
     const [catRes, categoryList] = await Promise.all([
-      api.getCategory(category),
-      api.listCategories().catch(() => ({ items: [] as Category[] })),
+      api.getCategoryFresh(category),
+      api.listCategoriesFresh().catch(() => ({ items: [] as Category[] })),
     ]);
     categoryData = catRes.item;
     categories = categoryList.items;
@@ -78,7 +93,7 @@ export default async function CategoryPage({
               {categoryData.subcategories.map((subcat) => (
                 <Link
                   key={subcat._id}
-                  href={`/shop/${subcat.slug}`}
+                  href={`/shop?category=${subcat.slug}`}
                   className="rounded-lg border border-line-strong p-4 text-center transition-colors hover:border-black"
                 >
                   <div className="text-sm font-medium">{subcat.name}</div>

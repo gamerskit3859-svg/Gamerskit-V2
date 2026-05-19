@@ -63,8 +63,8 @@ async function runMigrations(): Promise<void> {
         { platformFees: { $exists: true } },
         { $rename: { platformFees: "salaries" } },
       );
-    if (result.modifiedCount > 0) {
-      console.log(
+    if (result.modifiedCount > 0 && env.NODE_ENV !== "production") {
+      console.info(
         `[db][migration] renamed platformFees -> salaries on ${result.modifiedCount} accountingoverrides`,
       );
     }

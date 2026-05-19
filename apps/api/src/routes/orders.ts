@@ -4,13 +4,13 @@ import { z } from "zod";
 import { OrderModel } from "../models/Order.js";
 import { ProductModel } from "../models/Product.js";
 import { CouponModel } from "../models/Coupon.js";
-import { adminRequired, verifyToken } from "../lib/auth.js";
+import { adminRequired, authPayloadFromRequest } from "../lib/auth.js";
 import { hashUserData, newEventId, sendCapiEvent } from "../lib/fb.js";
 import { setPrivateNoStore } from "../lib/http.js";
 
 const router = Router();
 const TRACKING_ORDER_FIELDS =
-  "orderNumber customer.name customer.phone items.title items.image items.unitPrice items.quantity subtotal shippingFee discount total advance remaining paymentMethod paymentStatus status source createdAt updatedAt";
+  "orderNumber customer.name customer.phone customer.email customer.address customer.district customer.thana customer.city customer.area shippingAddress deliveryAddress location customerAddress items.title items.image items.unitPrice items.quantity items.selectedVariants items.variantSku items.variantPrice items.custom items.note subtotal shippingFee discount total advance remaining paymentType paidAmount dueAmount senderNumber paymentMethod paymentStatus status source notes courier createdAt updatedAt";
 
 const lineSchema = z.object({
   productId: z.string().optional(),
@@ -18,9 +18,24 @@ const lineSchema = z.object({
   image: z.string().optional(),
   unitPrice: z.number().min(0),
   quantity: z.number().int().min(1),
+  selectedVariants: z.record(z.string(), z.string()).optional(),
+  variantSku: z.string().optional(),
+  variantPrice: z.number().min(0).optional(),
   custom: z.boolean().optional(),
   note: z.string().optional(),
 });
+
+type OrderVariantOption = {
+  value?: unknown;
+  stock?: unknown;
+  sku?: unknown;
+  price?: unknown;
+};
+
+type OrderVariantGroup = {
+  name?: unknown;
+  options?: OrderVariantOption[];
+};
 
 // Customer shape is intentionally lenient on location: the storefront ships
 // district/thana, while admin custom-order builder ships city/area. Both
@@ -47,6 +62,10 @@ const orderSchema = z.object({
   discount: z.number().min(0).default(0),
   advance: z.number().min(0).default(0),
   paymentMethod: z.enum(["cod", "bkash", "nagad", "card", "manual"]).default("cod"),
+  paymentType: z.enum(["full", "partial"]).nullable().optional(),
+  paidAmount: z.number().min(0).optional(),
+  dueAmount: z.number().min(0).optional(),
+  senderNumber: z.string().nullable().optional(),
   source: z.enum(["storefront", "manual"]).default("storefront"),
   notes: z.string().optional(),
   couponCode: z.string().optional(),
@@ -75,13 +94,20 @@ router.post("/", async (req, res) => {
   // Optional auth: if the request comes with a customer JWT we link the order
   // to the user so it shows up in /account reliably. Invalid/missing tokens
   // just produce a guest order.
-  const authHeader = req.header("authorization") ?? "";
-  const rawToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  const jwtPayload = rawToken ? verifyToken(rawToken) : null;
+  const jwtPayload = authPayloadFromRequest(req);
   const userId =
     jwtPayload?.sub && mongoose.isValidObjectId(jwtPayload.sub)
       ? new mongoose.Types.ObjectId(jwtPayload.sub)
       : undefined;
+
+  if (
+    data.source === "manual" &&
+    jwtPayload?.role !== "admin" &&
+    jwtPayload?.role !== "staff"
+  ) {
+    res.status(403).json({ error: "manual orders require admin access" });
+    return;
+  }
 
   // Server-side re-pricing: never trust the unitPrice that the client sent for
   // catalog items. We look each non-custom line up by productId and overwrite
@@ -94,36 +120,93 @@ router.post("/", async (req, res) => {
     );
   const products = productIds.length
     ? await ProductModel.find({ _id: { $in: productIds } })
-        .select("title images price")
+        .select("title images price stock variants")
         .lean()
     : [];
   const productById = new Map(products.map((p) => [String(p._id), p]));
 
-  const items = data.items.map((line) => {
-    if (line.custom || !line.productId) return line;
-    const p = productById.get(line.productId);
-    if (!p) return line; // product was deleted; honour whatever was on the client
-    return {
-      ...line,
-      title: p.title ?? line.title,
-      image: line.image ?? (Array.isArray(p.images) ? p.images[0] : undefined),
-      unitPrice: typeof p.price === "number" ? p.price : line.unitPrice,
-    };
-  });
+  let items: typeof data.items;
+  try {
+    items = data.items.map((line) => {
+      if (line.custom || !line.productId) return line;
+      const p = productById.get(line.productId);
+      if (!p) return line; // product was deleted; honour whatever was on the client
+      const selectedVariants = line.selectedVariants ?? {};
+      let unitPrice = typeof p.price === "number" ? p.price : line.unitPrice;
+      const variantSkus: string[] = [];
+
+      if (Array.isArray(p.variants) && p.variants.length > 0) {
+        for (const group of p.variants as OrderVariantGroup[]) {
+          const groupName = String(group.name ?? "");
+          const selectedValue = selectedVariants[groupName];
+          if (!selectedValue) {
+            throw new Error(`Please select ${groupName} for ${p.title}.`);
+          }
+          const option = (group.options ?? []).find(
+            (candidate: OrderVariantOption) =>
+              String(candidate.value) === selectedValue,
+          );
+          if (!option) {
+            throw new Error(`Selected ${groupName} is not available for ${p.title}.`);
+          }
+          if (Number(option.stock ?? 0) < line.quantity) {
+            throw new Error(`${p.title} ${groupName} ${selectedValue} is out of stock.`);
+          }
+          if (typeof option.price === "number") unitPrice = option.price;
+          if (option.sku) variantSkus.push(String(option.sku));
+        }
+      } else if (Number(p.stock ?? 0) < line.quantity) {
+        throw new Error(`${p.title} is out of stock.`);
+      }
+
+      return {
+        ...line,
+        title: p.title ?? line.title,
+        image: line.image ?? (Array.isArray(p.images) ? p.images[0] : undefined),
+        unitPrice,
+        variantPrice: unitPrice,
+        variantSku: line.variantSku ?? (variantSkus.join(" / ") || undefined),
+      };
+    });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+    return;
+  }
 
   const subtotal = items.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
   const total = Math.max(0, subtotal + data.shippingFee - data.discount);
-  const remaining = Math.max(0, total - data.advance);
+  const onlinePayment =
+    data.paymentMethod === "bkash" || data.paymentMethod === "nagad";
+  const paymentType = onlinePayment ? data.paymentType ?? "partial" : null;
+  const paidAmount = onlinePayment
+    ? paymentType === "full"
+      ? total
+      : Number(data.paidAmount ?? data.advance ?? 0)
+    : Number(data.advance ?? 0);
+  const dueAmount = Math.max(0, total - paidAmount);
+  const remaining = dueAmount;
   const eventId = data.eventId ?? newEventId();
   const orderNumber = genOrderNumber();
+
+  if (onlinePayment) {
+    const senderDigits = (data.senderNumber ?? "").replace(/\D/g, "");
+    if (!/^01[3-9]\d{8}$/.test(senderDigits)) {
+      res.status(400).json({ error: "Valid sender number is required." });
+      return;
+    }
+    if (paymentType === "partial" && (paidAmount <= 0 || paidAmount >= total)) {
+      res.status(400).json({ error: "Partial paid amount must be greater than 0 and less than total." });
+      return;
+    }
+  }
 
   // Payment status follows the money. Online prepayments collected up front
   // settle to "paid"; COD / advance flows start "unpaid"/"partial" until the
   // admin marks them on the order detail page.
   const paymentStatus =
-    data.advance > 0 && data.advance < total
+    paidAmount > 0 && paidAmount < total
       ? "partial"
-      : data.advance >= total && total > 0
+      : paidAmount >= total && total > 0
         ? "paid"
         : "unpaid";
 
@@ -135,8 +218,12 @@ router.post("/", async (req, res) => {
     shippingFee: data.shippingFee,
     discount: data.discount,
     total,
-    advance: data.advance,
+    advance: paidAmount,
     remaining,
+    paymentType,
+    paidAmount,
+    dueAmount,
+    senderNumber: onlinePayment ? (data.senderNumber ?? "").replace(/\D/g, "") : null,
     paymentMethod: data.paymentMethod,
     paymentStatus,
     source: data.source,
@@ -146,14 +233,38 @@ router.post("/", async (req, res) => {
     userId,
   });
 
-  const stockUpdates = data.items
+  const stockUpdates = items
     .filter((line) => line.productId && !line.custom)
-    .map((line) =>
-      ProductModel.updateOne(
+    .map(async (line) => {
+      const product = productById.get(String(line.productId));
+      if (!product) return null;
+      const selectedVariants = line.selectedVariants ?? {};
+
+      if (Array.isArray(product.variants) && product.variants.length > 0) {
+        const update: Record<string, unknown> = { $inc: {} };
+        let decrementedOptions = 0;
+        (product.variants as OrderVariantGroup[]).forEach((group, groupIndex) => {
+          const selectedValue = selectedVariants[String(group.name ?? "")];
+          const optionIndex = (group.options ?? []).findIndex(
+            (option: OrderVariantOption) => String(option.value) === selectedValue,
+          );
+          if (optionIndex >= 0) {
+            (update.$inc as Record<string, number>)[
+              `variants.${groupIndex}.options.${optionIndex}.stock`
+            ] = -line.quantity;
+            decrementedOptions += 1;
+          }
+        });
+        (update.$inc as Record<string, number>).stock =
+          -line.quantity * Math.max(1, decrementedOptions);
+        return ProductModel.updateOne({ _id: line.productId }, update).catch(() => null);
+      }
+
+      return ProductModel.updateOne(
         { _id: line.productId },
         { $inc: { stock: -line.quantity } },
-      ).catch(() => null),
-    );
+      ).catch(() => null);
+    });
 
   const couponUpdate = data.couponCode
     ? CouponModel.findOneAndUpdate(
@@ -238,6 +349,7 @@ function parseLocalDate(value: string): Date {
 
 // Admin endpoints
 router.get("/", adminRequired, async (req, res) => {
+  setPrivateNoStore(res);
   const {
     from,
     to,
@@ -275,7 +387,7 @@ router.get("/", adminRequired, async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
-      .select("orderNumber customer items total source status createdAt")
+      .select("orderNumber customer items total dueAmount remaining paymentMethod source status courier createdAt")
       .lean(),
     OrderModel.countDocuments(filter),
   ]);
@@ -289,6 +401,7 @@ router.get("/", adminRequired, async (req, res) => {
 });
 
 router.get("/:id", adminRequired, async (req, res) => {
+  setPrivateNoStore(res);
   const order = await OrderModel.findById(req.params.id).lean();
   if (!order) {
     res.status(404).json({ error: "not found" });

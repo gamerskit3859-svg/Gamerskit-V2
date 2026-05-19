@@ -7,7 +7,13 @@ import { motion } from "framer-motion";
 import { useCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth";
 import { formatBDT } from "@/lib/format";
-import { track } from "@/lib/fb-pixel";
+import {
+  createEventId,
+  getBrowserMeta,
+  track,
+  trackInitiateCheckout,
+  trackPurchase,
+} from "@/lib/fb-pixel";
 import { api } from "@/lib/api";
 import {
   Button,
@@ -22,6 +28,7 @@ import { allLocation } from "@/static/Location";
 
 type Step = 1 | 2 | 3;
 type PaymentMethod = "cod" | "bkash" | "nagad";
+type PaymentType = "full" | "partial";
 
 interface CheckoutForm {
   name: string;
@@ -31,6 +38,9 @@ interface CheckoutForm {
   district: string;
   thana: string;
   paymentMethod: PaymentMethod;
+  paymentType: PaymentType;
+  paidAmount: string;
+  senderNumber: string;
   notes: string;
 }
 
@@ -51,17 +61,13 @@ export default function CheckoutPage() {
   const lines = useCart((s) => s.lines);
   const subtotal = useCart((s) => s.subtotal());
   const clear = useCart((s) => s.clear);
-  // Pass the customer JWT (if signed in) so the API links the order to the
-  // user. Guest checkout still works — the token is just optional.
-  const authToken = useAuth((s) => s.token);
-
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Pre-fill name/phone/email from the signed-in customer's profile so they
   // don't have to retype it. Reads the auth store once on mount; the persist
-  // middleware rehydrates from localStorage synchronously on the client.
+  // Prefill from the in-memory cookie-backed auth session when available.
   const [form, setForm] = useState<CheckoutForm>(() => {
     const u = useAuth.getState().user;
     return {
@@ -72,6 +78,9 @@ export default function CheckoutPage() {
       district: "",
       thana: "",
       paymentMethod: "cod",
+      paymentType: "full",
+      paidAmount: "",
+      senderNumber: "",
       notes: "",
     };
   });
@@ -91,19 +100,18 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (lines.length === 0) return;
 
-    track({
-      event: "InitiateCheckout",
-      currency: "BDT",
-      value: subtotal,
-      contentIds: lines.map((l) => l.productId),
-      items: lines.map((l) => ({
-        id: l.productId,
-        name: l.title,
-        category: l.category,
-        price: l.unitPrice,
-        quantity: l.quantity,
-      })),
-    });
+    const user = useAuth.getState().user;
+    trackInitiateCheckout(
+      lines,
+      user
+        ? {
+            email: user.email,
+            phone: user.phone,
+            firstName: user.name?.split(" ")[0],
+            lastName: user.name?.split(" ").slice(1).join(" "),
+          }
+        : undefined,
+    );
 
     // intentionally only on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,11 +131,38 @@ export default function CheckoutPage() {
     );
   }
 
+  const isMobilePayment =
+    form.paymentMethod === "bkash" || form.paymentMethod === "nagad";
+  const paidAmount =
+    isMobilePayment && form.paymentType === "full"
+      ? subtotal
+      : Number(form.paidAmount || 0);
+  const dueAmount = isMobilePayment ? Math.max(0, subtotal - paidAmount) : subtotal;
+  const senderDigits = form.senderNumber.replace(/\D/g, "");
+  const senderNumberValid = /^01[3-9]\d{8}$/.test(senderDigits);
+  const paymentValid =
+    !isMobilePayment ||
+    (senderNumberValid &&
+      (form.paymentType === "full" ||
+        (paidAmount > 0 && paidAmount < subtotal)));
+  const paymentError =
+    !isMobilePayment || paymentValid
+      ? null
+      : !senderNumberValid
+        ? "Enter a valid sender bKash/Nagad number."
+        : "Partial paid amount must be greater than 0 and less than order total.";
+
   async function submitOrder() {
     setSubmitting(true);
     setError(null);
 
     try {
+      if (!paymentValid) {
+        setError(paymentError || "Please check payment details.");
+        setSubmitting(false);
+        return;
+      }
+
       track({
         event: "AddPaymentInfo",
         currency: "BDT",
@@ -140,6 +175,9 @@ export default function CheckoutPage() {
           lastName: form.name.split(" ").slice(1).join(" "),
         },
       });
+
+      const purchaseEventId = createEventId();
+      const browserMeta = getBrowserMeta();
 
       const { order, eventId } = await api.createOrder(
         {
@@ -157,26 +195,34 @@ export default function CheckoutPage() {
             image: l.image,
             unitPrice: l.unitPrice,
             quantity: l.quantity,
+            selectedVariants: l.selectedVariants,
+            variantSku: l.variantSku,
+            variantPrice: l.unitPrice,
           })),
           shippingFee: 0,
           discount: 0,
-          advance: 0,
+          advance: isMobilePayment ? paidAmount : 0,
           paymentMethod: form.paymentMethod,
+          paymentType: isMobilePayment ? form.paymentType : null,
+          paidAmount: isMobilePayment ? paidAmount : 0,
+          dueAmount: isMobilePayment ? dueAmount : subtotal,
+          senderNumber: isMobilePayment ? senderDigits : null,
           source: "storefront",
           notes: form.notes,
+          eventId: purchaseEventId,
+          ...browserMeta,
         },
-        authToken ?? undefined,
       );
 
-      track({
-        event: "Purchase",
-        currency: "BDT",
-        value: order.total,
+      trackPurchase({
+        eventId,
         orderId: order.orderNumber,
-        contentIds: order.items.map((item) => item.productId ?? item.title),
+        value: order.total,
         items: order.items.map((item) => ({
-          id: item.productId ?? item.title,
+          id: item.variantSku ?? item.productId ?? item.title,
           name: item.title,
+          category: lines.find((line) => line.productId === item.productId)
+            ?.category,
           price: item.unitPrice,
           quantity: item.quantity,
         })),
@@ -285,7 +331,7 @@ export default function CheckoutPage() {
                         thana: "",
                       });
                     }}
-                    className="h-11 rounded-[var(--radius-sm)] border border-line bg-bg px-3 text-sm outline-none focus:ring-2 focus:ring-black"
+                    className="h-11 rounded-[22px] border border-line bg-bg px-3 text-sm outline-none focus:ring-2 focus:ring-black"
                   >
                     <option value="">Select district</option>
 
@@ -306,7 +352,7 @@ export default function CheckoutPage() {
                       setForm({ ...form, thana: e.target.value })
                     }
                     disabled={!form.district}
-                    className="h-11 rounded-[var(--radius-sm)] border border-line bg-bg px-3 text-sm outline-none focus:ring-2 focus:ring-black disabled:cursor-not-allowed disabled:opacity-60"
+                    className="h-11 rounded-[22px] border border-line bg-bg px-3 text-sm outline-none focus:ring-2 focus:ring-black disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">Select thana</option>
 
@@ -348,10 +394,95 @@ export default function CheckoutPage() {
                     type="radio"
                     name="payment"
                     checked={form.paymentMethod === m.id}
-                    onChange={() => setForm({ ...form, paymentMethod: m.id })}
+                    onChange={() =>
+                      setForm({
+                        ...form,
+                        paymentMethod: m.id,
+                        paymentType: "full",
+                        paidAmount: "",
+                        senderNumber: m.id === "cod" ? "" : form.senderNumber,
+                      })
+                    }
                   />
                 </label>
               ))}
+
+              {isMobilePayment && (
+                <Card tone="soft" className="grid gap-4">
+                  <div>
+                    <h3 className="font-semibold">
+                      {form.paymentMethod === "bkash" ? "bKash" : "Nagad"} payment
+                    </h3>
+                    <p className="mt-1 text-sm text-fg-soft">
+                      Choose how much you sent and add the sender number.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(["full", "partial"] as PaymentType[]).map((type) => (
+                      <label
+                        key={type}
+                        className={cn(
+                          "flex cursor-pointer items-center justify-between rounded-[22px] border border-line bg-white px-3 py-3 text-sm font-medium",
+                          form.paymentType === type && "ring-2 ring-black",
+                        )}
+                      >
+                        <span>
+                          {type === "full" ? "Full Payment" : "Partial Payment"}
+                        </span>
+                        <input
+                          type="radio"
+                          name="paymentType"
+                          checked={form.paymentType === type}
+                          onChange={() =>
+                            setForm({
+                              ...form,
+                              paymentType: type,
+                              paidAmount: "",
+                            })
+                          }
+                        />
+                      </label>
+                    ))}
+                  </div>
+
+                  {form.paymentType === "partial" && (
+                    <Field
+                      label="Paid Amount"
+                      value={form.paidAmount}
+                      onChange={(v) =>
+                        setForm({
+                          ...form,
+                          paidAmount: v.replace(/[^\d.]/g, ""),
+                        })
+                      }
+                    />
+                  )}
+
+                  <Field
+                    label={`Sender ${
+                      form.paymentMethod === "bkash" ? "bKash" : "Nagad"
+                    } Number`}
+                    value={form.senderNumber}
+                    onChange={(v) => setForm({ ...form, senderNumber: v })}
+                  />
+
+                  <div className="grid gap-2 rounded-[var(--radius-sm)] border border-line bg-white p-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-fg-soft">Paid amount</span>
+                      <span className="font-medium">{formatBDT(paidAmount)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-fg-soft">Due amount</span>
+                      <span className="font-medium">{formatBDT(dueAmount)}</span>
+                    </div>
+                  </div>
+
+                  {paymentError && (
+                    <p className="text-sm text-red-600">{paymentError}</p>
+                  )}
+                </Card>
+              )}
 
               <Textarea
                 placeholder="Order notes (optional)"
@@ -369,7 +500,11 @@ export default function CheckoutPage() {
                   Back
                 </Button>
 
-                <Button className="flex-1" onClick={() => setStep(3)}>
+                <Button
+                  className="flex-1"
+                  disabled={!paymentValid}
+                  onClick={() => setStep(3)}
+                >
                   Review order
                 </Button>
               </div>
@@ -400,7 +535,19 @@ export default function CheckoutPage() {
 
               <Card tone="soft">
                 <h3 className="mb-3 font-semibold">Payment</h3>
-                <p className="text-sm capitalize">{form.paymentMethod}</p>
+                <div className="grid gap-1 text-sm">
+                  <p className="capitalize">{form.paymentMethod}</p>
+                  {isMobilePayment && (
+                    <>
+                      <p className="capitalize text-fg-soft">
+                        {form.paymentType} payment
+                      </p>
+                      <p>Paid: {formatBDT(paidAmount)}</p>
+                      <p>Due: {formatBDT(dueAmount)}</p>
+                      <p>Sender: {senderDigits}</p>
+                    </>
+                  )}
+                </div>
               </Card>
 
               {error && <div className="text-sm text-red-600">Error: {error}</div>}

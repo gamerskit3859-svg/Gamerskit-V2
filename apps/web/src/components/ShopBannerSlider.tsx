@@ -10,7 +10,6 @@ import { cn } from "@/lib/cn";
 
 const SWIPE_THRESHOLD = 45;
 
-// Defined snappy transition configuration for a fast slide
 const FAST_SLIDE_TRANSITION: Transition = {
   type: "spring",
   stiffness: 300,
@@ -44,10 +43,6 @@ export function ShopBannerSlider({ banners }: { banners: ShopBannerItem[] }) {
 
   return (
     <div className="group relative aspect-[16/8] w-full overflow-hidden rounded-lg bg-black sm:aspect-[16/6] md:aspect-[16/5] lg:aspect-[16/4]">
-      {/* 
-        This wrapper acts as the viewport. The inner div is a flex row 
-        moving based on the current active index for a true sliding effect.
-      */}
       <motion.div
         className="flex h-full w-full cursor-grab active:cursor-grabbing"
         style={{ x: dragX }}
@@ -57,45 +52,43 @@ export function ShopBannerSlider({ banners }: { banners: ShopBannerItem[] }) {
         onDragStart={() => setIsInteracting(true)}
         onDragEnd={handleDragEnd}
         animate={{ x: `-${index * 100}%` }}
-        transition={FAST_SLIDE_TRANSITION}
-      >
+        transition={FAST_SLIDE_TRANSITION}>
         {banners.map((banner, bannerIndex) => (
           <div
             key={banner._id}
-            className="relative h-full w-full flex-shrink-0 bg-black"
-          >
+            className="relative h-full w-full flex-shrink-0 bg-black">
+            {/* Background Image */}
             <Image
               src={optimizeCloudinaryImage(
                 banner.imageUrl,
-                "f_auto,q_auto,c_fit,w_1800",
+                "f_auto,q_auto,c_fill,w_1800", // Changed c_fit to c_fill so it covers the background completely
               )}
-              alt="Shop banner"
+              alt={"Shop banner background"}
               fill
               priority={bannerIndex === 0}
               sizes="(max-width: 768px) 100vw, 1280px"
-              className="object-contain"
-              draggable={false} // Prevents native browser image dragging conflict
+              className="object-cover pointer-events-none" // Changed object-contain to object-cover
+              draggable={false}
             />
           </div>
         ))}
       </motion.div>
 
+      {/* Navigation Controls */}
       {banners.length > 1 && (
         <>
           <button
             type="button"
             onClick={() => goTo(index - 1)}
             className="absolute left-3 top-1/2 z-20 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/25 text-white backdrop-blur transition hover:bg-black/40 sm:flex"
-            aria-label="Previous shop banner"
-          >
+            aria-label="Previous shop banner">
             <ChevronLeft size={18} />
           </button>
           <button
             type="button"
             onClick={() => goTo(index + 1)}
             className="absolute right-3 top-1/2 z-20 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/25 text-white backdrop-blur transition hover:bg-black/40 sm:flex"
-            aria-label="Next shop banner"
-          >
+            aria-label="Next shop banner">
             <ChevronRight size={18} />
           </button>
           <div className="absolute bottom-3 left-0 right-0 z-20 flex justify-center gap-2">

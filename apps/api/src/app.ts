@@ -3,6 +3,7 @@ import express, { type Express, type Request, type RequestHandler } from "expres
 import compression from "compression";
 import morgan from "morgan";
 import cors from "cors";
+import { env } from "./env.js";
 
 import { errorHandler, notFoundHandler } from "./lib/errors.js";
 
@@ -16,6 +17,8 @@ import categoriesRouter from "./routes/categories.js";
 import heroImagesRouter from "./routes/hero-images.js";
 import settingsRouter from "./routes/settings.js";
 import fbRouter from "./routes/fb.js";
+import steadfastRouter from "./routes/steadfast.js";
+import feedRouter from "./routes/feed.js";
 
 const require = createRequire(import.meta.url);
 
@@ -49,6 +52,27 @@ const rateLimitModule = require("express-rate-limit") as {
 const rateLimit =
   rateLimitModule.default ?? rateLimitModule.rateLimit ?? rateLimitModule;
 
+function parseAllowedOrigins(): Array<string | RegExp> {
+  const configured = env.CORS_ORIGIN.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const defaults = [
+    "http://localhost:3000",
+    "http://localhost:3010",
+    "http://localhost:5173",
+    "https://gamerskit-frontend.vercel.app",
+    "https://gamerskitbd.com",
+    "https://www.gamerskitbd.com",
+  ];
+  const values = configured.length > 0 && env.CORS_ORIGIN !== "*" ? configured : defaults;
+  return values.map((origin) => {
+    if (origin.startsWith("/") && origin.endsWith("/")) {
+      return new RegExp(origin.slice(1, -1));
+    }
+    return origin.replace(/\/+$/, "");
+  });
+}
+
 export interface CreateAppOptions {
   beforeRoutes?: RequestHandler;
 }
@@ -61,13 +85,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.set("trust proxy", 1);
 
   // 1) CORS — Simplified for Vercel compatibility
-  const allowedOrigins = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "https://gamerskit-frontend.vercel.app",
-    "https://gamerskitbd.com",
-    "https://www.gamerskitbd.com",
-  ];
+  const allowedOrigins = parseAllowedOrigins();
 
   app.use(
     cors({
@@ -75,7 +93,14 @@ export function createApp(options: CreateAppOptions = {}): Express {
         // Allow requests with no origin (like mobile apps or curl)
         if (!origin) return callback(null, true);
         
-        if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
+        const cleanOrigin = origin.replace(/\/+$/, "");
+        const allowed = allowedOrigins.some((allowedOrigin) =>
+          typeof allowedOrigin === "string"
+            ? allowedOrigin === cleanOrigin
+            : allowedOrigin.test(cleanOrigin),
+        );
+
+        if (allowed || (!isProduction && cleanOrigin.endsWith(".vercel.app"))) {
           callback(null, true);
         } else if (!isProduction) {
           console.warn(`[cors] Rejected origin: ${origin}`);
@@ -138,9 +163,11 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use("/api/settings", settingsRouter);
   app.use("/api/orders", ordersRouter);
   app.use("/api/coupons", couponsRouter);
+  app.use("/api/admin/steadfast", steadfastRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/admin/users", adminUsersRouter);
   app.use("/api/fb", fbRouter);
+  app.use("/api/feed", feedRouter);
 
   // 7) 404 + centralized JSON error handler.
   app.use(notFoundHandler);
