@@ -225,9 +225,7 @@ export function ProductListing({
 
       {products.length > 0 ? (
         <ProductGrid products={products} />
-      ) : (
-        <EmptyState />
-      )}
+      ) : <></>}
 
       {loadingMore && (
         <div className="mt-12 text-center">
@@ -266,16 +264,5 @@ export function ProductListing({
         </div>
       )}
     </Section>
-  );
-}
-
-function EmptyState() {
-  return (
-    <Card
-      tone="soft"
-      padding="lg"
-      className="text-center border-dashed text-fg-soft">
-      <p>No products yet.</p>
-    </Card>
   );
 }

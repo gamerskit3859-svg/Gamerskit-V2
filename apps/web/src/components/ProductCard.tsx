@@ -18,8 +18,8 @@ interface ProductCardProps {
 }
 
 /**
- * Storefront product tile. Out-of-stock products still allow Buy now / Add
- * to cart — inventory enforcement happens in /admin/inventory only.
+ * Storefront product tile. Public buyers can always Buy now / Add to cart;
+ * inventory visibility is reserved for admin screens.
  */
 export function ProductCard({ product, index = 0 }: ProductCardProps) {
   const img = product.images[0];

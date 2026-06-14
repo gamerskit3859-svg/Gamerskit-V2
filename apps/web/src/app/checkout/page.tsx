@@ -3,7 +3,8 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { CheckCircle2, Sparkles } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth";
 import { formatBDT } from "@/lib/format";
@@ -30,6 +31,12 @@ type Step = 1 | 2 | 3;
 type PaymentMethod = "cod" | "bkash" | "nagad";
 type PaymentType = "full" | "partial";
 
+type OrderSuccess = {
+  orderNumber: string;
+  total: number;
+  paymentMethod: PaymentMethod;
+};
+
 interface CheckoutForm {
   name: string;
   phone: string;
@@ -50,6 +57,12 @@ const PAYMENT_OPTIONS: Array<{ id: PaymentMethod; label: string; hint: string }>
   { id: "nagad", label: "Nagad", hint: "Send advance to 01303-775977." },
 ];
 
+const PAYMENT_LABELS: Record<PaymentMethod, string> = {
+  cod: "Cash on Delivery",
+  bkash: "bKash",
+  nagad: "Nagad",
+};
+
 const STEP_LABELS: Record<Step, string> = {
   1: "Information",
   2: "Payment",
@@ -64,6 +77,7 @@ export default function CheckoutPage() {
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<OrderSuccess | null>(null);
 
   // Pre-fill name/phone/email from the signed-in customer's profile so they
   // don't have to retype it. Reads the auth store once on mount; the persist
@@ -117,7 +131,7 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (lines.length === 0) {
+  if (lines.length === 0 && !success) {
     return (
       <Section width="narrow" spacing="lg" className="!max-w-2xl text-center">
         <h1 className="text-[clamp(36px,5vw,64px)] leading-[1.06] tracking-[-0.035em] font-semibold">
@@ -178,6 +192,7 @@ export default function CheckoutPage() {
 
       const purchaseEventId = createEventId();
       const browserMeta = getBrowserMeta();
+      const cartLines = [...lines];
 
       const { order, eventId } = await api.createOrder(
         {
@@ -221,7 +236,7 @@ export default function CheckoutPage() {
         items: order.items.map((item) => ({
           id: item.variantSku ?? item.productId ?? item.title,
           name: item.title,
-          category: lines.find((line) => line.productId === item.productId)
+          category: cartLines.find((line) => line.productId === item.productId)
             ?.category,
           price: item.unitPrice,
           quantity: item.quantity,
@@ -236,8 +251,12 @@ export default function CheckoutPage() {
 
       void eventId;
 
+      setSuccess({
+        orderNumber: order.orderNumber,
+        total: order.total,
+        paymentMethod: order.paymentMethod as PaymentMethod,
+      });
       clear();
-      router.push(`/order/${order.orderNumber}`);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -253,6 +272,7 @@ export default function CheckoutPage() {
     form.thana.trim().length > 1;
 
   return (
+    <>
     <Section width="narrow" spacing="md" className="!max-w-[1100px]">
       <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
         Checkout
@@ -612,6 +632,14 @@ export default function CheckoutPage() {
         </aside>
       </div>
     </Section>
+    <OrderSuccessModal
+      success={success}
+      onTrack={() => {
+        if (success) router.push(`/order/${success.orderNumber}`);
+      }}
+      onContinue={() => router.push("/shop")}
+    />
+    </>
   );
 }
 
@@ -627,5 +655,96 @@ function Field({ label, value, onChange }: FieldProps) {
       <span className="text-xs text-fg-soft">{label}</span>
       <Input value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
+  );
+}
+
+function OrderSuccessModal({
+  success,
+  onTrack,
+  onContinue,
+}: {
+  success: OrderSuccess | null;
+  onTrack: () => void;
+  onContinue: () => void;
+}) {
+  return (
+    <AnimatePresence>
+      {success && (
+        <motion.div
+          className="fixed inset-0 z-[1000] flex items-end justify-center bg-black/45 px-3 py-4 backdrop-blur-sm sm:items-center sm:p-6"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="order-success-title"
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 28, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.98 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/70 bg-white p-5 shadow-2xl sm:p-6"
+          >
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-green-50 to-transparent" />
+            <div className="pointer-events-none absolute right-5 top-5 text-green-500">
+              <motion.div
+                animate={{ rotate: [0, 8, -8, 0], scale: [1, 1.08, 1] }}
+                transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 0.8 }}
+              >
+                <Sparkles size={22} />
+              </motion.div>
+            </div>
+
+            <div className="relative text-center">
+              <motion.div
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.08, type: "spring", stiffness: 220, damping: 16 }}
+                className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-50 text-green-600 ring-8 ring-green-50/60"
+              >
+                <CheckCircle2 size={34} />
+              </motion.div>
+
+              <h2
+                id="order-success-title"
+                className="mt-5 text-2xl font-semibold tracking-tight text-foreground"
+              >
+                Congratulations!
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-fg-soft">
+                Your order has been placed successfully.
+              </p>
+            </div>
+
+            <div className="relative mt-5 rounded-xl border border-line bg-bg-soft p-4 text-sm">
+              <div className="flex justify-between gap-4 border-b border-line pb-2">
+                <span className="text-fg-soft">Order number</span>
+                <span className="break-all text-right font-mono font-medium">
+                  {success.orderNumber}
+                </span>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-line py-2">
+                <span className="text-fg-soft">Total amount</span>
+                <span className="font-semibold">{formatBDT(success.total)}</span>
+              </div>
+              <div className="flex justify-between gap-4 pt-2">
+                <span className="text-fg-soft">Payment method</span>
+                <span className="font-medium">{PAYMENT_LABELS[success.paymentMethod]}</span>
+              </div>
+            </div>
+
+            <div className="relative mt-6 grid gap-2 sm:grid-cols-2">
+              <Button onClick={onTrack} className="w-full">
+                Track Order
+              </Button>
+              <Button variant="secondary" onClick={onContinue} className="w-full">
+                Continue Shopping
+              </Button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

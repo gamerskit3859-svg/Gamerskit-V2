@@ -74,6 +74,8 @@ function TileSkeleton() {
 }
 
 function CategoryTile({ tile, index }: { tile: Tile; index: number }) {
+  const isPriorityImage = index === 0;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 30 }}
@@ -102,6 +104,8 @@ function CategoryTile({ tile, index }: { tile: Tile; index: number }) {
             alt={tile.label}
             fill
             sizes="(max-width: 768px) 100vw, 50vw"
+            loading={isPriorityImage ? "eager" : "lazy"}
+            fetchPriority={isPriorityImage ? "high" : "auto"}
             className="object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
           />
         )}
@@ -154,7 +158,10 @@ export function CategoryTiles({
         setTiles(sortTiles(mapped));
       } catch (err) {
         if (cancelled) return;
-        console.error("[CategoryTiles] Failed to load categories:", err);
+        if (process.env.NODE_ENV !== "production") {
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn(`[CategoryTiles] Using fallback categories: ${message}`);
+        }
         setError(true);
       } finally {
         if (!cancelled) setLoading(false);

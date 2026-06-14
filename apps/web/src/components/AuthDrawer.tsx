@@ -4,14 +4,12 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Eye, EyeOff } from "lucide-react";
-import { useGoogleLogin } from "@react-oauth/google";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { setAdminToken } from "@/lib/admin-token";
 import { track } from "@/lib/fb-pixel";
 import type { AuthUser } from "@/types/shared";
 import { Button } from "@/components/ui";
-import { COOKIE_SESSION } from "@/lib/auth";
 
 interface AuthDrawerProps {
   isOpen: boolean;
@@ -56,8 +54,8 @@ export function AuthDrawer({
     };
   }, [isOpen]);
 
-  function redirectByRole(user: AuthUser) {
-    setSession({ token: COOKIE_SESSION, user });
+  function redirectByRole(token: string, user: AuthUser) {
+    setSession({ token, user });
     if (user.role === "admin" || user.role === "staff") {
       setAdminToken();
       router.replace(nextParam ?? "/admin");
@@ -71,70 +69,38 @@ export function AuthDrawer({
 
   // --- Social Login Handlers ---
 
-  const handleGoogleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      const setLoading =
-        activeTab === "login" ? setLoginLoading : setRegisterLoading;
-      const setError = activeTab === "login" ? setLoginError : setRegisterError;
+  function handleGoogleLogin() {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    const setLoading =
+      activeTab === "login" ? setLoginLoading : setRegisterLoading;
+    const setError = activeTab === "login" ? setLoginError : setRegisterError;
 
-      setLoading(true);
-      setError(null);
+    if (!clientId) {
+      setError("Google Client ID is missing.");
+      return;
+    }
 
-      try {
-        // Fetch user info using the access token
-        const res = await fetch(
-          "https://www.googleapis.com/oauth2/v3/userinfo",
-          {
-            headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-          },
-        );
-        if (!res.ok) {
-          throw new Error("Could not load Google profile.");
-        }
-        const payload = await res.json();
-        if (!payload?.email || !payload?.sub) {
-          throw new Error("Google did not return a verified profile.");
-        }
+    setLoading(true);
+    setError(null);
 
-        const r = await api.loginGoogle({
-          email: payload.email,
-          name: payload.name,
-          avatar: payload.picture,
-          providerId: payload.sub,
-        });
+    const state = crypto.randomUUID();
+    const redirectUri =
+      process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI ||
+      `${window.location.origin}/auth/google/callback`;
+    sessionStorage.setItem("gk_google_oauth_state", state);
+    sessionStorage.setItem("gk_google_next", nextParam ?? "");
+    sessionStorage.setItem("gk_google_mode", activeTab);
 
-        track({
-          event: activeTab === "register" ? "CompleteRegistration" : "Lead",
-          contentName: `Google ${activeTab === "register" ? "Registration" : "Login"}`,
-          user: {
-            email: payload.email,
-            firstName: payload.given_name,
-            lastName: payload.family_name,
-          },
-        });
+    const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    authUrl.searchParams.set("client_id", clientId);
+    authUrl.searchParams.set("redirect_uri", redirectUri);
+    authUrl.searchParams.set("response_type", "token");
+    authUrl.searchParams.set("scope", "openid email profile");
+    authUrl.searchParams.set("prompt", "select_account");
+    authUrl.searchParams.set("state", state);
 
-        redirectByRole(r.user);
-      } catch (err) {
-        if (process.env.NODE_ENV !== "production") {
-          console.error("[auth] Google sign-in failed", err);
-        }
-        setError(
-          "Google sign-in failed. Please check the production Google OAuth origin and try again.",
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    onError: (errorResponse) => {
-      if (process.env.NODE_ENV !== "production") {
-        console.error("[auth] Google login failed", errorResponse);
-      }
-      const setError = activeTab === "login" ? setLoginError : setRegisterError;
-      setError(
-        "Google login failed. Make sure this website URL is allowed in Google Cloud.",
-      );
-    },
-  });
+    window.location.assign(authUrl.toString());
+  }
 
   function handleFacebookLogin() {
     const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
@@ -161,7 +127,7 @@ export function AuthDrawer({
           email: loginEmail,
         },
       });
-      redirectByRole(r.user);
+      redirectByRole(r.token, r.user);
     } catch (err) {
       const status = (err as { status?: number }).status;
       setLoginError(
@@ -195,7 +161,7 @@ export function AuthDrawer({
           phone: registerPhone,
         },
       });
-      setSession({ token: COOKIE_SESSION, user: r.user });
+      setSession({ token: r.token, user: r.user });
       router.replace(nextParam ?? "/account");
       onClose();
     } catch (err) {
@@ -274,7 +240,7 @@ export function AuthDrawer({
                     color: "#999",
                     margin: 0,
                   }}>
-                  GamersKit
+                  GK Shop
                 </p>
                 <h2
                   style={{
@@ -486,24 +452,6 @@ export function AuthDrawer({
                       className="w-full rounded-xl">
                       {loginLoading ? "Signing in…" : "Sign in"}
                     </Button>
-                    <div
-                      style={{
-                        borderRadius: 10,
-                        background: "#f7f7f7",
-                        padding: "12px 14px",
-                        fontSize: 12,
-                        color: "#888",
-                        textAlign: "center",
-                      }}>
-                      Demo admin:{" "}
-                      <code style={{ color: "#444", fontWeight: 600 }}>
-                        admin@gamerskit.local
-                      </code>{" "}
-                      /{" "}
-                      <code style={{ color: "#444", fontWeight: 600 }}>
-                        admin123
-                      </code>
-                    </div>
                   </form>
                 ) : (
                   <form

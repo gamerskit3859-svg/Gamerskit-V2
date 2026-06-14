@@ -19,7 +19,7 @@ function flattenCategories(items: Category[], depth = 0): Array<Category & { dep
   ]);
 }
 
-const NAVBAR_VISIBLE_EVENT = "gamerskit:navbar-visibility";
+const NAVBAR_VISIBLE_EVENT = "GK Shop:navbar-visibility";
 const MOBILE_BREAKPOINT = 768;
 const DEFAULT_MOBILE_NAV_HEIGHT = 64;
 const DEFAULT_DESKTOP_NAV_HEIGHT = 72;
@@ -95,20 +95,26 @@ export function CategoryNav({
 
   useEffect(() => {
     if (initialCategories.length > 0) return;
+    let cancelled = false;
 
     async function loadCategories() {
       try {
         const result = await api.listCategoriesFresh();
+        if (cancelled) return;
         setCategories(result.items);
       } catch (err) {
         if (process.env.NODE_ENV !== "production") {
-          console.error("Failed to load categories:", err);
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn(`Failed to load categories: ${message}`);
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
-    loadCategories();
+    void loadCategories();
+    return () => {
+      cancelled = true;
+    };
   }, [initialCategories.length]);
 
   if (loading) {

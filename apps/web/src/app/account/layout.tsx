@@ -2,7 +2,7 @@ import { createMetadata } from "@/lib/seo";
 
 export const metadata = createMetadata({
   title: "My Account",
-  description: "Manage your GamersKit account and order history.",
+  description: "Manage your GK Shop account and order history.",
   path: "/account",
   noIndex: true,
 });

@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
-export const SITE_NAME = "GamersKit";
+export const SITE_NAME = "GK Shop";
 export const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ??
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ||
   "https://gamerskitbd.com";
 export const DEFAULT_DESCRIPTION =
   "Shop RC drift cars, F1 jerseys, e-sports apparel, gaming gear, and accessories in Bangladesh with cash on delivery and fast delivery.";
 export const DEFAULT_KEYWORDS = [
-  "GamersKit",
+  "GK Shop",
   "gaming store Bangladesh",
   "RC car Bangladesh",
   "F1 jersey Bangladesh",

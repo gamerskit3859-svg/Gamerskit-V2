@@ -31,7 +31,7 @@ const reviews = [
   {
     name: "Nayeem Hossain",
     review:
-      "I ordered two of the sentinels half sleeve jerseys. One is black and another one is special edition. Both of them are best quality jerseys. I am going to order two more jerseys for my dad. Must recommend, buy from GamersKit!!",
+      "I ordered two of the sentinels half sleeve jerseys. One is black and another one is special edition. Both of them are best quality jerseys. I am going to order two more jerseys for my dad. Must recommend, buy from GK Shop!!",
     img: "https://i.ibb.co.com/V09Y5FDM/506845305-2864256783760727-1966484007278259698-n.jpg",
     rating: 5,
   },

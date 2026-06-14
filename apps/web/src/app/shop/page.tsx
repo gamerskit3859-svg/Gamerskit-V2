@@ -24,14 +24,14 @@ export async function generateMetadata({
       const { item } = await api.getCategoryFresh(categorySlug);
       const description = truncateDescription(
         item.description ||
-          `Shop ${item.name} at GamersKit with cash on delivery across Bangladesh.`,
+          `Shop ${item.name} at GK Shop with cash on delivery across Bangladesh.`,
       );
 
       return createMetadata({
-        title: `${item.name} | Shop GamersKit`,
+        title: `${item.name} | Shop GK Shop`,
         description,
         path: `/shop?category=${encodeURIComponent(item.slug)}`,
-        keywords: [item.name, `${item.name} Bangladesh`, "GamersKit category"],
+        keywords: [item.name, `${item.name} Bangladesh`, "GK Shop category"],
         image: item.image || "/brand/logo.png",
       });
     } catch {
@@ -42,7 +42,7 @@ export async function generateMetadata({
   return createMetadata({
     title: "Shop Gaming Gear, RC Cars & Jerseys",
     description:
-      "Browse all GamersKit products including RC drift cars, F1 jerseys, e-sports apparel, and gaming accessories in Bangladesh.",
+      "Browse all GK Shop products including RC drift cars, F1 jerseys, e-sports apparel, and gaming accessories in Bangladesh.",
     path: "/shop",
     keywords: ["shop gaming gear", "RC cars", "F1 jerseys", "Bangladesh"],
   });

@@ -20,14 +20,16 @@ export default function CustomersPage() {
     debouncedValue: searchQuery,
   } = useDebouncedSearch("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const token = getAdminToken();
-    if (!token) return;
     void (async () => {
       setLoading(true);
+      setError(null);
       try {
+        if (!token) throw new Error("Admin token not found. Please login again.");
         const r = await api.customers(
           { q: searchQuery || undefined, page, limit: PAGE_SIZE },
           token,
@@ -35,6 +37,12 @@ export default function CustomersPage() {
         if (cancelled) return;
         setItems(r.items);
         setTotal(r.total);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load customers.");
+          setItems([]);
+          setTotal(0);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -72,6 +80,12 @@ export default function CustomersPage() {
           />
         </div>
       </header>
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       <Card tone="soft" padding="none" className="overflow-hidden">
         {loading ? (

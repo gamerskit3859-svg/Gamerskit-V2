@@ -30,9 +30,22 @@ const MONTHS = [
   "December",
 ];
 
+function dhakaTodayParts(): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(new Date())
+    .split("-")
+    .map(Number);
+  return { year: parts[0], month: parts[1] - 1, day: parts[2] };
+}
+
 function defaultPeriod(): Period {
-  const now = new Date();
-  return { view: "monthly", month: now.getMonth(), year: now.getFullYear() };
+  const today = dhakaTodayParts();
+  return { view: "monthly", month: today.month, year: today.year };
 }
 
 function periodRange(p: Period): { from: string; to: string; label: string } {
@@ -44,7 +57,7 @@ function periodRange(p: Period): { from: string; to: string; label: string } {
     };
   }
   const mm = String(p.month + 1).padStart(2, "0");
-  const last = new Date(p.year, p.month + 1, 0).getDate();
+  const last = new Date(Date.UTC(p.year, p.month + 1, 0)).getUTCDate();
   const dd = String(last).padStart(2, "0");
   return {
     from: `${p.year}-${mm}-01`,
@@ -306,7 +319,7 @@ export default function AccountingPage() {
 
   // Years offered in the picker — current year + 4 prior.
   const yearOptions = useMemo(() => {
-    const current = new Date().getFullYear();
+    const current = dhakaTodayParts().year;
     return Array.from({ length: 5 }, (_, i) => current - i);
   }, []);
 

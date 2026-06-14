@@ -2,7 +2,7 @@ import { createMetadata } from "@/lib/seo";
 
 export const metadata = createMetadata({
   title: "Shopping Cart",
-  description: "Review your GamersKit shopping cart before checkout.",
+  description: "Review your GK Shop shopping cart before checkout.",
   path: "/cart",
   noIndex: true,
 });

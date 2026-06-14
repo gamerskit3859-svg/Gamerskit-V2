@@ -15,31 +15,33 @@ import { cn } from "@/lib/cn";
 import type { UserRole } from "@/types/shared";
 
 const NAV = [
-  { href: "/admin", label: "Dashboard", roles: ["admin", "staff"] },
+  { href: "/admin", label: "Dashboard", roles: ["admin"] },
   { href: "/admin/orders", label: "Orders", roles: ["admin", "staff"] },
   { href: "/admin/orders/new", label: "New custom order", roles: ["admin", "staff"] },
   { href: "/admin/products", label: "Products", roles: ["admin", "staff"] },
   { href: "/admin/hero", label: "Hero Section", roles: ["admin", "staff"] },
-  { href: "/admin/categories", label: "Categories", roles: ["admin"] },
-  { href: "/admin/inventory", label: "Inventory", roles: ["admin"] },
-  { href: "/admin/customers", label: "Customers", roles: ["admin"] },
-  { href: "/admin/coupons", label: "Coupons", roles: ["admin"] },
-  { href: "/admin/reports", label: "Accounting", roles: ["admin"] },
+  { href: "/admin/categories", label: "Categories", roles: ["admin", "staff"] },
+  { href: "/admin/inventory", label: "Inventory", roles: ["admin", "staff"] },
+  { href: "/admin/customers", label: "Customers", roles: ["admin", "staff"] },
+  { href: "/admin/coupons", label: "Coupons", roles: ["admin", "staff"] },
+  { href: "/admin/reports", label: "Accounting", roles: ["admin", "staff"] },
   { href: "/admin/users", label: "Users & Roles", roles: ["admin"] },
   { href: "/admin/staff", label: "Staff", roles: ["admin"] },
-  { href: "/admin/notifications", label: "Notifications", roles: ["admin"] },
+  { href: "/admin/notifications", label: "Notifications", roles: ["admin", "staff"] },
 ];
 
 function isStaffAllowedPath(pathname: string) {
-  return (
-    pathname === "/admin" ||
-    pathname === "/admin/orders" ||
-    pathname === "/admin/orders/new" ||
-    pathname.startsWith("/admin/orders/") ||
-    pathname === "/admin/products" ||
-    pathname.startsWith("/admin/products/") ||
-    pathname === "/admin/hero"
-  );
+  if (pathname === "/admin") return false;
+  if (pathname === "/admin/accounts" || pathname.startsWith("/admin/accounts/")) {
+    return false;
+  }
+  if (pathname === "/admin/users" || pathname.startsWith("/admin/users/")) {
+    return false;
+  }
+  if (pathname === "/admin/staff" || pathname.startsWith("/admin/staff/")) {
+    return false;
+  }
+  return pathname.startsWith("/admin/");
 }
 
 function isActivePath(pathname: string, href: string) {
@@ -96,9 +98,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         setToken(COOKIE_SESSION);
         setRole(user.role);
 
-        if (user.role === "staff" && !isStaffAllowedPath(pathname)) {
-          router.replace("/admin/orders");
-        }
       } catch {
         if (!cancelled) {
           clearAdminSession();
@@ -114,7 +113,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [clearAdminSession, pathname, router, setSession]);
+  }, [clearAdminSession, router, setSession]);
 
   useEffect(() => {
     if (role === "staff" && !isStaffAllowedPath(pathname)) {
@@ -202,7 +201,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               className="h-[26px] w-[26px] object-contain"
             />
             <span className="truncate">
-              GamersKit
+              GK Shop
               <span className="font-normal text-fg-muted"> · Admin</span>
             </span>
           </Link>
@@ -231,7 +230,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             height={24}
             className="h-6 w-6 object-contain"
           />
-          <span className="truncate">GamersKit Admin</span>
+          <span className="truncate">GK Shop Admin</span>
         </Link>
         <button
           type="button"
@@ -262,7 +261,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   height={24}
                   className="h-6 w-6 object-contain"
                 />
-                <span>GamersKit Admin</span>
+                <span>GK Shop Admin</span>
               </Link>
               <button
                 type="button"

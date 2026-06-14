@@ -4,8 +4,10 @@ import compression from "compression";
 import morgan from "morgan";
 import cors from "cors";
 import { env } from "./env.js";
+import { connectDb } from "./db.js";
 
 import { errorHandler, notFoundHandler } from "./lib/errors.js";
+import { ensureAdmin } from "./lib/auth.js";
 
 import productsRouter from "./routes/products.js";
 import ordersRouter from "./routes/orders.js";
@@ -145,9 +147,28 @@ export function createApp(options: CreateAppOptions = {}): Express {
     }),
   );
 
+  app.use(
+    "/api/auth/",
+    rateLimit({
+      windowMs: 15 * 60_000,
+      max: 60,
+      skip: (req: Request) => req.method === "OPTIONS",
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
+  );
+
   // Health probe.
+  app.get("/", (_req, res) => {
+    res.json({ ok: true, service: "gamerskit-api" });
+  });
+
   app.get("/health", (_req, res) => {
     res.json({ ok: true, ts: new Date().toISOString(), env: process.env.NODE_ENV });
+  });
+
+  app.get("/favicon.ico", (_req, res) => {
+    res.status(204).end();
   });
 
   // 6) Optional pre-route hook.
@@ -175,3 +196,37 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   return app;
 }
+
+let serverlessInitPromise: Promise<void> | null = null;
+
+async function initializeServerlessApp() {
+  if (!serverlessInitPromise) {
+    serverlessInitPromise = (async () => {
+      await connectDb();
+      await ensureAdmin();
+    })().catch((err) => {
+      serverlessInitPromise = null;
+      throw err;
+    });
+  }
+
+  await serverlessInitPromise;
+}
+
+const serverlessApp = createApp({
+  beforeRoutes: async (req, _res, next) => {
+    if (req.method === "OPTIONS") {
+      next();
+      return;
+    }
+
+    try {
+      await initializeServerlessApp();
+      next();
+    } catch (err) {
+      next(err);
+    }
+  },
+});
+
+export default serverlessApp;

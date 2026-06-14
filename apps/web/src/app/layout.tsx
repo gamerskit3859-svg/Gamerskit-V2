@@ -16,7 +16,7 @@ import {
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "GamersKit | RC cars and Gadgets in Bangladesh",
+    default: "GK Shop | RC cars and Gadgets in Bangladesh",
     template: `%s | ${SITE_NAME}`,
   },
   description: DEFAULT_DESCRIPTION,
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: "GamersKit | RC cars and Gadgets in Bangladesh",
+    title: "GK Shop | RC cars and Gadgets in Bangladesh",
     description: DEFAULT_DESCRIPTION,
     url: SITE_URL,
     siteName: SITE_NAME,
@@ -53,7 +53,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "GamersKit | RC cars and Gadgets in Bangladesh",
+    title: "GK Shop | RC cars and Gadgets in Bangladesh",
     description: DEFAULT_DESCRIPTION,
     images: [absoluteUrl("/brand/logo.png")],
   },

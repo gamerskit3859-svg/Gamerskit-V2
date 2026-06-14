@@ -29,7 +29,7 @@ export async function generateMetadata({
   } catch {
     return createMetadata({
       title: "Product not found",
-      description: "This GamersKit product may be unavailable or moved.",
+      description: "This GK Shop product may be unavailable or moved.",
       path: `/product/${slug}`,
       noIndex: true,
     });
@@ -51,7 +51,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
       sku: item._id,
       brand: {
         "@type": "Brand",
-        name: "GamersKit",
+        name: "GK Shop",
       },
       category: item.category,
       offers: {
@@ -59,10 +59,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
         url: absoluteUrl(`/product/${item.slug}`),
         priceCurrency: "BDT",
         price: item.price,
-        availability:
-          item.stock > 0
-            ? "https://schema.org/InStock"
-            : "https://schema.org/OutOfStock",
+        availability: "https://schema.org/InStock",
         itemCondition: "https://schema.org/NewCondition",
       },
     };

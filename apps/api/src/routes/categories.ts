@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { CategoryModel } from "../models/Category.js";
 import { ProductModel } from "../models/Product.js";
-import { adminOnlyRequired } from "../lib/auth.js";
+import { adminRequired } from "../lib/auth.js";
 import { setPrivateNoStore } from "../lib/http.js";
 
 const router = Router();
@@ -10,10 +10,59 @@ const PUBLIC_CATEGORY_FIELDS =
 
 type CategoryTreeNode = {
   _id: { toString(): string };
+  slug?: string;
+  productCount?: number;
   parentId?: { toString(): string } | string | null;
   subcategories: CategoryTreeNode[];
   [key: string]: unknown;
 };
+
+type CategoryRecord = Record<string, unknown> & {
+  _id: { toString(): string };
+  slug?: string;
+  productCount?: number;
+};
+
+async function withLiveProductCounts(categories: CategoryRecord[]): Promise<CategoryRecord[]> {
+  if (categories.length === 0) return categories;
+
+  const ids = categories.map((cat) => cat._id);
+  const slugs = categories
+    .map((cat) => cat.slug)
+    .filter((slug): slug is string => Boolean(slug));
+
+  const [byId, bySlug] = await Promise.all([
+    ProductModel.aggregate<{ _id: unknown; count: number }>([
+      { $match: { category: { $in: ids } } },
+      { $group: { _id: "$category", count: { $sum: 1 } } },
+    ]),
+    ProductModel.aggregate<{ _id: string; count: number }>([
+      { $match: { categorySlug: { $in: slugs } } },
+      { $group: { _id: "$categorySlug", count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const countById = new Map(byId.map((row) => [String(row._id), row.count]));
+  const countBySlug = new Map(bySlug.map((row) => [String(row._id), row.count]));
+
+  return categories.map((cat) => ({
+    ...cat,
+    productCount: Math.max(
+      Number(cat.productCount) || 0,
+      countById.get(String(cat._id)) ?? 0,
+      cat.slug ? countBySlug.get(cat.slug) ?? 0 : 0,
+    ),
+  }));
+}
+
+function rollupProductCounts(nodes: CategoryTreeNode[]): number {
+  return nodes.reduce((sum, node) => {
+    const childCount = rollupProductCounts(node.subcategories);
+    const directCount = Number(node.productCount) || 0;
+    node.productCount = directCount + childCount;
+    return sum + node.productCount;
+  }, 0);
+}
 
 function buildCategoryTree(categories: Array<Record<string, unknown>>): CategoryTreeNode[] {
   const categoryMap = new Map<string, CategoryTreeNode>();
@@ -39,6 +88,7 @@ function buildCategoryTree(categories: Array<Record<string, unknown>>): Category
     }
   });
 
+  rollupProductCounts(rootCategories);
   return rootCategories;
 }
 
@@ -51,14 +101,15 @@ router.get("/", async (req, res) => {
       .lean();
 
     setPrivateNoStore(res);
-    res.json({ items: buildCategoryTree(categories) });
+    const countedCategories = await withLiveProductCounts(categories as CategoryRecord[]);
+    res.json({ items: buildCategoryTree(countedCategories) });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
 });
 
 // Admin: get all categories with subcategories, including inactive categories.
-router.get("/admin/all", adminOnlyRequired, async (_req, res) => {
+router.get("/admin/all", adminRequired, async (_req, res) => {
   try {
     setPrivateNoStore(res);
     const categories = await CategoryModel.find({})
@@ -66,7 +117,8 @@ router.get("/admin/all", adminOnlyRequired, async (_req, res) => {
       .select(PUBLIC_CATEGORY_FIELDS)
       .lean();
 
-    res.json({ items: buildCategoryTree(categories) });
+    const countedCategories = await withLiveProductCounts(categories as CategoryRecord[]);
+    res.json({ items: buildCategoryTree(countedCategories) });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -116,7 +168,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // Create category (admin only)
-router.post("/", adminOnlyRequired, async (req, res) => {
+router.post("/", adminRequired, async (req, res) => {
   try {
     const { slug, name, description, image, icon, parentId, order, featured } = req.body;
 
@@ -152,7 +204,7 @@ router.post("/", adminOnlyRequired, async (req, res) => {
 });
 
 // Update category (admin only)
-router.patch("/:id", adminOnlyRequired, async (req, res) => {
+router.patch("/:id", adminRequired, async (req, res) => {
   try {
     const { slug, name, description, image, icon, parentId, order, active, featured } = req.body;
 
@@ -213,7 +265,7 @@ router.patch("/:id", adminOnlyRequired, async (req, res) => {
 });
 
 // Delete category (admin only)
-router.delete("/:id", adminOnlyRequired, async (req, res) => {
+router.delete("/:id", adminRequired, async (req, res) => {
   try {
     // Check if category has products
     const productCount = await ProductModel.countDocuments({

@@ -6,11 +6,11 @@ export function GlobalLoader() {
       className="flex items-center justify-center min-h-screen bg-bg"
       role="status"
       aria-live="polite"
-      aria-label="Loading GamersKit"
+      aria-label="Loading GK Shop"
     >
       <Image
         src="/brand/logo.png"
-        alt="GamersKit"
+        alt="GK Shop"
         width={84}
         height={84}
         priority

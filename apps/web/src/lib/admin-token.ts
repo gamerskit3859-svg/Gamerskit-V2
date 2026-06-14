@@ -1,8 +1,9 @@
 "use client";
-import { COOKIE_SESSION } from "@/lib/auth";
+import { AUTH_TOKEN_STORAGE_KEY, COOKIE_SESSION } from "@/lib/auth";
 
 export function getAdminToken(): string | null {
-  return typeof window === "undefined" ? null : COOKIE_SESSION;
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? COOKIE_SESSION;
 }
 
 export function setAdminToken() {

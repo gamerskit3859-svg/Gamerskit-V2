@@ -90,7 +90,7 @@ export function Footer() {
               height={24}
               className="h-6 w-6 object-contain"
             />
-            GamersKit
+            GK Shop
           </div>
           <p className="mt-3 max-w-[32ch] leading-relaxed">
             Bangladesh&apos;s No #1 RC drift cars, Gadgets and Enthusiastic product
@@ -179,7 +179,7 @@ export function Footer() {
       <div className="border-t border-line">
         <div className="mx-auto flex max-w-[1280px] flex-col gap-3 px-5 py-6 text-xs text-fg-muted sm:flex-row sm:items-center sm:justify-between lg:px-8">
           <span className="text-center sm:text-left">
-            &copy; {new Date().getFullYear()} GamersKit. All rights reserved.
+            &copy; {new Date().getFullYear()} GK Shop. All rights reserved.
           </span>
           <div className="text-center sm:text-right">
             Designed &amp; Developed by{" "}

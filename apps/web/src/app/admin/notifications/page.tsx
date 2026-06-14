@@ -53,14 +53,18 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState<NotificationType | "all">("all");
   const [readIds, setReadIds] = useState<Set<string>>(() => getReadIds());
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   async function reload() {
     const token = getAdminToken();
     if (!token) return;
     setLoading(true);
+    setError(null);
     try {
       const r = await api.notifications(token);
       setItems(r.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load notifications.");
     } finally {
       setLoading(false);
     }
@@ -69,12 +73,18 @@ export default function NotificationsPage() {
   useEffect(() => {
     let cancelled = false;
     const token = getAdminToken();
-    if (!token) return;
     void (async () => {
       setLoading(true);
+      setError(null);
       try {
+        if (!token) throw new Error("Admin token not found. Please login again.");
         const r = await api.notifications(token);
         if (!cancelled) setItems(r.items);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load notifications.");
+          setItems([]);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -146,6 +156,12 @@ export default function NotificationsPage() {
           </Button>
         ))}
       </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       <Card
         tone="soft"

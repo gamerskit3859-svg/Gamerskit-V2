@@ -18,7 +18,7 @@ export function StorySection() {
 
         <p className="mt-4 sm:mt-6 mx-auto max-w-xl md:max-w-2xl text-sm sm:text-base md:text-lg lg:text-xl leading-relaxed text-fg-soft opacity-90">
           From RC drift sessions at Hatirjheel to weekend crawlers in
-          Chattogram, GamersKit is built around the users. Every piece in our
+          Chattogram, GK Shop is built around the users. Every piece in our
           catalog is sourced, tested, and supported by people who use it
         </p>
 

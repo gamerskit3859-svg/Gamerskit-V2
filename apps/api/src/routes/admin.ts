@@ -8,6 +8,14 @@ import { CouponModel } from "../models/Coupon.js";
 import { AccountingOverrideModel } from "../models/AccountingOverride.js";
 import { adminOnlyRequired, adminRequired, hashPassword } from "../lib/auth.js";
 import { setPrivateNoStore } from "../lib/http.js";
+import {
+  TIMEZONE,
+  addUtcDays,
+  buildDhakaDateRangeFilter,
+  dhakaDayStartUtc,
+  dhakaDateKeysBetween,
+  dhakaDateToKey,
+} from "../lib/timezone.js";
 
 const router = Router();
 
@@ -17,21 +25,22 @@ router.use((_req, res, next) => {
   next();
 });
 
-function parseLocalDate(value: string): Date {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
+function buildDateFilter(from?: string, to?: string): Record<string, Date> | undefined {
+  return buildDhakaDateRangeFilter(from, to);
 }
 
-function buildDateFilter(from?: string, to?: string): Record<string, Date> | undefined {
-  if (!from && !to) return undefined;
-  const range: Record<string, Date> = {};
-  if (from) range.$gte = parseLocalDate(from);
-  if (to) {
-    const end = parseLocalDate(to);
-    end.setHours(23, 59, 59, 999);
-    range.$lte = end;
-  }
-  return range;
+type RevenueDay = { _id: string; total: number; orders: number };
+
+function normalizeRevenueByDay(
+  rows: RevenueDay[],
+  from?: string,
+  to?: string,
+): RevenueDay[] {
+  if (!from || !to) return rows;
+  const keys = dhakaDateKeysBetween(from, to, 370);
+  if (keys.length === 0 || keys.length >= 370) return rows;
+  const rowByDate = new Map(rows.map((row) => [row._id, row]));
+  return keys.map((key) => rowByDate.get(key) ?? { _id: key, total: 0, orders: 0 });
 }
 
 router.get("/stats", adminOnlyRequired, async (req, res) => {
@@ -67,7 +76,13 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
       { $match: { ...orderMatch, status: { $nin: ["cancelled", "refunded"] } } },
       {
         $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          _id: {
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: "$createdAt",
+              timezone: TIMEZONE,
+            },
+          },
           total: { $sum: "$total" },
           orders: { $sum: 1 },
         },
@@ -113,6 +128,11 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
   const grossRevenue = grossAgg[0]?.revenue ?? 0;
   const grossCost = grossAgg[0]?.cost ?? 0;
   const grossProfit = grossRevenue - grossCost;
+  const revenueByDayRows = normalizeRevenueByDay(
+    revenueByDay as RevenueDay[],
+    from,
+    to,
+  );
 
   res.json({
     range: { from: from ?? null, to: to ?? null },
@@ -129,7 +149,7 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
     statusBreakdown: Object.fromEntries(
       (statusBreakdown as Array<{ _id: string; count: number }>).map((r) => [r._id, r.count]),
     ),
-    revenueByDay: revenueByDay as Array<{ _id: string; total: number; orders: number }>,
+    revenueByDay: revenueByDayRows,
   });
 });
 
@@ -160,7 +180,7 @@ router.get("/recent-orders", adminOnlyRequired, async (req, res) => {
 });
 
 // === Reports ===
-router.get("/reports", adminOnlyRequired, async (req, res) => {
+router.get("/reports", adminRequired, async (req, res) => {
   const { from, to } = req.query as Record<string, string>;
   const dateFilter = buildDateFilter(from, to);
   const match: Record<string, unknown> = { status: { $nin: ["cancelled", "refunded"] } };
@@ -291,18 +311,10 @@ const accountingSchema = z.object({
 });
 
 function rangeKey(from: string, to: string): string {
-  const f = new Date(from);
-  const t = new Date(to);
-  const fk = `${f.getUTCFullYear()}-${String(f.getUTCMonth() + 1).padStart(2, "0")}-${String(
-    f.getUTCDate(),
-  ).padStart(2, "0")}`;
-  const tk = `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(
-    t.getUTCDate(),
-  ).padStart(2, "0")}`;
-  return `${fk}..${tk}`;
+  return `${dhakaDateToKey(from)}..${dhakaDateToKey(to)}`;
 }
 
-router.get("/accounting", adminOnlyRequired, async (req, res) => {
+router.get("/accounting", adminRequired, async (req, res) => {
   const { from, to } = req.query as Record<string, string>;
   if (!from || !to) {
     res.status(400).json({ error: "from and to are required" });
@@ -326,7 +338,7 @@ router.get("/accounting", adminOnlyRequired, async (req, res) => {
   });
 });
 
-router.put("/accounting", adminOnlyRequired, async (req, res) => {
+router.put("/accounting", adminRequired, async (req, res) => {
   const parsed = accountingSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -341,7 +353,12 @@ router.put("/accounting", adminOnlyRequired, async (req, res) => {
   const doc = await AccountingOverrideModel.findOneAndUpdate(
     { rangeKey: key },
     {
-      $set: { ...parsed.data, from: new Date(from), to: new Date(to), rangeKey: key },
+      $set: {
+        ...parsed.data,
+        from: dhakaDayStartUtc(from),
+        to: addUtcDays(dhakaDayStartUtc(to), 1),
+        rangeKey: key,
+      },
     },
     { new: true, upsert: true, setDefaultsOnInsert: true },
   ).lean();
@@ -349,7 +366,7 @@ router.put("/accounting", adminOnlyRequired, async (req, res) => {
 });
 
 // === Customers ===
-router.get("/customers", adminOnlyRequired, async (req, res) => {
+router.get("/customers", adminRequired, async (req, res) => {
   const { q, page = "1", limit = "30" } = req.query as Record<string, string>;
   const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
   const lim = Math.min(Number(limit) || 30, 200);
@@ -393,7 +410,7 @@ router.get("/customers", adminOnlyRequired, async (req, res) => {
 });
 
 // === Notifications (derived feed) ===
-router.get("/notifications", adminOnlyRequired, async (_req, res) => {
+router.get("/notifications", adminRequired, async (_req, res) => {
   const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
   const [recentOrders, lowStock, recentSignups] = await Promise.all([
     OrderModel.find({ createdAt: { $gte: since } })
@@ -449,7 +466,7 @@ router.get("/notifications", adminOnlyRequired, async (_req, res) => {
   res.json({ items: events });
 });
 
-router.get("/inventory-summary", adminOnlyRequired, async (_req, res) => {
+router.get("/inventory-summary", adminRequired, async (_req, res) => {
   const [total, low, out, stockValueAgg] = await Promise.all([
     ProductModel.countDocuments(),
     ProductModel.countDocuments({ stock: { $gt: 0, $lte: 3 } }),
@@ -482,7 +499,7 @@ const stockAdjustSchema = z.object({
   reason: z.string().max(200).optional(),
 });
 
-router.post("/products/:id/stock", adminOnlyRequired, async (req, res) => {
+router.post("/products/:id/stock", adminRequired, async (req, res) => {
   const parsed = stockAdjustSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -512,12 +529,12 @@ const couponSchema = z.object({
   active: z.boolean().optional(),
 });
 
-router.get("/coupons", adminOnlyRequired, async (_req, res) => {
+router.get("/coupons", adminRequired, async (_req, res) => {
   const items = await CouponModel.find().sort({ createdAt: -1 }).lean();
   res.json({ items });
 });
 
-router.post("/coupons", adminOnlyRequired, async (req, res) => {
+router.post("/coupons", adminRequired, async (req, res) => {
   const parsed = couponSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -531,7 +548,7 @@ router.post("/coupons", adminOnlyRequired, async (req, res) => {
   }
 });
 
-router.patch("/coupons/:id", adminOnlyRequired, async (req, res) => {
+router.patch("/coupons/:id", adminRequired, async (req, res) => {
   const updated = await CouponModel.findByIdAndUpdate(req.params.id, req.body, {
     new: true,
   }).lean();
@@ -542,14 +559,14 @@ router.patch("/coupons/:id", adminOnlyRequired, async (req, res) => {
   res.json({ item: updated });
 });
 
-router.delete("/coupons/:id", adminOnlyRequired, async (req, res) => {
+router.delete("/coupons/:id", adminRequired, async (req, res) => {
   await CouponModel.findByIdAndDelete(req.params.id);
   res.status(204).end();
 });
 
 // Public-ish: validate coupon code (still admin-protected for simplicity here;
 // the /api/coupons/validate route below is the public one).
-router.get("/coupons/:code", adminOnlyRequired, async (req, res) => {
+router.get("/coupons/:code", adminRequired, async (req, res) => {
   const item = await CouponModel.findOne({
     code: String(req.params.code).toUpperCase(),
   }).lean();

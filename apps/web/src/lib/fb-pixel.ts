@@ -126,7 +126,7 @@ export function track(p: TrackPayload): string {
     item_category: item.category,
     price: item.price,
     quantity: item.quantity,
-    brand: item.brand ?? "GamersKit",
+    brand: item.brand ?? "GK Shop",
   }));
   const ecommerce =
     p.items || p.value !== undefined

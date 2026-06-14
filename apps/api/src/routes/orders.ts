@@ -7,6 +7,10 @@ import { CouponModel } from "../models/Coupon.js";
 import { adminRequired, authPayloadFromRequest } from "../lib/auth.js";
 import { hashUserData, newEventId, sendCapiEvent } from "../lib/fb.js";
 import { setPrivateNoStore } from "../lib/http.js";
+import {
+  buildDhakaDateRangeFilter,
+  dhakaOrderDateKey,
+} from "../lib/timezone.js";
 
 const router = Router();
 const TRACKING_ORDER_FIELDS =
@@ -77,10 +81,38 @@ const orderSchema = z.object({
 });
 
 function genOrderNumber(): string {
-  const date = new Date();
-  const ymd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+  const ymd = dhakaOrderDateKey().replace(/-/g, "");
   const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
   return `GK-${ymd}-${rand}`;
+}
+
+async function validateCouponDiscount(code: string, subtotal: number) {
+  const normalizedCode = code.trim().toUpperCase();
+  if (!normalizedCode) return null;
+
+  const coupon = await CouponModel.findOne({ code: normalizedCode, active: true }).lean();
+  if (!coupon) throw new Error("Coupon not found or inactive.");
+
+  const now = Date.now();
+  if (coupon.startsAt && new Date(coupon.startsAt).getTime() > now) {
+    throw new Error("Coupon is not active yet.");
+  }
+  if (coupon.endsAt && new Date(coupon.endsAt).getTime() < now) {
+    throw new Error("Coupon has expired.");
+  }
+  if (coupon.maxRedemptions && coupon.redeemed >= coupon.maxRedemptions) {
+    throw new Error("Coupon redemption limit reached.");
+  }
+  if (coupon.minOrder && subtotal < coupon.minOrder) {
+    throw new Error(`Minimum order amount for this coupon is ${coupon.minOrder}.`);
+  }
+
+  const discount =
+    coupon.type === "percent"
+      ? Math.round((subtotal * coupon.value) / 100)
+      : Math.min(coupon.value, subtotal);
+
+  return { code: coupon.code, discount };
 }
 
 router.post("/", async (req, res) => {
@@ -149,14 +181,9 @@ router.post("/", async (req, res) => {
           if (!option) {
             throw new Error(`Selected ${groupName} is not available for ${p.title}.`);
           }
-          if (Number(option.stock ?? 0) < line.quantity) {
-            throw new Error(`${p.title} ${groupName} ${selectedValue} is out of stock.`);
-          }
           if (typeof option.price === "number") unitPrice = option.price;
           if (option.sku) variantSkus.push(String(option.sku));
         }
-      } else if (Number(p.stock ?? 0) < line.quantity) {
-        throw new Error(`${p.title} is out of stock.`);
       }
 
       return {
@@ -174,7 +201,19 @@ router.post("/", async (req, res) => {
   }
 
   const subtotal = items.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
-  const total = Math.max(0, subtotal + data.shippingFee - data.discount);
+  let couponCode: string | undefined;
+  let discount = data.source === "manual" ? data.discount : 0;
+  if (data.couponCode) {
+    try {
+      const couponResult = await validateCouponDiscount(data.couponCode, subtotal);
+      couponCode = couponResult?.code;
+      discount = couponResult?.discount ?? 0;
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+      return;
+    }
+  }
+  const total = Math.max(0, subtotal + data.shippingFee - discount);
   const onlinePayment =
     data.paymentMethod === "bkash" || data.paymentMethod === "nagad";
   const paymentType = onlinePayment ? data.paymentType ?? "partial" : null;
@@ -216,7 +255,7 @@ router.post("/", async (req, res) => {
     items,
     subtotal,
     shippingFee: data.shippingFee,
-    discount: data.discount,
+    discount,
     total,
     advance: paidAmount,
     remaining,
@@ -228,7 +267,7 @@ router.post("/", async (req, res) => {
     paymentStatus,
     source: data.source,
     notes: data.notes,
-    couponCode: data.couponCode,
+    couponCode,
     fbEventId: eventId,
     userId,
   });
@@ -266,9 +305,9 @@ router.post("/", async (req, res) => {
       ).catch(() => null);
     });
 
-  const couponUpdate = data.couponCode
+  const couponUpdate = couponCode
     ? CouponModel.findOneAndUpdate(
-        { code: data.couponCode.toUpperCase() },
+        { code: couponCode },
         { $inc: { redeemed: 1 } },
       ).catch(() => null)
     : null;
@@ -342,11 +381,6 @@ router.get("/by-phone/:phone", async (req, res) => {
   res.json({ orders });
 });
 
-function parseLocalDate(value: string): Date {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
 // Admin endpoints
 router.get("/", adminRequired, async (req, res) => {
   setPrivateNoStore(res);
@@ -362,16 +396,8 @@ router.get("/", adminRequired, async (req, res) => {
   const filter: Record<string, unknown> = {};
   if (status && status !== "all") filter.status = status;
   if (source && source !== "all") filter.source = source;
-  if (from || to) {
-    const range: Record<string, Date> = {};
-    if (from) range.$gte = parseLocalDate(from);
-    if (to) {
-      const end = parseLocalDate(to);
-      end.setHours(23, 59, 59, 999);
-      range.$lte = end;
-    }
-    filter.createdAt = range;
-  }
+  const dateFilter = buildDhakaDateRangeFilter(from, to);
+  if (dateFilter) filter.createdAt = dateFilter;
   if (q) {
     filter.$or = [
       { orderNumber: { $regex: q, $options: "i" } },

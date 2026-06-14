@@ -9,11 +9,19 @@ function required(name: string, fallback?: string): string {
   return v;
 }
 
+function productionSecret(name: string, fallback: string): string {
+  const value = required(name, fallback);
+  if (process.env.NODE_ENV === "production" && value === fallback) {
+    throw new Error(`[env] ${name} must be set to a strong production value`);
+  }
+  return value;
+}
+
 export const env = {
   NODE_ENV: process.env.NODE_ENV ?? "development",
   PORT: Number(process.env.PORT ?? 4000),
   MONGODB_URI: required("MONGODB_URI", "mongodb://127.0.0.1:27017/gamerskit"),
-  JWT_SECRET: required("JWT_SECRET", "dev-secret-change-me"),
+  JWT_SECRET: productionSecret("JWT_SECRET", "dev-secret-change-me"),
   CORS_ORIGIN: process.env.CORS_ORIGIN ?? "*",
   FB_PIXEL_ID: process.env.FB_PIXEL_ID ?? "649455848240895",
   FB_CAPI_TOKEN: process.env.FB_CAPI_TOKEN ?? "",

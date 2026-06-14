@@ -24,7 +24,7 @@ const NAV_LINKS = [
 ];
 
 const MD_BREAKPOINT = 768;
-const NAVBAR_VISIBLE_EVENT = "gamerskit:navbar-visibility";
+const NAVBAR_VISIBLE_EVENT = "GK Shop:navbar-visibility";
 const ANNOUNCEMENT_BAR_HEIGHT = 40;
 const NAVBAR_MOBILE_HEIGHT = 64;
 const NAVBAR_DESKTOP_HEIGHT = 72;
@@ -374,7 +374,7 @@ export function Header() {
         aria-label="Primary"
       >
         <div className="lg-inner pt-5">
-          <Link href="/" className="lg-logo" aria-label="GamersKit home">
+          <Link href="/" className="lg-logo" aria-label="GK Shop home">
             <Image
               src="/brand/logo.png"
               alt=""
@@ -384,7 +384,7 @@ export function Header() {
               className="h-[26px] w-[26px] object-contain"
             />
             <span className="text-sm font-semibold tracking-[-0.02em]">
-              GamersKit
+              GK Shop
             </span>
           </Link>
 
@@ -551,7 +551,7 @@ export function Header() {
                     className="h-[26px] w-[26px] object-contain"
                   />
                   <span className="text-sm font-semibold tracking-[-0.02em]">
-                    GamersKit
+                    GK Shop
                   </span>
                 </Link>
                 <button

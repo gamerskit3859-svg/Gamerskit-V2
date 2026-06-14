@@ -13,54 +13,52 @@ import type {
   UserRole,
 } from "@/types/shared";
 
+const AUTH_TOKEN_STORAGE_KEY = "gk_auth_token";
+
+function storedAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+}
+
 /**
- * Resolve the API base URL.
- *
- * Order of precedence:
- *   1. `NEXT_PUBLIC_API_URL`        — primary (already used across the repo)
- *   2. `NEXT_PUBLIC_API_BASE_URL`   — alias kept for compatibility with the
- *                                    common Vite-style name from deployment docs
- *   3. `API_URL`                    — server-side fallback (Server Components)
- *   4. `http://localhost:4000`      — local dev default
- *
- * On Vercel (production or preview) we refuse to fall back to `localhost`:
- * if the env var is missing or still pointing at localhost we throw at module
- * load so the Vercel build fails loudly instead of silently shipping a
- * bundle that would CORS-error against `http://localhost:4000`.
+ * Resolve the API base URL. In local development, default to the local API.
+ * On Vercel, never return localhost or throw during module import; an import
+ * time error crashes every server-rendered route before page-level fallbacks
+ * can run.
  */
 function resolveApiBase(): string {
-  const raw =
-    process.env.NEXT_PUBLIC_API_URL ??
-    process.env.NEXT_PUBLIC_API_BASE_URL ??
-    process.env.API_URL ??
-    "";
-  const trimmed = raw.trim().replace(/\/+$/, "");
-  const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(trimmed);
+  // Server-side (SSR/RSC): INTERNAL_API_URL lets the Next.js container talk
+  // directly to the API service over the Docker-internal network instead of
+  // routing through nginx on `localhost` (which is unreachable inside the container).
+  if (typeof window === "undefined" && process.env.INTERNAL_API_URL) {
+    return process.env.INTERNAL_API_URL.trim().replace(/\/+$/, "");
+  }
 
-  // On Vercel we hard-fail if the env var is missing or still points at
-  // localhost — these are the two cases that produced the original
-  // "fetch http://localhost:4000" / CORS errors in production. We use
-  // VERCEL_ENV instead of NODE_ENV so local `next build` runs still succeed
-  // when the env var isn't set.
+  const candidates = [
+    process.env.NEXT_PUBLIC_API_URL ??
+      "",
+    process.env.NEXT_PUBLIC_API_BASE_URL ?? "",
+    process.env.API_URL ?? "",
+  ]
+    .map((value) => value.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
   const isVercelProd =
     process.env.VERCEL_ENV === "production" ||
     process.env.VERCEL_ENV === "preview";
-  if (isVercelProd) {
-    if (!trimmed) {
-      throw new Error(
-        "[api] NEXT_PUBLIC_API_URL is not set. Configure it in your Vercel project " +
-          "settings (e.g. https://gamerskit-backend.vercel.app).",
-      );
-    }
-    if (isLocalhost) {
-      throw new Error(
-        `[api] NEXT_PUBLIC_API_URL points at "${trimmed}" in a Vercel ${process.env.VERCEL_ENV} build. ` +
-          "Update the env var to the public API origin.",
-      );
-    }
+  const isDeployedBrowser =
+    typeof window !== "undefined" &&
+    !["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+  const isLocalhost = (value: string) =>
+    /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])/i.test(value);
+
+  if (isVercelProd || isDeployedBrowser) {
+    return (
+      candidates.find((value) => !isLocalhost(value)) ||
+      "https://gamerskit-backend.vercel.app"
+    );
   }
 
-  return trimmed || "http://localhost:4000";
+  return candidates[0] || "http://localhost:4000";
 }
 
 export const API_BASE = resolveApiBase();
@@ -112,6 +110,23 @@ export interface SteadfastStatusResponse {
   order?: Order;
 }
 
+type ProductListParams = {
+  category?: string;
+  q?: string;
+  featured?: boolean;
+  isFeatured?: boolean;
+  bestSelling?: boolean;
+  isBestSelling?: boolean;
+  newArrival?: boolean;
+  isNewArrival?: boolean;
+  page?: number;
+  limit?: number;
+};
+
+type AdminProductListParams = ProductListParams & {
+  stock?: "low" | "out";
+};
+
 async function request<T>(
   path: string,
   init?: RequestInit & {
@@ -122,6 +137,11 @@ async function request<T>(
 ): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("content-type", "application/json");
+  const authToken =
+    init?.token && init.token !== "cookie-session" ? init.token : storedAuthToken();
+  if (authToken && !headers.has("authorization")) {
+    headers.set("authorization", `Bearer ${authToken}`);
+  }
   const cache = init?.cache ?? "no-store";
   const timeoutMs = init?.timeoutMs ?? 12_000;
   const controller =
@@ -138,6 +158,12 @@ async function request<T>(
       credentials: "include",
       signal: init?.signal ?? controller?.signal,
     });
+  } catch (cause) {
+    const err = new Error(
+      `[api] ${init?.method ?? "GET"} ${path} failed. Is the API running at ${API_BASE}?`,
+    ) as Error & { cause?: unknown };
+    err.cause = cause;
+    throw err;
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
@@ -172,11 +198,11 @@ const qs = (params: Record<string, unknown>) => {
 
 export const api = {
   // === Public ===
-  listProducts: (params: { category?: string; q?: string; featured?: boolean; isFeatured?: boolean; bestSelling?: boolean; isBestSelling?: boolean; newArrival?: boolean; isNewArrival?: boolean; stock?: "low" | "out"; page?: number; limit?: number } = {}) =>
+  listProducts: (params: ProductListParams = {}) =>
     request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(`/api/products${qs(params)}`, {
       cache: "no-store",
     }),
-  listProductsFresh: (params: { category?: string; q?: string; featured?: boolean; isFeatured?: boolean; bestSelling?: boolean; isBestSelling?: boolean; newArrival?: boolean; isNewArrival?: boolean; stock?: "low" | "out"; page?: number; limit?: number } = {}) =>
+  listProductsFresh: (params: ProductListParams = {}) =>
     request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(
       `/api/products${qs(params)}`,
       { cache: "no-store" },
@@ -226,22 +252,22 @@ export const api = {
 
   // === Customer auth ===
   register: (body: { email: string; password: string; name?: string; phone?: string }) =>
-    request<{ user: AuthUser }>(`/api/auth/register`, {
+    request<{ token: string; user: AuthUser }>(`/api/auth/register`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
   login: (email: string, password: string) =>
-    request<{ user: AuthUser }>(`/api/auth/login`, {
+    request<{ token: string; user: AuthUser }>(`/api/auth/login`, {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
   loginGoogle: (body: { email: string; name: string; avatar?: string; providerId: string }) =>
-    request<{ user: AuthUser }>(`/api/auth/oauth/google`, {
+    request<{ token: string; user: AuthUser }>(`/api/auth/oauth/google`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
   loginFacebook: (body: { email: string; name: string; avatar?: string; providerId: string }) =>
-    request<{ user: AuthUser }>(`/api/auth/oauth/facebook`, {
+    request<{ token: string; user: AuthUser }>(`/api/auth/oauth/facebook`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -419,6 +445,11 @@ export const api = {
     request<{ items: Order[] }>(`/api/admin/recent-orders`, { token }),
   notifications: (token: string) =>
     request<{ items: NotificationItem[] }>(`/api/admin/notifications`, { token }),
+  listProductsAdmin: (params: AdminProductListParams, token: string) =>
+    request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(
+      `/api/products/admin/all${qs(params)}`,
+      { token, cache: "no-store" },
+    ),
   inventorySummary: (token: string) =>
     request<{ total: number; low: number; out: number; stockValue: number }>(
       `/api/admin/inventory-summary`,

@@ -121,10 +121,19 @@ function variantTotalStock(product: Product): number {
     (sum, group) =>
       sum +
       group.options.reduce(
-        (optionSum, option) => optionSum + Math.max(0, Number(option.stock) || 0),
+        (optionSum, option) => optionSum + (Number(option.stock) || 0),
         0,
       ),
     0,
+  );
+}
+
+function BackorderBadge({ stock }: { stock: number }) {
+  if (stock >= 0) return null;
+  return (
+    <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
+      Backorder: {Math.abs(stock)}
+    </span>
   );
 }
 
@@ -207,12 +216,15 @@ export default function AdminProductsPage() {
       setLoading(true);
 
       try {
-        const r = await api.listProducts({
+        const token = getAdminToken();
+        if (!token) throw new Error("Admin token not found.");
+
+        const r = await api.listProductsAdmin({
           q: searchQuery || undefined,
           category: category === "all" ? undefined : category,
           page,
           limit: PAGE_SIZE,
-        });
+        }, token);
 
         if (!cancelled) {
           setItems(r.items);
@@ -300,11 +312,6 @@ export default function AdminProductsPage() {
           return;
         }
         seen.add(key);
-        if (option.stock < 0) {
-          setError("Variant stock cannot be negative.");
-          setBusy(false);
-          return;
-        }
       }
     }
 
@@ -423,7 +430,7 @@ export default function AdminProductsPage() {
                       ...option,
                       [field]:
                         field === "stock"
-                          ? Math.max(0, Number(value) || 0)
+                          ? Number(value) || 0
                           : field === "price"
                             ? value === ""
                               ? undefined
@@ -581,9 +588,12 @@ export default function AdminProductsPage() {
                       </td>
 
                       <td className="px-4 py-3">
-                        <span className={cn("text-xs", stockColor(variantTotalStock(p)))}>
-                          {variantTotalStock(p)}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={cn("text-xs", stockColor(variantTotalStock(p)))}>
+                            stock: {variantTotalStock(p)}
+                          </span>
+                          <BackorderBadge stock={variantTotalStock(p)} />
+                        </div>
                         {p.variants?.some((group) => group.options?.length) && (
                           <div className="mt-1 text-[11px] text-fg-muted">
                             {p.variants.length} variant group
@@ -1029,7 +1039,6 @@ export default function AdminProductsPage() {
                                     />
                                     <Input
                                       type="number"
-                                      min={0}
                                       placeholder="Stock"
                                       value={option.stock}
                                       onChange={(e) =>

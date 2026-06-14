@@ -37,10 +37,11 @@ export default function StaffPage() {
   useEffect(() => {
     let cancelled = false;
     const token = getAdminToken();
-    if (!token) return;
     void (async () => {
       setLoading(true);
+      setError(null);
       try {
+        if (!token) throw new Error("Admin token not found. Please login again.");
         const r = await api.users(
           {
             role: role === "all" ? undefined : role,
@@ -49,6 +50,11 @@ export default function StaffPage() {
           token,
         );
         if (!cancelled) setItems(r.items);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load users.");
+          setItems([]);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -61,8 +67,13 @@ export default function StaffPage() {
   async function changeRole(id: string, newRole: UserRole) {
     const token = getAdminToken();
     if (!token) return;
-    const r = await api.updateUser(id, { role: newRole }, token);
-    setItems((prev) => prev.map((u) => (u._id === id ? r.item : u)));
+    setError(null);
+    try {
+      const r = await api.updateUser(id, { role: newRole }, token);
+      setItems((prev) => prev.map((u) => (u._id === id ? r.item : u)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to change role.");
+    }
   }
 
   async function remove(u: AdminUserSummary) {
@@ -131,6 +142,12 @@ export default function StaffPage() {
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
+
+      {error && !openCreate && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       <Card tone="soft" padding="none" className="overflow-hidden">
         {loading ? (

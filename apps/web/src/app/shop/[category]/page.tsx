@@ -27,19 +27,19 @@ export async function generateMetadata({
     const res = await api.getCategoryFresh(category);
     const item = res.item;
     return createMetadata({
-      title: `${item.name} | Shop GamersKit`,
+      title: `${item.name} | Shop GK Shop`,
       description: truncateDescription(
         item.description ||
-          `Shop ${item.name} at GamersKit with cash on delivery across Bangladesh.`,
+          `Shop ${item.name} at GK Shop with cash on delivery across Bangladesh.`,
       ),
       path: `/shop?category=${encodeURIComponent(item.slug)}`,
-      keywords: [item.name, `${item.name} Bangladesh`, "GamersKit category"],
+      keywords: [item.name, `${item.name} Bangladesh`, "GK Shop category"],
       image: item.image || "/brand/logo.png",
     });
   } catch {
     return createMetadata({
-      title: "Shop GamersKit",
-      description: "Browse GamersKit products in Bangladesh.",
+      title: "Shop GK Shop",
+      description: "Browse GK Shop products in Bangladesh.",
       path: `/shop?category=${encodeURIComponent(category)}`,
     });
   }

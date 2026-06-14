@@ -65,7 +65,7 @@ export default function AdminDashboard() {
               { from: range.from, to: range.to, limit: 8 },
               token,
             ),
-            api.listCategoriesFresh(),
+            api.listCategoriesAdmin(token),
           ]);
         const balanceResult = await api.getSteadfastBalance(token).catch((err) => err);
         if (cancelled) return;
@@ -373,25 +373,80 @@ function RevenueChart({
 }) {
   if (data.length === 0) return <Empty />;
   const max = Math.max(...data.map((d) => d.total), 1);
+  const total = data.reduce((sum, day) => sum + day.total, 0);
+  const orders = data.reduce((sum, day) => sum + day.orders, 0);
+  const maxLabel = formatBDT(max);
+
   return (
-    <div className="flex h-[160px] items-end gap-1">
-      {data.map((d) => (
-        <div
-          key={d._id}
-          className="group flex flex-1 flex-col items-center justify-end"
-        >
-          <motion.div
-            initial={{ height: 0 }}
-            animate={{ height: `${Math.max(2, (d.total / max) * 100)}%` }}
-            transition={{ duration: 0.4 }}
-            className="w-full rounded-t-md bg-black transition-colors group-hover:bg-fg-soft"
-            title={`${d._id}: ${formatBDT(d.total)} (${d.orders} orders)`}
-          />
-          <div className="mt-1 w-full truncate text-center text-[10px] text-fg-muted">
-            {d._id.slice(5)}
+    <div>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="text-2xl font-semibold tracking-tight">
+            {formatBDT(total)}
+          </div>
+          <div className="text-xs text-fg-muted">
+            {orders} order{orders === 1 ? "" : "s"} in this range
           </div>
         </div>
-      ))}
+        <div className="text-right text-xs text-fg-muted">
+          Peak day
+          <div className="font-medium text-foreground">{maxLabel}</div>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto pb-1">
+        <div className="grid min-w-[520px] grid-cols-[44px_1fr] gap-3">
+          <div className="flex h-[190px] flex-col justify-between py-1 text-right text-[10px] text-fg-muted">
+            <span>{maxLabel}</span>
+            <span>{formatBDT(max / 2)}</span>
+            <span>৳0</span>
+          </div>
+
+          <div className="relative h-[190px]">
+            <div className="pointer-events-none absolute inset-0 flex flex-col justify-between">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <span key={index} className="border-t border-line" />
+              ))}
+            </div>
+            <div
+              className="relative z-10 grid h-full items-end gap-1"
+              style={{
+                gridTemplateColumns: `repeat(${data.length}, minmax(18px, 1fr))`,
+              }}>
+              {data.map((d) => {
+                const height = d.total > 0 ? Math.max(6, (d.total / max) * 100) : 0;
+                return (
+                  <div
+                    key={d._id}
+                    className="group flex h-full flex-col items-center justify-end"
+                  >
+                    <div className="relative flex w-full flex-1 items-end justify-center">
+                      <div className="pointer-events-none absolute bottom-full mb-2 hidden w-max rounded-md bg-black px-2 py-1 text-[11px] text-white shadow-lg group-hover:block">
+                        {d._id}: {formatBDT(d.total)} · {d.orders} order
+                        {d.orders === 1 ? "" : "s"}
+                      </div>
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height: `${height}%` }}
+                        transition={{ duration: 0.35 }}
+                        className={
+                          d.total > 0
+                            ? "w-full rounded-t bg-black transition-colors group-hover:bg-neutral-600"
+                            : "w-full rounded-t border border-dashed border-line bg-transparent"
+                        }
+                        title={`${d._id}: ${formatBDT(d.total)} (${d.orders} orders)`}
+                      />
+                    </div>
+                    <div className="mt-2 w-full truncate text-center text-[10px] text-fg-muted">
+                      {d._id.slice(5)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

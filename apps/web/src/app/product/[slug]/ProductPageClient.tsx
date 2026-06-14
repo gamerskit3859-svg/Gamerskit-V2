@@ -396,29 +396,28 @@ function AddToCartSection({ product }: { product: Product }) {
     (group) => group.name && group.options?.length,
   );
   const hasVariants = variantGroups.length > 0;
-  const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>(
-    () =>
-      Object.fromEntries(
-        variantGroups.map((group) => {
-          const firstAvailable =
-            group.options.find((option) => option.stock > 0) ?? group.options[0];
-          return [group.name, firstAvailable?.value ?? ""];
-        }),
-      ),
+  const [selectedVariants, setSelectedVariants] = useState<
+    Record<string, string>
+  >(() =>
+    Object.fromEntries(
+      variantGroups.map((group) => {
+        return [group.name, group.options[0]?.value ?? ""];
+      }),
+    ),
   );
 
   const selectedOptions = variantGroups
     .map((group) =>
-      group.options.find((option) => option.value === selectedVariants[group.name]),
+      group.options.find(
+        (option) => option.value === selectedVariants[group.name],
+      ),
     )
     .filter(Boolean) as ProductVariantOption[];
-  const selectedStock = hasVariants
-    ? Math.min(...selectedOptions.map((option) => option.stock))
-    : product.stock;
   const selectedPrice =
     [...selectedOptions]
       .reverse()
-      .find((option) => typeof option.price === "number")?.price ?? product.price;
+      .find((option) => typeof option.price === "number")?.price ??
+    product.price;
   const selectedSku = selectedOptions
     .map((option) => option.sku)
     .filter(Boolean)
@@ -426,8 +425,7 @@ function AddToCartSection({ product }: { product: Product }) {
   const variantsReady =
     !hasVariants ||
     variantGroups.every((group) => Boolean(selectedVariants[group.name]));
-  const isOutOfStock = selectedStock <= 0;
-  const canAddToCart = variantsReady && !isOutOfStock && qty <= selectedStock;
+  const canAddToCart = variantsReady && qty > 0;
 
   function handleAdd() {
     if (!canAddToCart) return;
@@ -471,13 +469,12 @@ function AddToCartSection({ product }: { product: Product }) {
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {group.options.map((option) => {
-                    const disabled = option.stock <= 0;
-                    const active = selectedVariants[group.name] === option.value;
+                    const active =
+                      selectedVariants[group.name] === option.value;
                     return (
                       <button
                         key={option.value}
                         type="button"
-                        disabled={disabled}
                         onClick={() =>
                           setSelectedVariants((prev) => ({
                             ...prev,
@@ -488,7 +485,7 @@ function AddToCartSection({ product }: { product: Product }) {
                           active
                             ? "border-black bg-black text-white"
                             : "border-line bg-bg-soft text-foreground hover:border-black"
-                        } disabled:cursor-not-allowed disabled:opacity-40`}>
+                        }`}>
                         {option.value}
                       </button>
                     );
@@ -499,18 +496,12 @@ function AddToCartSection({ product }: { product: Product }) {
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <span className="font-semibold">{formatBDT(selectedPrice)}</span>
-          <span className={isOutOfStock ? "text-red-600" : "text-fg-muted"}>
-            {isOutOfStock ? "Out of stock" : `${selectedStock} in stock`}
-          </span>
-        </div>
-
         {/* Qty stepper + confirmation badge */}
-        <div className="flex items-center gap-3">
+      <div className="flex md:block justify-center gap-3">
+          <div className="flex items-center gap-3 mb-0 md:mb-3">
           <QuantityStepper
             qty={qty}
-            onChange={(next) => setQty(Math.min(next, Math.max(1, selectedStock)))}
+            onChange={(next) => setQty(Math.max(1, next))}
           />
 
           <AnimatePresence>
@@ -528,13 +519,17 @@ function AddToCartSection({ product }: { product: Product }) {
 
         {/* Action buttons */}
         <div className="grid grid-cols-2 gap-2 sm:gap-3">
-          <Button variant="secondary" onClick={handleAdd} disabled={!canAddToCart}>
+          <Button
+            variant="secondary"
+            onClick={handleAdd}
+            disabled={!canAddToCart}>
             {added ? "Added" : "Add to bag"}
           </Button>
           <Button onClick={handleBuy} disabled={!canAddToCart}>
             Buy now
           </Button>
         </div>
+      </div>
       </div>
     </div>
   );

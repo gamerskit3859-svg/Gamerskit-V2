@@ -1,4 +1,4 @@
-// Shared types & constants for the GamersKit storefront/admin frontend.
+// Shared types & constants for the GK Shop storefront/admin frontend.
 // Local shared frontend/API types so apps/web can build standalone on Vercel.
 // without depending on the local monorepo package. Keep in sync with the API copy.
 

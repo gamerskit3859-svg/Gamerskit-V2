@@ -152,7 +152,7 @@ export function Hero({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.85, delay: 0.1 }}
             className="mt-3  text-[clamp(40px,8vw,96px)] leading-[1.04] tracking-[-0.045em] font-semibold max-w-[250px] md:max-w-[14ch]">
-            Your favorite RC Cars and Gadgets
+            Your Favorite RC Cars and Gadgets
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 18 }}

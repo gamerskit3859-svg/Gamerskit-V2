@@ -2,7 +2,7 @@ import { createMetadata } from "@/lib/seo";
 
 export const metadata = createMetadata({
   title: "Order Details",
-  description: "View your GamersKit order details.",
+  description: "View your GK Shop order details.",
   path: "/order",
   noIndex: true,
 });

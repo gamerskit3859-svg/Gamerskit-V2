@@ -7,7 +7,9 @@ import { setPrivateNoStore } from "../lib/http.js";
 
 const router = Router();
 const PUBLIC_PRODUCT_FIELDS =
-  "slug title description category categorySlug price compareAtPrice stock images variants isFeatured isBestSelling isNewArrival featured createdAt updatedAt";
+  "slug title description category categorySlug price compareAtPrice images variants isFeatured isBestSelling isNewArrival featured createdAt updatedAt";
+const ADMIN_PRODUCT_FIELDS =
+  "slug title description category categorySlug price compareAtPrice cost buyingPrice stock images variants isFeatured isBestSelling isNewArrival featured createdAt updatedAt";
 
 type VariantGroup = {
   name?: string;
@@ -24,11 +26,29 @@ function variantStock(variants?: VariantGroup[]) {
     (sum, group) =>
       sum +
       (group.options ?? []).reduce(
-        (optionSum, option) => optionSum + Math.max(0, Number(option.stock) || 0),
+        (optionSum, option) => optionSum + (Number(option.stock) || 0),
         0,
       ),
     0,
   );
+}
+
+function stripPublicStock<T extends { variants?: VariantGroup[]; stock?: number }>(product: T) {
+  const { stock: _stock, variants, ...rest } = product;
+  void _stock;
+  return {
+    ...rest,
+    variants: Array.isArray(variants)
+      ? variants.map((group) => ({
+          name: group.name,
+          options: (group.options ?? []).map((option) => {
+            const { stock: _optionStock, ...publicOption } = option;
+            void _optionStock;
+            return publicOption;
+          }),
+        }))
+      : variants,
+  };
 }
 
 function normalizeVariants(input: unknown): VariantGroup[] {
@@ -41,7 +61,7 @@ function normalizeVariants(input: unknown): VariantGroup[] {
       const options = (raw.options ?? [])
         .map((option) => ({
           value: String(option.value ?? "").trim(),
-          stock: Math.max(0, Number(option.stock) || 0),
+          stock: Number(option.stock) || 0,
           sku: option.sku ? String(option.sku).trim() : undefined,
           price:
             option.price !== undefined && option.price !== null && Number(option.price) >= 0
@@ -64,7 +84,10 @@ function withComputedStock<T extends { variants?: VariantGroup[]; stock?: number
   return { ...product, stock: variantStock(product.variants) };
 }
 
-router.get("/", async (req, res) => {
+async function listProducts(
+  reqQuery: Record<string, string>,
+  options: { includeStock: boolean },
+) {
   const {
     category,
     q,
@@ -77,10 +100,10 @@ router.get("/", async (req, res) => {
     stock,
     page = "1",
     limit = "20",
-  } = req.query as Record<string, string>;
+  } = reqQuery;
   const filter: Record<string, unknown> = {};
   const andConditions: Record<string, unknown>[] = [];
-  
+
   if (category && category !== "all") {
     const categoryDoc = await CategoryModel.findOne({ slug: category })
       .select("_id")
@@ -113,7 +136,7 @@ router.get("/", async (req, res) => {
       });
     }
   }
-  
+
   if (featured === "true" || isFeatured === "true") {
     andConditions.push({ $or: [{ isFeatured: true }, { featured: true }] });
   }
@@ -123,41 +146,50 @@ router.get("/", async (req, res) => {
   if (newArrival === "true" || isNewArrival === "true") {
     filter.isNewArrival = true;
   }
-  if (stock === "low") filter.stock = { $gt: 0, $lte: 3 };
-  if (stock === "out") filter.stock = { $lte: 0 };
+  if (options.includeStock && stock === "low") filter.stock = { $gt: 0, $lte: 3 };
+  if (options.includeStock && stock === "out") filter.stock = { $lte: 0 };
   if (q) filter.$text = { $search: q };
   if (andConditions.length) filter.$and = andConditions;
-  
+
   const pageNum = Math.max(1, Number(page) || 1);
   const limitNum = Math.max(1, Math.min(Number(limit) || 20, 100));
   const skip = (pageNum - 1) * limitNum;
   const sort: Record<string, SortOrder | { $meta: "textScore" }> = q
     ? { score: { $meta: "textScore" }, isFeatured: -1, createdAt: -1 }
     : { isFeatured: -1, createdAt: -1 };
-  
+
   const [rawItems, total] = await Promise.all([
     ProductModel.find(filter)
       .sort(sort)
       .skip(skip)
       .limit(limitNum)
-      .select(PUBLIC_PRODUCT_FIELDS)
+      .select(options.includeStock ? ADMIN_PRODUCT_FIELDS : PUBLIC_PRODUCT_FIELDS)
       .lean(),
     ProductModel.countDocuments(filter),
   ]);
-  const items = rawItems.map(withComputedStock);
-  
+  const items = rawItems
+    .map(withComputedStock)
+    .map((item) => (options.includeStock ? item : stripPublicStock(item)));
   const totalPages = Math.ceil(total / limitNum);
-  
-  setPrivateNoStore(res);
 
-  res.json({
-    items, 
-    total, 
-    page: pageNum, 
+  return {
+    items,
+    total,
+    page: pageNum,
     limit: limitNum,
     totalPages,
     hasMore: pageNum < totalPages,
-  });
+  };
+}
+
+router.get("/", async (req, res) => {
+  setPrivateNoStore(res);
+  res.json(await listProducts(req.query as Record<string, string>, { includeStock: false }));
+});
+
+router.get("/admin/all", adminRequired, async (req, res) => {
+  setPrivateNoStore(res);
+  res.json(await listProducts(req.query as Record<string, string>, { includeStock: true }));
 });
 
 router.get("/:slug", async (req, res) => {
@@ -169,7 +201,7 @@ router.get("/:slug", async (req, res) => {
     return;
   }
   setPrivateNoStore(res);
-  res.json({ item: withComputedStock(item) });
+  res.json({ item: stripPublicStock(withComputedStock(item)) });
 });
 
 router.post("/", adminRequired, async (req, res) => {
@@ -178,7 +210,7 @@ router.post("/", adminRequired, async (req, res) => {
     const created = await ProductModel.create({
       ...req.body,
       variants,
-      stock: variants.length ? variantStock(variants) : Math.max(0, Number(req.body.stock) || 0),
+      stock: variants.length ? variantStock(variants) : Number(req.body.stock) || 0,
       featured: req.body.isFeatured ?? req.body.featured ?? false,
       isFeatured: req.body.isFeatured ?? req.body.featured ?? false,
     });
@@ -197,7 +229,7 @@ router.patch("/:id", adminRequired, async (req, res) => {
       ...(variants !== undefined
         ? {
             variants,
-            stock: variants.length ? variantStock(variants) : Math.max(0, Number(req.body.stock) || 0),
+            stock: variants.length ? variantStock(variants) : Number(req.body.stock) || 0,
           }
         : {}),
       ...(req.body.isFeatured !== undefined || req.body.featured !== undefined

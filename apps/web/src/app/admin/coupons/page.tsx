@@ -48,12 +48,18 @@ export default function CouponsPage() {
   useEffect(() => {
     let cancelled = false;
     const token = getAdminToken();
-    if (!token) return;
     void (async () => {
       setLoading(true);
+      setError(null);
       try {
+        if (!token) throw new Error("Admin token not found. Please login again.");
         const r = await api.listCoupons(token);
         if (!cancelled) setItems(r.items);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load coupons.");
+          setItems([]);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -121,16 +127,26 @@ export default function CouponsPage() {
   async function toggleActive(c: Coupon) {
     const token = getAdminToken();
     if (!token) return;
-    const r = await api.updateCoupon(c._id, { active: !c.active }, token);
-    setItems((prev) => prev.map((x) => (x._id === c._id ? r.item : x)));
+    setError(null);
+    try {
+      const r = await api.updateCoupon(c._id, { active: !c.active }, token);
+      setItems((prev) => prev.map((x) => (x._id === c._id ? r.item : x)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update coupon.");
+    }
   }
 
   async function remove(c: Coupon) {
     if (!confirm(`Delete coupon ${c.code}?`)) return;
     const token = getAdminToken();
     if (!token) return;
-    await api.deleteCoupon(c._id, token);
-    setItems((prev) => prev.filter((x) => x._id !== c._id));
+    setError(null);
+    try {
+      await api.deleteCoupon(c._id, token);
+      setItems((prev) => prev.filter((x) => x._id !== c._id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete coupon.");
+    }
   }
 
   return (
@@ -154,6 +170,12 @@ export default function CouponsPage() {
         </div>
         <Button onClick={startCreate}>+ New coupon</Button>
       </header>
+
+      {error && !openCreate && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       <Card tone="soft" padding="none" className="overflow-hidden">
         {loading ? (

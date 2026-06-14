@@ -24,10 +24,19 @@ function totalStock(product: Product): number {
     (sum, group) =>
       sum +
       group.options.reduce(
-        (optionSum, option) => optionSum + Math.max(0, Number(option.stock) || 0),
+        (optionSum, option) => optionSum + (Number(option.stock) || 0),
         0,
       ),
     0,
+  );
+}
+
+function BackorderBadge({ stock }: { stock: number }) {
+  if (stock >= 0) return null;
+  return (
+    <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
+      Backorder: {Math.abs(stock)}
+    </span>
   );
 }
 
@@ -48,6 +57,7 @@ export default function InventoryPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "low" | "out">("all");
   const {
     value: q,
@@ -59,23 +69,33 @@ export default function InventoryPage() {
   useEffect(() => {
     let cancelled = false;
     const token = getAdminToken();
-    if (!token) return;
     void (async () => {
       setLoading(true);
+      setError(null);
       try {
+        if (!token) {
+          throw new Error("Admin token not found. Please login again.");
+        }
         const [r, summaryResult] = await Promise.all([
-          api.listProducts({
+          api.listProductsAdmin({
             q: searchQuery || undefined,
             stock: filter === "all" ? undefined : filter,
             page,
             limit: PAGE_SIZE,
-          }),
+          }, token),
           api.inventorySummary(token),
         ]);
         if (!cancelled) {
           setItems(r.items);
           setSummary(summaryResult);
           setTotalPages(Math.max(1, r.totalPages));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : "Failed to load inventory.";
+          setError(message);
+          setItems([]);
+          setTotalPages(1);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -90,11 +110,15 @@ export default function InventoryPage() {
     const token = getAdminToken();
     if (!token) return;
     setBusyId(id);
+    setError(null);
     try {
       const r = await api.adjustStock(id, delta, token);
       setItems((prev) => prev.map((p) => (p._id === id ? r.item : p)));
       const summaryResult = await api.inventorySummary(token);
       setSummary(summaryResult);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update stock.";
+      setError(message);
     } finally {
       setBusyId(null);
     }
@@ -113,11 +137,15 @@ export default function InventoryPage() {
     const token = getAdminToken();
     if (!token) return;
     setBusyId(id);
+    setError(null);
     try {
       const r = await api.updateProduct(id, { price: value }, token);
       setItems((prev) => prev.map((p) => (p._id === id ? r.item : p)));
       const summaryResult = await api.inventorySummary(token);
       setSummary(summaryResult);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update price.";
+      setError(message);
     } finally {
       setBusyId(null);
     }
@@ -175,6 +203,12 @@ export default function InventoryPage() {
           }}
         />
       </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       <Card tone="soft" padding="none" className="overflow-hidden">
         {loading ? (
@@ -241,9 +275,12 @@ export default function InventoryPage() {
                     <td className="px-4 py-3">
                       {hasVariants(p) ? (
                         <div className="space-y-1">
-                          <span className={cn("text-sm font-medium", stockColor(totalStock(p)))}>
-                            {totalStock(p)}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={cn("text-sm font-medium", stockColor(totalStock(p)))}>
+                              stock: {totalStock(p)}
+                            </span>
+                            <BackorderBadge stock={totalStock(p)} />
+                          </div>
                           <div className="text-xs text-fg-muted">
                             Variant stock. Edit product variants to adjust.
                           </div>
@@ -258,25 +295,28 @@ export default function InventoryPage() {
                         >
                           −
                         </button>
-                        <Input
-                          type="number"
-                          defaultValue={p.stock}
-                          key={p.stock}
-                          onBlur={(e) => {
-                            const v = Number(e.target.value);
-                            if (Number.isFinite(v))
-                              void setExactStock(p._id, v);
-                          }}
-                          className={cn(
-                            "!w-16 !py-1 !px-2 text-center",
-                            p.stock <= 0
-                              ? "text-red-600"
-                              : p.stock <= LOW_THRESHOLD
-                                ? "text-yellow-700"
-                                : "",
-                          )}
-                          disabled={busyId === p._id}
-                        />
+                        <div className="flex flex-col gap-1">
+                          <Input
+                            type="number"
+                            defaultValue={p.stock}
+                            key={p.stock}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if (Number.isFinite(v))
+                                void setExactStock(p._id, v);
+                            }}
+                            className={cn(
+                              "!w-20 !py-1 !px-2 text-center",
+                              p.stock <= 0
+                                ? "text-red-600"
+                                : p.stock <= LOW_THRESHOLD
+                                  ? "text-yellow-700"
+                                  : "",
+                            )}
+                            disabled={busyId === p._id}
+                          />
+                          <BackorderBadge stock={p.stock} />
+                        </div>
                         <button
                           type="button"
                           onClick={() => adjust(p._id, 1)}
