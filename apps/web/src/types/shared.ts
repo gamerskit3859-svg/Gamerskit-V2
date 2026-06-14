@@ -1,5 +1,6 @@
-// Shared types & constants for GamersKit web + api
-// This package is consumed at source level by both apps via npm workspaces.
+// Shared types & constants for the GK Shop storefront/admin frontend.
+// Local shared frontend/API types so apps/web can build standalone on Vercel.
+// without depending on the local monorepo package. Keep in sync with the API copy.
 
 export const CATEGORIES = [
   { slug: "rc-car", label: "RC Cars", apiName: "car" },
@@ -30,10 +31,19 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const PAYMENT_METHODS = ["cod", "bkash", "nagad", "card", "manual"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
+export const PAYMENT_STATUSES = ["unpaid", "partial", "paid", "refunded"] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
 export interface ProductVariant {
-  size?: string;
-  color?: string;
+  name: string;
+  options: ProductVariantOption[];
+}
+
+export interface ProductVariantOption {
+  value: string;
   stock: number;
+  sku?: string;
+  price?: number;
 }
 
 export interface Product {
@@ -41,7 +51,8 @@ export interface Product {
   slug: string;
   title: string;
   description: string;
-  category: CategorySlug;
+  /** Category ID (Mongo ObjectId) or, for legacy data, a {@link CategorySlug}. */
+  category: string;
   price: number;
   compareAtPrice?: number;
   cost?: number;
@@ -50,6 +61,10 @@ export interface Product {
   stock: number;
   images: string[];
   variants?: ProductVariant[];
+  isFeatured?: boolean;
+  isBestSelling?: boolean;
+  isNewArrival?: boolean;
+  /** Legacy homepage flag kept for older products. Prefer isFeatured. */
   featured?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -61,6 +76,9 @@ export interface OrderLineItem {
   image?: string;
   unitPrice: number;
   quantity: number;
+  selectedVariants?: Record<string, string>;
+  variantSku?: string;
+  variantPrice?: number;
   custom?: boolean; // true for ad-hoc line items added by admin
   note?: string;
 }
@@ -69,15 +87,29 @@ export interface OrderCustomer {
   name: string;
   phone: string;
   email?: string;
-  address: string;
-  city: string;
+  address?: string;
+  shippingAddress?: string;
+  deliveryAddress?: string;
+  location?: string;
+  customerAddress?: string;
+  /** Legacy / admin custom-order field. */
+  city?: string;
+  /** Legacy / admin custom-order field. */
   area?: string;
+  /** Storefront checkout writes this. */
+  district?: string;
+  /** Storefront checkout writes this. */
+  thana?: string;
 }
 
 export interface Order {
   _id: string;
   orderNumber: string;
   customer: OrderCustomer;
+  shippingAddress?: string;
+  deliveryAddress?: string;
+  location?: string;
+  customerAddress?: string;
   items: OrderLineItem[];
   subtotal: number;
   shippingFee: number;
@@ -85,11 +117,31 @@ export interface Order {
   total: number;
   advance: number;
   remaining: number;
+  paymentType?: "full" | "partial" | null;
+  paidAmount?: number;
+  dueAmount?: number;
+  senderNumber?: string | null;
   paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
   status: OrderStatus;
   source: "storefront" | "manual"; // manual = admin-created custom order
   notes?: string;
+  courier?: {
+    provider?: string;
+    invoice?: string;
+    consignmentId?: string;
+    trackingCode?: string;
+    status?: string;
+    deliveryStatus?: string;
+    courierStatus?: string;
+    response?: unknown;
+    error?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  } | null;
   fbEventId?: string;
+  /** Set when a signed-in customer placed the order. */
+  userId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -104,6 +156,7 @@ export type FbEventName =
   | "PageView"
   | "ViewContent"
   | "AddToCart"
+  | "RemoveFromCart"
   | "InitiateCheckout"
   | "AddPaymentInfo"
   | "Purchase"

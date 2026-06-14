@@ -17,6 +17,8 @@ const CategorySchema = new Schema(
 );
 
 CategorySchema.index({ parentId: 1, active: 1 });
+CategorySchema.index({ active: 1, parentId: 1, order: 1, name: 1 });
+CategorySchema.index({ active: 1, featured: 1, order: 1 });
 
 export const CategoryModel =
   mongoose.models.Category ?? mongoose.model("Category", CategorySchema);

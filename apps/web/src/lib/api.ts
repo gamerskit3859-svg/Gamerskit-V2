@@ -11,23 +11,162 @@ import type {
   Order,
   Product,
   UserRole,
-} from "@gamerskit/shared";
+} from "@/types/shared";
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? process.env.API_URL ?? "http://localhost:4000";
+const AUTH_TOKEN_STORAGE_KEY = "gk_auth_token";
+
+function storedAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+}
+
+/**
+ * Resolve the API base URL. In local development, default to the local API.
+ * On Vercel, never return localhost or throw during module import; an import
+ * time error crashes every server-rendered route before page-level fallbacks
+ * can run.
+ */
+function resolveApiBase(): string {
+  // Server-side (SSR/RSC): INTERNAL_API_URL lets the Next.js container talk
+  // directly to the API service over the Docker-internal network instead of
+  // routing through nginx on `localhost` (which is unreachable inside the container).
+  if (typeof window === "undefined" && process.env.INTERNAL_API_URL) {
+    return process.env.INTERNAL_API_URL.trim().replace(/\/+$/, "");
+  }
+
+  const candidates = [
+    process.env.NEXT_PUBLIC_API_URL ??
+      "",
+    process.env.NEXT_PUBLIC_API_BASE_URL ?? "",
+    process.env.API_URL ?? "",
+  ]
+    .map((value) => value.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  const isVercelProd =
+    process.env.VERCEL_ENV === "production" ||
+    process.env.VERCEL_ENV === "preview";
+  const isDeployedBrowser =
+    typeof window !== "undefined" &&
+    !["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+  const isLocalhost = (value: string) =>
+    /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])/i.test(value);
+
+  if (isVercelProd || isDeployedBrowser) {
+    return (
+      candidates.find((value) => !isLocalhost(value)) ||
+      "https://gamerskit-backend.vercel.app"
+    );
+  }
+
+  return candidates[0] || "http://localhost:4000";
+}
+
+export const API_BASE = resolveApiBase();
+
+export interface CategoryItem {
+  _id: string;
+  slug: string;
+  name: string;
+  description: string;
+  image: string;
+  icon: string;
+  parentId: string | null;
+  featured: boolean;
+  order: number;
+  active: boolean;
+  productCount: number;
+  createdAt: string;
+  updatedAt: string;
+  subcategories?: CategoryItem[];
+}
+
+export interface HeroImageItem {
+  _id: string;
+  imageUrl: string;
+  mediaUrl?: string;
+  mediaType?: "image" | "video";
+  publicId: string;
+  order: number;
+  isActive: boolean;
+  title: string;
+  subtitle: string;
+  link: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ShopBannerItem {
+  _id: string;
+  imageUrl: string;
+  publicId: string;
+  order: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SteadfastStatusResponse {
+  item: unknown;
+  order?: Order;
+}
+
+type ProductListParams = {
+  category?: string;
+  q?: string;
+  featured?: boolean;
+  isFeatured?: boolean;
+  bestSelling?: boolean;
+  isBestSelling?: boolean;
+  newArrival?: boolean;
+  isNewArrival?: boolean;
+  page?: number;
+  limit?: number;
+};
+
+type AdminProductListParams = ProductListParams & {
+  stock?: "low" | "out";
+};
 
 async function request<T>(
   path: string,
-  init?: RequestInit & { token?: string },
+  init?: RequestInit & {
+    token?: string;
+    next?: { revalidate?: number };
+    timeoutMs?: number;
+  },
 ): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("content-type", "application/json");
-  if (init?.token) headers.set("authorization", `Bearer ${init.token}`);
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-    cache: init?.cache ?? "no-store",
-  });
+  const authToken =
+    init?.token && init.token !== "cookie-session" ? init.token : storedAuthToken();
+  if (authToken && !headers.has("authorization")) {
+    headers.set("authorization", `Bearer ${authToken}`);
+  }
+  const cache = init?.cache ?? "no-store";
+  const timeoutMs = init?.timeoutMs ?? 12_000;
+  const controller =
+    !init?.signal && timeoutMs > 0 ? new AbortController() : null;
+  const timeoutId = controller
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      cache,
+      credentials: "include",
+      signal: init?.signal ?? controller?.signal,
+    });
+  } catch (cause) {
+    const err = new Error(
+      `[api] ${init?.method ?? "GET"} ${path} failed. Is the API running at ${API_BASE}?`,
+    ) as Error & { cause?: unknown };
+    err.cause = cause;
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
   if (!res.ok) {
     let body: unknown = null;
     try {
@@ -36,7 +175,9 @@ async function request<T>(
       body = await res.text().catch(() => null);
     }
     const message = `[api] ${init?.method ?? "GET"} ${path} → ${res.status}`;
-    console.error(message, body);
+    if (process.env.NODE_ENV !== "production") {
+      console.error(message, body);
+    }
     const err = new Error(message) as Error & { status?: number; body?: unknown };
     err.status = res.status;
     err.body = body;
@@ -57,20 +198,52 @@ const qs = (params: Record<string, unknown>) => {
 
 export const api = {
   // === Public ===
-  listProducts: (params: { category?: string; q?: string; featured?: boolean; page?: number; limit?: number } = {}) =>
-    request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(`/api/products${qs(params)}`),
-  getProduct: (slug: string) => request<{ item: Product }>(`/api/products/${slug}`),
+  listProducts: (params: ProductListParams = {}) =>
+    request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(`/api/products${qs(params)}`, {
+      cache: "no-store",
+    }),
+  listProductsFresh: (params: ProductListParams = {}) =>
+    request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(
+      `/api/products${qs(params)}`,
+      { cache: "no-store" },
+    ),
+  getProduct: (slug: string) =>
+    request<{ item: Product }>(`/api/products/${slug}`, {
+      cache: "no-store",
+    }),
   listCategories: () =>
-    request<{ items: any[] }>(`/api/categories`),
+    request<{ items: CategoryItem[] }>(`/api/categories`, {
+      cache: "no-store",
+      timeoutMs: 8_000,
+    }),
+  listCategoriesFresh: () =>
+    request<{ items: CategoryItem[] }>(`/api/categories`, {
+      cache: "no-store",
+      timeoutMs: 8_000,
+    }),
   getCategory: (idOrSlug: string) =>
-    request<{ item: any }>(`/api/categories/${idOrSlug}`),
-  createOrder: (body: unknown) =>
+    request<{ item: CategoryItem }>(`/api/categories/${idOrSlug}`, {
+      cache: "no-store",
+    }),
+  getCategoryFresh: (idOrSlug: string) =>
+    request<{ item: CategoryItem }>(`/api/categories/${idOrSlug}`, {
+      cache: "no-store",
+      timeoutMs: 8_000,
+    }),
+  createOrder: (body: unknown, token?: string) =>
     request<{ order: Order; eventId: string }>(`/api/orders`, {
       method: "POST",
       body: JSON.stringify(body),
+      token,
     }),
-  getOrder: (orderNumber: string) => request<{ order: Order }>(`/api/orders/by-number/${orderNumber}`),
-  getOrdersByPhone: (phone: string) => request<{ orders: Order[] }>(`/api/orders/by-phone/${phone}`),
+  getOrder: (orderNumber: string) =>
+    request<{ order: Order }>(`/api/orders/by-number/${orderNumber}`, {
+      cache: "no-store",
+    }),
+  getOrdersByPhone: (phone: string) =>
+    request<{ orders: Order[] }>(`/api/orders/by-phone/${phone}`, {
+      cache: "no-store",
+    }),
   validateCoupon: (code: string, subtotal: number) =>
     request<{ coupon: { code: string; type: "percent" | "fixed"; value: number; discount: number } }>(
       `/api/coupons/validate`,
@@ -98,8 +271,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  me: (token: string) => request<{ user: AuthUser }>(`/api/auth/me`, { token }),
-  myOrders: (token: string) => request<{ items: Order[] }>(`/api/auth/orders`, { token }),
+  me: (token?: string | null) => {
+    void token;
+    return request<{ user: AuthUser }>(`/api/auth/me`, { cache: "no-store" });
+  },
+  logout: () => request<void>(`/api/auth/logout`, { method: "POST" }),
+  myOrders: (token?: string | null) => {
+    void token;
+    return request<{ items: Order[] }>(`/api/auth/orders`, { cache: "no-store" });
+  },
 
   // === Admin ===
   listOrdersAdmin: (
@@ -114,7 +294,7 @@ export const api = {
     },
     token: string,
   ) =>
-    request<{ items: Order[]; total: number; page: number; limit: number }>(
+    request<{ items: Order[]; total: number; page: number; limit: number; totalPages: number }>(
       `/api/orders${qs(params)}`,
       { token },
     ),
@@ -126,6 +306,64 @@ export const api = {
       body: JSON.stringify(body),
       token,
     }),
+  sendOrderToSteadfast: (orderId: string, token: string) =>
+    request<{ item: unknown; order: Order }>(
+      `/api/admin/steadfast/orders/${orderId}/create`,
+      {
+        method: "POST",
+        token,
+      },
+    ),
+  getCourierStatus: async (
+    orderId: string,
+    token: string,
+  ): Promise<SteadfastStatusResponse> => {
+    const { order } = await api.getOrderAdmin(orderId, token);
+    const courier = order.courier;
+    if (!courier) {
+      throw new Error("Courier tracking is not available yet.");
+    }
+    if (courier.consignmentId) {
+      const result = await request<{ item: unknown }>(
+        `/api/admin/steadfast/status/consignment/${encodeURIComponent(courier.consignmentId)}`,
+        { token, cache: "no-store" },
+      );
+      return { ...result, order };
+    }
+    if (courier.trackingCode) {
+      const result = await request<{ item: unknown }>(
+        `/api/admin/steadfast/status/tracking/${encodeURIComponent(courier.trackingCode)}`,
+        { token, cache: "no-store" },
+      );
+      return { ...result, order };
+    }
+    if (courier.invoice || order.orderNumber) {
+      const result = await request<{ item: unknown }>(
+        `/api/admin/steadfast/status/invoice/${encodeURIComponent(courier.invoice || order.orderNumber)}`,
+        { token, cache: "no-store" },
+      );
+      return { ...result, order };
+    }
+    throw new Error("Courier tracking is missing tracking identifiers.");
+  },
+  syncCourierStatus: (orderId: string, token: string) =>
+    api.getCourierStatus(orderId, token),
+  getSteadfastBalance: (token: string) =>
+    request<{ item: unknown }>(`/api/admin/steadfast/balance`, {
+      token,
+      cache: "no-store",
+    }),
+  bulkSendOrdersToSteadfast: async (orderIds: string[], token: string) => {
+    const results = await Promise.allSettled(
+      orderIds.map((id) => api.sendOrderToSteadfast(id, token)),
+    );
+    return {
+      successful: results.filter((r) => r.status === "fulfilled").length,
+      failed: results.filter((r) => r.status === "rejected").length,
+      skipped: 0,
+      results,
+    };
+  },
 
   stats: (params: { from?: string; to?: string }, token: string) =>
     request<{
@@ -207,6 +445,16 @@ export const api = {
     request<{ items: Order[] }>(`/api/admin/recent-orders`, { token }),
   notifications: (token: string) =>
     request<{ items: NotificationItem[] }>(`/api/admin/notifications`, { token }),
+  listProductsAdmin: (params: AdminProductListParams, token: string) =>
+    request<{ items: Product[]; total: number; page: number; limit: number; totalPages: number; hasMore: boolean }>(
+      `/api/products/admin/all${qs(params)}`,
+      { token, cache: "no-store" },
+    ),
+  inventorySummary: (token: string) =>
+    request<{ total: number; low: number; out: number; stockValue: number }>(
+      `/api/admin/inventory-summary`,
+      { token },
+    ),
 
   // Inventory
   adjustStock: (id: string, delta: number, token: string) =>
@@ -231,14 +479,19 @@ export const api = {
     request<void>(`/api/products/${id}`, { method: "DELETE", token }),
 
   // Categories
-  createCategory: (body: Partial<any>, token: string) =>
-    request<{ item: any }>(`/api/categories`, {
+  listCategoriesAdmin: (token: string) =>
+    request<{ items: CategoryItem[] }>(`/api/categories/admin/all`, {
+      token,
+      cache: "no-store",
+    }),
+  createCategory: (body: Partial<CategoryItem>, token: string) =>
+    request<{ item: CategoryItem }>(`/api/categories`, {
       method: "POST",
       body: JSON.stringify(body),
       token,
     }),
-  updateCategory: (id: string, body: Partial<any>, token: string) =>
-    request<{ item: any }>(`/api/categories/${id}`, {
+  updateCategory: (id: string, body: Partial<CategoryItem>, token: string) =>
+    request<{ item: CategoryItem }>(`/api/categories/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
       token,
@@ -291,24 +544,68 @@ export const api = {
     request<void>(`/api/admin/coupons/${id}`, { method: "DELETE", token }),
 
   // Hero Images
-  getHeroImages: () => request<{ items: any[] }>(`/api/hero-images`),
-  listHeroImagesAdmin: (token: string) =>
-    request<{ items: any[] }>(`/api/hero-images/admin/all`, { token }),
-  createHeroImage: (
-    body: { imageUrl: string; publicId: string; order?: number; isActive?: boolean; title?: string; subtitle?: string; link?: string },
+  getHeroImages: () =>
+    request<{ items: HeroImageItem[] }>(`/api/hero-images`, {
+      cache: "no-store",
+    }),
+  getShopBanners: () =>
+    request<{ items: ShopBannerItem[] }>(`/api/settings/shop-banners`, {
+      cache: "no-store",
+    }),
+  listShopBannersAdmin: (token: string) =>
+    request<{ items: ShopBannerItem[] }>(`/api/settings/shop-banners/admin/all`, {
+      token,
+    }),
+  createShopBanner: (
+    body: { imageUrl: string; publicId: string; order?: number; isActive?: boolean },
     token: string,
   ) =>
-    request<{ item: any }>(`/api/hero-images`, {
+    request<{ item: ShopBannerItem }>(`/api/settings/shop-banners`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      token,
+    }),
+  updateShopBanner: (
+    id: string,
+    body: Partial<{ imageUrl: string; publicId: string; order: number; isActive: boolean }>,
+    token: string,
+  ) =>
+    request<{ item: ShopBannerItem }>(`/api/settings/shop-banners/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      token,
+    }),
+  deleteShopBanner: (id: string, token: string) =>
+    request<void>(`/api/settings/shop-banners/${id}`, {
+      method: "DELETE",
+      token,
+    }),
+  reorderShopBanners: (
+    order: Array<{ id: string; order: number }>,
+    token: string,
+  ) =>
+    request<{ items: ShopBannerItem[] }>(`/api/settings/shop-banners/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ order }),
+      token,
+    }),
+  listHeroImagesAdmin: (token: string) =>
+    request<{ items: HeroImageItem[] }>(`/api/hero-images/admin/all`, { token }),
+  createHeroImage: (
+    body: { imageUrl: string; mediaUrl?: string; mediaType?: "image" | "video"; publicId: string; order?: number; isActive?: boolean; title?: string; subtitle?: string; link?: string },
+    token: string,
+  ) =>
+    request<{ item: HeroImageItem }>(`/api/hero-images`, {
       method: "POST",
       body: JSON.stringify(body),
       token,
     }),
   updateHeroImage: (
     id: string,
-    body: Partial<{ imageUrl: string; order: number; isActive: boolean; title: string; subtitle: string; link: string }>,
+    body: Partial<{ imageUrl: string; mediaUrl: string; mediaType: "image" | "video"; order: number; isActive: boolean; title: string; subtitle: string; link: string }>,
     token: string,
   ) =>
-    request<{ item: any }>(`/api/hero-images/${id}`, {
+    request<{ item: HeroImageItem }>(`/api/hero-images/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
       token,
@@ -319,7 +616,7 @@ export const api = {
     order: Array<{ id: string; order: number }>,
     token: string,
   ) =>
-    request<{ items: any[] }>(`/api/hero-images/reorder`, {
+    request<{ items: HeroImageItem[] }>(`/api/hero-images/reorder`, {
       method: "POST",
       body: JSON.stringify({ order }),
       token,

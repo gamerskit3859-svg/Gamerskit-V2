@@ -1,65 +1,82 @@
-import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { api } from "@/lib/api";
-import { ProductGallery } from "@/components/ProductGallery";
-import { ProductBuyPanel } from "@/components/ProductBuyPanel";
-import { ProductCard } from "@/components/ProductCard";
+import { absoluteUrl, createMetadata, truncateDescription } from "@/lib/seo";
+import { ProductPageClient } from "./ProductPageClient";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+type ProductPageProps = {
+  params: Promise<{ slug: string }>;
+};
 
 export async function generateMetadata({
   params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+}: ProductPageProps): Promise<Metadata> {
   const { slug } = await params;
+
   try {
     const { item } = await api.getProduct(slug);
-    return {
-      title: item.title,
-      description: item.description.slice(0, 160),
-    };
+    const description = truncateDescription(item.description);
+
+    return createMetadata({
+      title: `${item.title} | Buy Online in Bangladesh`,
+      description,
+      path: `/product/${item.slug}`,
+      keywords: [item.title, item.category, "buy online Bangladesh"],
+      image: item.images[0] ?? "/brand/logo.png",
+    });
   } catch {
-    return { title: "Product" };
+    return createMetadata({
+      title: "Product not found",
+      description: "This GK Shop product may be unavailable or moved.",
+      path: `/product/${slug}`,
+      noIndex: true,
+    });
   }
 }
 
-export default async function ProductPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+export default async function ProductPage({ params }: ProductPageProps) {
   const { slug } = await params;
-  let item: Awaited<ReturnType<typeof api.getProduct>>["item"];
+  let productJsonLd: Record<string, unknown> | null = null;
+
   try {
-    item = (await api.getProduct(slug)).item;
+    const { item } = await api.getProduct(slug);
+    productJsonLd = {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: item.title,
+      image: item.images.map((image) => absoluteUrl(image)),
+      description: truncateDescription(item.description),
+      sku: item._id,
+      brand: {
+        "@type": "Brand",
+        name: "GK Shop",
+      },
+      category: item.category,
+      offers: {
+        "@type": "Offer",
+        url: absoluteUrl(`/product/${item.slug}`),
+        priceCurrency: "BDT",
+        price: item.price,
+        availability: "https://schema.org/InStock",
+        itemCondition: "https://schema.org/NewCondition",
+      },
+    };
   } catch {
-    notFound();
+    productJsonLd = null;
   }
 
-  // pull "you may also like" from same category
-  let related: Awaited<ReturnType<typeof api.listProducts>>["items"] = [];
-  try {
-    const all = await api.listProducts({ category: item!.category });
-    related = all.items.filter((p) => p._id !== item!._id).slice(0, 4);
-  } catch {}
-
   return (
-    <article className="px-5 lg:px-8 max-w-[1280px] mx-auto py-10 md:py-16">
-      <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-start">
-        <ProductGallery images={item!.images} alt={item!.title} />
-        <ProductBuyPanel product={item!} />
-      </div>
-
-      {related.length > 0 && (
-        <section className="py-10 mt-10 md:py-16 hairline-t">
-          <h2 className="display-2">You may also like.</h2>
-          <div className="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-12">
-            {related.map((p, i) => (
-              <ProductCard product={p} key={p._id} index={i} />
-            ))}
-          </div>
-        </section>
+    <>
+      {productJsonLd && (
+        <script
+          id={`product-jsonld-${slug}`}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+        />
       )}
-    </article>
+      <ProductPageClient />
+    </>
   );
 }

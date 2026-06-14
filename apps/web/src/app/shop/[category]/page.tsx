@@ -3,6 +3,8 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { CategoryNav } from "@/components/CategoryNav";
 import { ProductListing } from "@/components/ProductListing";
+import { Section } from "@/components/ui";
+import { createMetadata, truncateDescription } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +24,24 @@ export async function generateMetadata({
 }) {
   const { category } = await params;
   try {
-    const res = await api.getCategory(category);
-    return { title: res.item?.name ?? "Shop" };
+    const res = await api.getCategoryFresh(category);
+    const item = res.item;
+    return createMetadata({
+      title: `${item.name} | Shop GK Shop`,
+      description: truncateDescription(
+        item.description ||
+          `Shop ${item.name} at GK Shop with cash on delivery across Bangladesh.`,
+      ),
+      path: `/shop?category=${encodeURIComponent(item.slug)}`,
+      keywords: [item.name, `${item.name} Bangladesh`, "GK Shop category"],
+      image: item.image || "/brand/logo.png",
+    });
   } catch {
-    return { title: "Shop" };
+    return createMetadata({
+      title: "Shop GK Shop",
+      description: "Browse GK Shop products in Bangladesh.",
+      path: `/shop?category=${encodeURIComponent(category)}`,
+    });
   }
 }
 
@@ -37,10 +53,15 @@ export default async function CategoryPage({
   const { category } = await params;
 
   let categoryData: Category | null = null;
+  let categories: Category[] = [];
 
   try {
-    const catRes = await api.getCategory(category);
+    const [catRes, categoryList] = await Promise.all([
+      api.getCategoryFresh(category),
+      api.listCategoriesFresh().catch(() => ({ items: [] as Category[] })),
+    ]);
     categoryData = catRes.item;
+    categories = categoryList.items;
   } catch {
     notFound();
   }
@@ -51,30 +72,33 @@ export default async function CategoryPage({
 
   return (
     <>
-      <CategoryNav activeSlug={category} />
-      <section className="px-5 lg:px-8 max-w-[1280px] mx-auto py-12">
+      <CategoryNav activeSlug={category} initialCategories={categories} />
+      <Section width="wide" spacing="md">
         <header className="mb-10">
-          <span className="eyebrow">Category</span>
-          <h1 className="display-2 mt-2">{categoryData.name}.</h1>
+          <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+            Category
+          </span>
+          <h1 className="mt-2 text-[clamp(36px,5vw,64px)] leading-[1.06] tracking-[-0.035em] font-semibold">
+            {categoryData.name}.
+          </h1>
           {categoryData.description && (
-            <p className="mt-3 text-[var(--fg-soft)]">{categoryData.description}</p>
+            <p className="mt-3 text-fg-soft">{categoryData.description}</p>
           )}
         </header>
 
-        {/* Subcategories */}
         {categoryData.subcategories && categoryData.subcategories.length > 0 && (
           <div className="mb-12">
-            <h2 className="text-lg font-semibold mb-4">Subcategories</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <h2 className="mb-4 text-lg font-semibold">Subcategories</h2>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
               {categoryData.subcategories.map((subcat) => (
                 <Link
                   key={subcat._id}
-                  href={`/shop/${subcat.slug}`}
-                  className="p-4 rounded-lg border border-[var(--line-strong)] hover:border-black transition-colors text-center"
+                  href={`/shop?category=${subcat.slug}`}
+                  className="rounded-lg border border-line-strong p-4 text-center transition-colors hover:border-black"
                 >
-                  <div className="font-medium text-sm">{subcat.name}</div>
+                  <div className="text-sm font-medium">{subcat.name}</div>
                   {subcat.description && (
-                    <div className="text-xs text-[var(--fg-soft)] mt-1">
+                    <div className="mt-1 text-xs text-fg-soft">
                       {subcat.description}
                     </div>
                   )}
@@ -83,9 +107,8 @@ export default async function CategoryPage({
             </div>
           </div>
         )}
-      </section>
+      </Section>
 
-      {/* Product listing moved to client component */}
       <ProductListing category={category} />
     </>
   );

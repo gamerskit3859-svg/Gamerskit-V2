@@ -66,7 +66,13 @@ export async function sendCapiEvent(
   event: FbServerEvent,
 ): Promise<{ ok: boolean; status: number; body: unknown }> {
   if (!env.FB_PIXEL_ID || !env.FB_CAPI_TOKEN) {
-    console.log("[fb] CAPI skipped (missing FB_PIXEL_ID/FB_CAPI_TOKEN):", event.event_name, event.event_id);
+    if (env.NODE_ENV !== "production") {
+      console.info(
+        "[fb] CAPI skipped (missing FB_PIXEL_ID/FB_CAPI_TOKEN):",
+        event.event_name,
+        event.event_id,
+      );
+    }
     return { ok: false, status: 0, body: { skipped: true } };
   }
   const payload = {
@@ -89,8 +95,8 @@ export async function sendCapiEvent(
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       console.error("[fb] CAPI error", res.status, body);
-    } else {
-      console.log("[fb] CAPI ok", event.event_name, event.event_id);
+    } else if (env.NODE_ENV !== "production") {
+      console.info("[fb] CAPI ok", event.event_name, event.event_id);
     }
     return { ok: res.ok, status: res.status, body };
   } catch (err) {

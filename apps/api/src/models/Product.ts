@@ -1,10 +1,19 @@
 import mongoose, { Schema } from "mongoose";
 
+const VariantOptionSchema = new Schema(
+  {
+    value: { type: String, required: true },
+    stock: { type: Number, default: 0 },
+    sku: { type: String },
+    price: { type: Number, min: 0 },
+  },
+  { _id: false },
+);
+
 const VariantSchema = new Schema(
   {
-    size: { type: String },
-    color: { type: String },
-    stock: { type: Number, default: 0 },
+    name: { type: String, required: true },
+    options: { type: [VariantOptionSchema], default: [] },
   },
   { _id: false },
 );
@@ -23,6 +32,11 @@ const ProductSchema = new Schema(
     stock: { type: Number, default: 0 },
     images: { type: [String], default: [] },
     variants: { type: [VariantSchema], default: [] },
+    isFeatured: { type: Boolean, default: false },
+    isBestSelling: { type: Boolean, default: false },
+    isNewArrival: { type: Boolean, default: false },
+    // Legacy homepage flag kept so older products still appear as featured
+    // until they are edited with the newer explicit controls.
     featured: { type: Boolean, default: false },
     legacyId: { type: String, index: true },
   },
@@ -30,6 +44,15 @@ const ProductSchema = new Schema(
 );
 
 ProductSchema.index({ title: "text", description: "text" });
+ProductSchema.index({ isFeatured: 1, createdAt: -1 });
+ProductSchema.index({ isBestSelling: 1, createdAt: -1 });
+ProductSchema.index({ isNewArrival: 1, createdAt: -1 });
+ProductSchema.index({ featured: 1, createdAt: -1 });
+ProductSchema.index({ createdAt: -1 });
+ProductSchema.index({ category: 1, featured: -1, createdAt: -1 });
+ProductSchema.index({ categorySlug: 1, featured: -1, createdAt: -1 });
+ProductSchema.index({ category: 1, stock: 1, createdAt: -1 });
+ProductSchema.index({ stock: 1 });
 
 export const ProductModel =
   mongoose.models.Product ?? mongoose.model("Product", ProductSchema);

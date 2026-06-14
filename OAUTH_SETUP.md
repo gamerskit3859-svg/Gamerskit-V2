@@ -81,6 +81,7 @@ Add these to your `.env.local` file:
 ```bash
 # Google OAuth
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_client_id
+NEXT_PUBLIC_GOOGLE_REDIRECT_URI=https://gamerskit-frontend.vercel.app/auth/google/callback
 
 # Facebook OAuth
 NEXT_PUBLIC_FACEBOOK_APP_ID=your_facebook_app_id

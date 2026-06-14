@@ -7,6 +7,9 @@ const LineItemSchema = new Schema(
     image: { type: String },
     unitPrice: { type: Number, required: true, min: 0 },
     quantity: { type: Number, required: true, min: 1 },
+    selectedVariants: { type: Map, of: String },
+    variantSku: { type: String },
+    variantPrice: { type: Number, min: 0 },
     custom: { type: Boolean, default: false },
     note: { type: String },
   },
@@ -19,8 +22,27 @@ const CustomerSchema = new Schema(
     phone: { type: String, required: true, index: true },
     email: { type: String },
     address: { type: String, required: true },
-    city: { type: String, required: true },
+    // Bangladesh-style location pair used by the storefront checkout.
+    district: { type: String },
+    thana: { type: String },
+    // Legacy / admin custom-order location pair. Kept so the admin form
+    // continues to round-trip values it has historically written.
+    city: { type: String },
     area: { type: String },
+  },
+  { _id: false },
+);
+
+const CourierSchema = new Schema(
+  {
+    provider: { type: String },
+    invoice: { type: String, index: true },
+    consignmentId: { type: String, index: true },
+    trackingCode: { type: String, index: true },
+    status: { type: String },
+    response: { type: Schema.Types.Mixed },
+    createdAt: { type: Date },
+    updatedAt: { type: Date },
   },
   { _id: false },
 );
@@ -36,10 +58,24 @@ const OrderSchema = new Schema(
     total: { type: Number, required: true },
     advance: { type: Number, default: 0 },
     remaining: { type: Number, default: 0 },
+    paymentType: {
+      type: String,
+      enum: ["full", "partial", null],
+      default: null,
+    },
+    paidAmount: { type: Number, default: 0 },
+    dueAmount: { type: Number, default: 0 },
+    senderNumber: { type: String, default: null },
     paymentMethod: {
       type: String,
       enum: ["cod", "bkash", "nagad", "card", "manual"],
       default: "cod",
+    },
+    paymentStatus: {
+      type: String,
+      enum: ["unpaid", "partial", "paid", "refunded"],
+      default: "unpaid",
+      index: true,
     },
     status: {
       type: String,
@@ -62,12 +98,25 @@ const OrderSchema = new Schema(
       index: true,
     },
     notes: { type: String },
+    courier: { type: CourierSchema },
     fbEventId: { type: String },
     couponCode: { type: String },
     metadata: { type: Schema.Types.Mixed },
+    // If the order was placed by a signed-in customer we link it here so the
+    // /account "your orders" view can find it even when the phone/email at
+    // checkout doesn't match the saved profile.
+    userId: { type: Schema.Types.ObjectId, ref: "User", index: true },
   },
   { timestamps: true },
 );
+
+OrderSchema.index({ createdAt: -1 });
+OrderSchema.index({ status: 1, createdAt: -1 });
+OrderSchema.index({ source: 1, createdAt: -1 });
+OrderSchema.index({ userId: 1, createdAt: -1 });
+OrderSchema.index({ "customer.phone": 1, createdAt: -1 });
+OrderSchema.index({ orderNumber: 1, createdAt: -1 });
+OrderSchema.index({ "customer.name": 1 });
 
 export const OrderModel =
   mongoose.models.Order ?? mongoose.model("Order", OrderSchema);

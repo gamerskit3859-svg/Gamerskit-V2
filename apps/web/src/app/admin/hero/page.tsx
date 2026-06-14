@@ -1,62 +1,126 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { CldUploadWidget } from "next-cloudinary";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import {
-  Plus,
-  GripVertical,
-  Pencil,
-  Trash2,
-  CheckCircle2,
-  XCircle,
-  Image as ImageIcon,
+  CldUploadWidget,
+  type CloudinaryUploadWidgetResults,
+} from "next-cloudinary";
+import {
   AlertCircle,
+  CheckCircle2,
+  GripVertical,
+  Image as ImageIcon,
+  Pencil,
+  Plus,
   Save,
+  Trash2,
+  Video,
   X,
+  XCircle,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import {
+  api,
+  type HeroImageItem,
+  type ShopBannerItem,
+} from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
+import { optimizeCloudinaryImage } from "@/lib/images";
+import { Button, Card, FieldLabel, Input } from "@/components/ui";
+import { cn } from "@/lib/cn";
 
-interface HeroImage {
-  _id: string;
-  imageUrl: string;
+type HeroForm = {
+  mediaUrl: string;
+  mediaType: "image" | "video";
   publicId: string;
-  order: number;
-  isActive: boolean;
   title: string;
   subtitle: string;
   link: string;
+};
+
+const emptyHeroForm: HeroForm = {
+  mediaUrl: "",
+  mediaType: "image",
+  publicId: "",
+  title: "",
+  subtitle: "",
+  link: "",
+};
+
+function getUploadInfo(result: CloudinaryUploadWidgetResults): {
+  imageUrl: string;
+  mediaUrl: string;
+  mediaType: "image" | "video";
+  publicId: string;
+} | null {
+  const info = result.info;
+  if (!info || typeof info !== "object") return null;
+  if (!("secure_url" in info) || typeof info.secure_url !== "string") return null;
+
+  return {
+    imageUrl: info.secure_url,
+    mediaUrl: info.secure_url,
+    mediaType:
+      "resource_type" in info && info.resource_type === "video"
+        ? "video"
+        : "image",
+    publicId:
+      "public_id" in info && typeof info.public_id === "string"
+        ? info.public_id
+        : info.secure_url.split("/").pop()?.split("?")[0] || "banner",
+  };
+}
+
+function heroToForm(image: HeroImageItem): HeroForm {
+  return {
+    mediaUrl: image.mediaUrl || image.imageUrl,
+    mediaType: image.mediaType || "image",
+    publicId: image.publicId,
+    title: image.title,
+    subtitle: image.subtitle,
+    link: image.link,
+  };
 }
 
 export default function AdminHeroImages() {
-  const [images, setImages] = useState<HeroImage[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const [images, setImages] = useState<HeroImageItem[]>([]);
+  const [heroForm, setHeroForm] = useState<HeroForm>(emptyHeroForm);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
+  const [showHeroForm, setShowHeroForm] = useState(false);
   const [draggedFrom, setDraggedFrom] = useState<number | null>(null);
 
-  const [formData, setFormData] = useState({
-    imageUrl: "",
-    title: "",
-    subtitle: "",
-    link: "",
-    order: 0,
-    isActive: true,
-  });
+  const [shopBanners, setShopBanners] = useState<ShopBannerItem[]>([]);
+  const [shopForm, setShopForm] = useState({ imageUrl: "", publicId: "" });
+  const [editingShopId, setEditingShopId] = useState<string | null>(null);
+  const [showShopForm, setShowShopForm] = useState(false);
+  const [draggedShopFrom, setDraggedShopFrom] = useState<number | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [savingHero, setSavingHero] = useState(false);
+  const [savingShop, setSavingShop] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const token = getAdminToken();
+  const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
-  const loadImages = useCallback(async () => {
-    if (!token) return;
+  const loadData = useCallback(async () => {
+    if (!token) {
+      setLoading(false);
+      setError("Admin token not found. Please login again.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
     try {
-      setLoading(true);
-      const result = await api.listHeroImagesAdmin(token);
-      setImages(result.items || []);
-      setError(null);
+      const [heroResult, shopResult] = await Promise.all([
+        api.listHeroImagesAdmin(token),
+        api.listShopBannersAdmin(token),
+      ]);
+      setImages(heroResult.items || []);
+      setShopBanners(shopResult.items || []);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -65,326 +129,763 @@ export default function AdminHeroImages() {
   }, [token]);
 
   useEffect(() => {
-    loadImages();
-  }, [loadImages]);
+    void Promise.resolve().then(() => loadData());
+  }, [loadData]);
 
-  const resetForm = () => {
-    setFormData({
-      imageUrl: "",
-      title: "",
-      subtitle: "",
-      link: "",
-      order: 0,
-      isActive: true,
-    });
+  function resetHeroForm() {
+    setHeroForm(emptyHeroForm);
     setEditingId(null);
-    setShowForm(false);
-  };
+    setShowHeroForm(false);
+  }
 
-  const handleEdit = (image: HeroImage) => {
-    setFormData({
-      imageUrl: image.imageUrl,
-      title: image.title,
-      subtitle: image.subtitle,
-      link: image.link,
-      order: image.order,
-      isActive: image.isActive,
-    });
+  function startCreateHero() {
+    setHeroForm(emptyHeroForm);
+    setEditingId(null);
+    setSuccess(null);
+    setShowHeroForm(true);
+  }
+
+  function startEditHero(image: HeroImageItem) {
+    setHeroForm(heroToForm(image));
     setEditingId(image._id);
-    setShowForm(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+    setSuccess(null);
+    setShowHeroForm(true);
+  }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function saveHeroSlide(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !formData.imageUrl) return;
+    if (!token || !heroForm.mediaUrl) return;
 
-    setIsSaving(true);
+    setSavingHero(true);
+    setSuccess(null);
+    setError(null);
+
     try {
+      const body = {
+        imageUrl: heroForm.mediaUrl,
+        mediaUrl: heroForm.mediaUrl,
+        mediaType: heroForm.mediaType,
+        publicId: heroForm.publicId || "hero-slide",
+        title: heroForm.title,
+        subtitle: heroForm.subtitle,
+        link: heroForm.link,
+      };
+
       if (editingId) {
-        await api.updateHeroImage(editingId, formData, token);
+        const result = await api.updateHeroImage(editingId, body, token);
+        setImages((prev) =>
+          prev.map((image) => (image._id === editingId ? result.item : image)),
+        );
       } else {
-        const publicId =
-          formData.imageUrl.split("/").pop()?.split("?")[0] || "hero";
-        await api.createHeroImage({ ...formData, publicId }, token);
+        const result = await api.createHeroImage(
+          { ...body, isActive: activeCount < 4 },
+          token,
+        );
+        setImages((prev) => [...prev, result.item].sort((a, b) => a.order - b.order));
       }
-      await loadImages();
-      resetForm();
+
+      setSuccess(editingId ? "Home hero slide updated." : "Home hero slide added.");
+      resetHeroForm();
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setIsSaving(false);
+      setSavingHero(false);
     }
-  };
+  }
 
-  const handleDelete = async (id: string) => {
-    if (!token || !confirm("Delete this hero slide?")) return;
+  async function deleteHeroSlide(id: string) {
+    if (!token || !confirm("Delete this home hero slide?")) return;
+    setError(null);
+    setSuccess(null);
+
     try {
       await api.deleteHeroImage(id, token);
-      await loadImages();
+      setImages((prev) => prev.filter((image) => image._id !== id));
+      setSuccess("Home hero slide deleted.");
     } catch (err) {
       setError((err as Error).message);
     }
-  };
+  }
 
-  const handleToggleActive = async (id: string, currentState: boolean) => {
+  async function toggleHeroActive(image: HeroImageItem) {
     if (!token) return;
+    if (!image.isActive && activeCount >= 4) {
+      setError("Maximum 4 active home hero slides are allowed.");
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+
     try {
-      await api.updateHeroImage(id, { isActive: !currentState }, token);
-      await loadImages();
+      const result = await api.updateHeroImage(
+        image._id,
+        { isActive: !image.isActive },
+        token,
+      );
+      setImages((prev) =>
+        prev.map((item) => (item._id === image._id ? result.item : item)),
+      );
+      setSuccess(result.item.isActive ? "Slide activated." : "Slide hidden.");
     } catch (err) {
       setError((err as Error).message);
     }
-  };
+  }
 
-  // Drag and Drop Logic
-  const handleDragStart = (index: number) => setDraggedFrom(index);
-  const handleDragOver = async (index: number) => {
-    if (draggedFrom === null || draggedFrom === index) return;
-    const newImages = [...images];
-    const [draggedItem] = newImages.splice(draggedFrom, 1);
-    newImages.splice(index, 0, draggedItem);
-
-    const updated = newImages.map((img, idx) => ({ ...img, order: idx }));
-    setImages(updated);
+  function handleDragStart(index: number) {
     setDraggedFrom(index);
-  };
+  }
 
-  const handleDragEnd = async () => {
+  function handleDragOver(index: number) {
+    if (draggedFrom === null || draggedFrom === index) return;
+
+    setImages((prev) => {
+      const next = [...prev];
+      const [draggedItem] = next.splice(draggedFrom, 1);
+      next.splice(index, 0, draggedItem);
+      return next.map((image, order) => ({ ...image, order }));
+    });
+    setDraggedFrom(index);
+  }
+
+  async function handleDragEnd() {
     setDraggedFrom(null);
     if (!token) return;
-    try {
-      const orderData = images.map((img, idx) => ({ id: img._id, order: idx }));
-      await api.reorderHeroImages(orderData, token);
-    } catch (err) {
-      setError("Failed to save new order.");
-      loadImages();
-    }
-  };
 
-  const activeCount = images.filter((img) => img.isActive).length;
+    try {
+      const result = await api.reorderHeroImages(
+        images.map((image, order) => ({ id: image._id, order })),
+        token,
+      );
+      setImages(
+        result.items
+          .filter(Boolean)
+          .sort((a, b) => a.order - b.order) as HeroImageItem[],
+      );
+      setSuccess("Home hero slide order saved.");
+    } catch (err) {
+      setError((err as Error).message);
+      void loadData();
+    }
+  }
+
+  async function saveShopBanner(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token || !shopForm.imageUrl) return;
+
+    setSavingShop(true);
+    setSuccess(null);
+    setError(null);
+
+    try {
+      if (editingShopId) {
+        const result = await api.updateShopBanner(editingShopId, shopForm, token);
+        setShopBanners((prev) =>
+          prev.map((banner) =>
+            banner._id === editingShopId ? result.item : banner,
+          ),
+        );
+      } else {
+        const result = await api.createShopBanner(shopForm, token);
+        setShopBanners((prev) =>
+          [...prev, result.item].sort((a, b) => a.order - b.order),
+        );
+      }
+      setShopForm({ imageUrl: "", publicId: "" });
+      setEditingShopId(null);
+      setShowShopForm(false);
+      setSuccess(editingShopId ? "Shop banner updated." : "Shop banner added.");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingShop(false);
+    }
+  }
+
+  function startCreateShopBanner() {
+    setShopForm({ imageUrl: "", publicId: "" });
+    setEditingShopId(null);
+    setSuccess(null);
+    setShowShopForm(true);
+  }
+
+  function startEditShopBanner(banner: ShopBannerItem) {
+    setShopForm({ imageUrl: banner.imageUrl, publicId: banner.publicId });
+    setEditingShopId(banner._id);
+    setSuccess(null);
+    setShowShopForm(true);
+  }
+
+  async function toggleShopBannerActive(banner: ShopBannerItem) {
+    if (!token) return;
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const result = await api.updateShopBanner(
+        banner._id,
+        { isActive: !banner.isActive },
+        token,
+      );
+      setShopBanners((prev) =>
+        prev.map((item) => (item._id === banner._id ? result.item : item)),
+      );
+      setSuccess(result.item.isActive ? "Shop banner activated." : "Shop banner hidden.");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function deleteShopBanner(id: string) {
+    if (!token || !confirm("Delete this shop banner?")) return;
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await api.deleteShopBanner(id, token);
+      setShopBanners((prev) => prev.filter((banner) => banner._id !== id));
+      setSuccess("Shop banner deleted.");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  function handleShopDragStart(index: number) {
+    setDraggedShopFrom(index);
+  }
+
+  function handleShopDragOver(index: number) {
+    if (draggedShopFrom === null || draggedShopFrom === index) return;
+
+    setShopBanners((prev) => {
+      const next = [...prev];
+      const [draggedItem] = next.splice(draggedShopFrom, 1);
+      next.splice(index, 0, draggedItem);
+      return next.map((banner, order) => ({ ...banner, order }));
+    });
+    setDraggedShopFrom(index);
+  }
+
+  async function handleShopDragEnd() {
+    setDraggedShopFrom(null);
+    if (!token) return;
+
+    try {
+      const result = await api.reorderShopBanners(
+        shopBanners.map((banner, order) => ({ id: banner._id, order })),
+        token,
+      );
+      setShopBanners(result.items.sort((a, b) => a.order - b.order));
+      setSuccess("Shop banner order saved.");
+    } catch (err) {
+      setError((err as Error).message);
+      void loadData();
+    }
+  }
+
+  const activeCount = images.filter((image) => image.isActive).length;
+  const activeShopCount = shopBanners.filter((banner) => banner.isActive).length;
 
   return (
     <div className="min-h-screen pb-20">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">
-            Hero Management
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Active Slides:{" "}
-            <span className="font-bold text-blue-600">{activeCount}/4</span> •
-            Drag to reorder
-          </p>
-        </div>
-        <button
-          onClick={() => (showForm ? resetForm() : setShowForm(true))}
-          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all ${
-            showForm
-              ? "bg-white border text-gray-600 shadow-sm"
-              : "bg-black text-white shadow-lg"
-          }`}>
-          {showForm ? <X size={18} /> : <Plus size={18} />}
-          {showForm ? "Close Form" : "Add Slide"}
-        </button>
-      </div>
+      <header className="mb-8">
+        <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+          Admin
+        </span>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+          Hero Section
+        </h1>
+        <p className="mt-1 text-sm text-fg-soft">
+          Manage homepage hero slides and the separate Shop banner slider.
+        </p>
+      </header>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl flex items-center gap-3">
-          <AlertCircle size={20} />
+        <div className="mb-6 flex items-center gap-3 rounded-lg border border-red-100 bg-red-50 p-4 text-red-700">
+          <AlertCircle size={18} />
           <span className="text-sm font-medium">{error}</span>
         </div>
       )}
 
-      {/* Form Section */}
-      <AnimatePresence>
-        {showForm && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="bg-white rounded-2xl border border-gray-200  p-6 mb-10 overflow-hidden">
-            <form
-              onSubmit={handleSubmit}
-              className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {/* Upload Area */}
-              <div className="md:col-span-1">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-3">
-                  Slide Media
-                </label>
-                <CldUploadWidget
-                  uploadPreset={
-                    process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
-                  }
-                  onSuccess={(res: any) =>
-                    setFormData({ ...formData, imageUrl: res.info.secure_url })
-                  }>
-                  {({ open }) => (
-                    <div
-                      onClick={() => open()}
-                      className="relative aspect-video rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-all group">
-                      {formData.imageUrl ? (
-                        <Image
-                          src={formData.imageUrl}
-                          alt="Preview"
-                          fill
-                          className="object-cover rounded-xl"
+      {success && (
+        <div className="mb-6 flex items-center gap-3 rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-emerald-700">
+          <CheckCircle2 size={18} />
+          <span className="text-sm font-medium">{success}</span>
+        </div>
+      )}
+
+      <Card padding="lg" className="mb-6">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">
+              Home Hero Slides
+            </h2>
+            <p className="mt-1 text-sm text-fg-soft">
+              Multiple homepage slides with title, subtitle, link, active state,
+              and drag reorder.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm text-fg-soft">
+              Active slides: <strong>{activeCount}/4</strong>
+            </span>
+            <Button type="button" onClick={startCreateHero}>
+              <Plus size={18} />
+              Add slide
+            </Button>
+          </div>
+        </div>
+
+        {showHeroForm && (
+          <form
+            onSubmit={saveHeroSlide}
+            className="mb-8 grid gap-6 rounded-lg border border-line bg-bg-soft p-4 md:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]"
+          >
+            <FieldLabel label="Slide Media">
+              <CldUploadWidget
+                uploadPreset={uploadPreset}
+                options={{
+                  maxFiles: 1,
+                  maxFileSize: 30_000_000,
+                  resourceType: "auto",
+                  clientAllowedFormats: ["jpg", "jpeg", "png", "webp", "mp4", "webm", "mov"],
+                  multiple: false,
+                }}
+                onSuccess={(result) => {
+                  const upload = getUploadInfo(result);
+                  if (!upload) return;
+                  setHeroForm((current) => ({ ...current, ...upload }));
+                }}
+                onError={(uploadError) => {
+                  const message =
+                    typeof uploadError === "string"
+                      ? uploadError
+                      : (uploadError as { statusText?: string })?.statusText ??
+                        "Upload failed. Please try again.";
+                  setError(message);
+                }}
+              >
+                {({ open, isLoading }) => (
+                  <button
+                    type="button"
+                    onClick={() => open()}
+                    disabled={!uploadPreset || isLoading}
+                    className="group relative flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-line bg-white text-sm text-fg-muted transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {heroForm.mediaUrl ? (
+                      heroForm.mediaType === "video" ? (
+                        <video
+                          src={heroForm.mediaUrl}
+                          className="h-full w-full object-cover"
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
                         />
                       ) : (
-                        <div className="text-center text-gray-400 group-hover:text-blue-500">
-                          <ImageIcon size={32} className="mx-auto mb-2" />
-                          <p className="text-xs font-bold">Select Image</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </CldUploadWidget>
-              </div>
+                        <Image
+                          src={optimizeCloudinaryImage(
+                            heroForm.mediaUrl,
+                            "f_auto,q_auto,c_fill,w_1200",
+                          )}
+                          alt="Home hero slide preview"
+                          fill
+                          sizes="(max-width: 768px) 100vw, 70vw"
+                          className="object-cover"
+                        />
+                      )
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <ImageIcon size={18} />
+                        <Video size={18} />
+                        {uploadPreset ? "Upload slide image or video" : "Cloudinary upload is disabled"}
+                      </span>
+                    )}
+                  </button>
+                )}
+              </CldUploadWidget>
+            </FieldLabel>
 
-              {/* Text Fields */}
-              <div className="md:col-span-2 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500">
-                      Title
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.title}
-                      onChange={(e) =>
-                        setFormData({ ...formData, title: e.target.value })
-                      }
-                      className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                      placeholder="Built for the Top 1%"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500">
-                      Subtitle
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.subtitle}
-                      onChange={(e) =>
-                        setFormData({ ...formData, subtitle: e.target.value })
-                      }
-                      className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                      placeholder="Official RC drift gear..."
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500">
-                    Link URL
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.link}
-                    onChange={(e) =>
-                      setFormData({ ...formData, link: e.target.value })
-                    }
-                    className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                    placeholder="/shop/rc-cars"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={isSaving || !formData.imageUrl}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50 transition-all shadow-lg shadow-blue-100">
-                  <Save size={18} />
-                  {isSaving
-                    ? "Saving Changes..."
-                    : editingId
-                      ? "Update Slide"
-                      : "Create Slide"}
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* List Section */}
-      <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100">
-        {loading ? (
-          <div className="p-20 text-center text-gray-400 animate-pulse">
-            Loading Hero Inventory...
-          </div>
-        ) : images.length === 0 ? (
-          <div className="p-20 text-center text-gray-400 font-medium">
-            No slides found.
-          </div>
-        ) : (
-          images.map((img, idx) => (
-            <div
-              key={img._id}
-              draggable
-              onDragStart={() => handleDragStart(idx)}
-              onDragOver={(e) => {
-                e.preventDefault();
-                handleDragOver(idx);
-              }}
-              onDragEnd={handleDragEnd}
-              className={`flex items-center p-4 group transition-colors hover:bg-gray-50/50 ${draggedFrom === idx ? "opacity-30 bg-blue-50" : ""}`}>
-              <div className="mr-4 text-gray-300 cursor-grab active:cursor-grabbing hover:text-gray-500">
-                <GripVertical size={20} />
-              </div>
-
-              <div className="relative h-16 w-24 rounded-lg overflow-hidden border border-gray-100 bg-gray-50 flex-shrink-0">
-                <Image
-                  src={img.imageUrl}
-                  alt=""
-                  fill
-                  className="object-cover"
+            <div className="space-y-4">
+              <FieldLabel label="Title">
+                <Input
+                  value={heroForm.title}
+                  onChange={(e) =>
+                    setHeroForm({ ...heroForm, title: e.target.value })
+                  }
+                  placeholder="Built for the Top 1%"
                 />
-              </div>
-
-              <div className="ml-6 flex-grow">
-                <div className="flex items-center gap-3">
-                  <h3 className="font-bold text-gray-900 line-clamp-1">
-                    {img.title || "Untitled Slide"}
-                  </h3>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                      img.isActive
-                        ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                        : "bg-gray-100 text-gray-400 border-gray-200"
-                    }`}>
-                    {img.isActive ? "Active" : "Hidden"}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">
-                  {img.subtitle || "No subtitle set."}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 ml-4">
-                <button
-                  onClick={() => handleToggleActive(img._id, img.isActive)}
-                  disabled={!img.isActive && activeCount >= 4}
-                  className={`p-2 rounded-lg transition-all ${img.isActive ? "text-orange-500 hover:bg-orange-50" : "text-blue-500 hover:bg-blue-50 disabled:opacity-20"}`}>
-                  {img.isActive ? (
-                    <XCircle size={18} />
-                  ) : (
-                    <CheckCircle2 size={18} />
-                  )}
-                </button>
-                <button
-                  onClick={() => handleEdit(img)}
-                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
-                  <Pencil size={18} />
-                </button>
-                <button
-                  onClick={() => handleDelete(img._id)}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
-                  <Trash2 size={18} />
-                </button>
+              </FieldLabel>
+              <FieldLabel label="Subtitle">
+                <Input
+                  value={heroForm.subtitle}
+                  onChange={(e) =>
+                    setHeroForm({ ...heroForm, subtitle: e.target.value })
+                  }
+                  placeholder="Official RC drift gear..."
+                />
+              </FieldLabel>
+              <FieldLabel label="Link URL">
+                <Input
+                  value={heroForm.link}
+                  onChange={(e) =>
+                    setHeroForm({ ...heroForm, link: e.target.value })
+                  }
+                  placeholder="/shop/rc-car"
+                />
+              </FieldLabel>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="ghost" onClick={resetHeroForm}>
+                  <X size={16} />
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={savingHero || !heroForm.mediaUrl}>
+                  <Save size={18} />
+                  {savingHero
+                    ? "Saving..."
+                    : editingId
+                      ? "Update slide"
+                      : "Create slide"}
+                </Button>
               </div>
             </div>
-          ))
+          </form>
         )}
-      </div>
+
+        {loading ? (
+          <div className="animate-pulse rounded-lg bg-bg-soft p-16 text-center text-fg-muted">
+            Loading home hero slides...
+          </div>
+        ) : images.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-line p-12 text-center text-sm text-fg-muted">
+            No home hero slides yet.
+          </div>
+        ) : (
+          <div className="divide-y divide-line overflow-hidden rounded-lg border border-line">
+            {images.map((image, index) => (
+              <div
+                key={image._id}
+                draggable
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  handleDragOver(index);
+                }}
+                onDragEnd={handleDragEnd}
+                className={cn(
+                  "flex flex-col gap-4 bg-white p-4 transition-colors hover:bg-bg-soft sm:flex-row sm:items-center",
+                  draggedFrom === index && "bg-blue-50 opacity-40",
+                )}
+              >
+                <div className="hidden cursor-grab text-fg-muted active:cursor-grabbing sm:block">
+                  <GripVertical size={20} />
+                </div>
+
+                <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-line bg-bg-soft sm:h-20 sm:w-32 sm:flex-shrink-0">
+                  {(image.mediaType || "image") === "video" ? (
+                    <video
+                      src={image.mediaUrl || image.imageUrl}
+                      className="h-full w-full object-cover"
+                      muted
+                      playsInline
+                      preload="metadata"
+                    />
+                  ) : (
+                    <Image
+                      src={optimizeCloudinaryImage(
+                        image.mediaUrl || image.imageUrl,
+                        "f_auto,q_auto,c_fill,w_500",
+                      )}
+                      alt=""
+                      fill
+                      sizes="(max-width: 640px) 100vw, 128px"
+                      className="object-cover"
+                    />
+                  )}
+                  <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-white">
+                    {image.mediaType || "image"}
+                  </span>
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="truncate font-semibold">
+                      {image.title || "Untitled Slide"}
+                    </h3>
+                    <span
+                      className={cn(
+                        "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest",
+                        image.isActive
+                          ? "border-emerald-100 bg-emerald-50 text-emerald-600"
+                          : "border-line bg-bg-soft text-fg-muted",
+                      )}
+                    >
+                      {image.isActive ? "Active" : "Hidden"}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-fg-muted">
+                    {image.subtitle || "No subtitle set."}
+                  </p>
+                  {image.link && (
+                    <p className="mt-1 truncate font-mono text-[11px] text-fg-muted">
+                      {image.link}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleHeroActive(image)}
+                    disabled={!image.isActive && activeCount >= 4}
+                    className={cn(
+                      "rounded-lg p-2 transition-all disabled:cursor-not-allowed disabled:opacity-30",
+                      image.isActive
+                        ? "text-orange-500 hover:bg-orange-50"
+                        : "text-blue-500 hover:bg-blue-50",
+                    )}
+                    aria-label={image.isActive ? "Hide slide" : "Activate slide"}
+                  >
+                    {image.isActive ? <XCircle size={18} /> : <CheckCircle2 size={18} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startEditHero(image)}
+                    className="rounded-lg p-2 text-fg-muted hover:bg-blue-50 hover:text-blue-600"
+                    aria-label="Edit slide"
+                  >
+                    <Pencil size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteHeroSlide(image._id)}
+                    className="rounded-lg p-2 text-fg-muted hover:bg-red-50 hover:text-red-600"
+                    aria-label="Delete slide"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card padding="lg">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">
+              Shop Banner Slider
+            </h2>
+            <p className="mt-1 text-sm text-fg-soft">
+              Multiple Shop page banners. Active banners appear in the Shop slider only.
+            </p>
+            <div className="mt-4 grid gap-2 text-sm text-fg-soft md:grid-cols-3">
+              <p className="rounded-lg border border-line bg-bg-soft p-3">
+                Recommended size: 1920x600px or 1600x500px. Keep important content centered with safe padding. Use JPG/WebP under 500KB.
+              </p>
+              <p className="rounded-lg border border-line bg-bg-soft p-3">
+                Desktop preview ratio: wide banner around 16:5 to 16:4.
+              </p>
+              <p className="rounded-lg border border-line bg-bg-soft p-3">
+                Mobile preview note: keep safe padding because mobile screens are narrow.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm text-fg-soft">
+              Active banners: <strong>{activeShopCount}</strong>
+            </span>
+            <Button type="button" onClick={startCreateShopBanner}>
+              <Plus size={18} />
+              Add banner
+            </Button>
+          </div>
+        </div>
+
+        {showShopForm && (
+          <form
+            onSubmit={saveShopBanner}
+            className="mb-8 grid gap-6 rounded-lg border border-line bg-bg-soft p-4 md:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]"
+          >
+            <FieldLabel label="Shop Banner Image">
+              <CldUploadWidget
+                uploadPreset={uploadPreset}
+                options={{
+                  maxFiles: 1,
+                  maxFileSize: 5_000_000,
+                  resourceType: "image",
+                  clientAllowedFormats: ["jpg", "jpeg", "png", "webp"],
+                  multiple: false,
+                }}
+                onSuccess={(result) => {
+                  const upload = getUploadInfo(result);
+                  if (!upload) return;
+                  setShopForm(upload);
+                }}
+                onError={(uploadError) => {
+                  const message =
+                    typeof uploadError === "string"
+                      ? uploadError
+                      : (uploadError as { statusText?: string })?.statusText ??
+                        "Upload failed. Please try again.";
+                  setError(message);
+                }}
+              >
+                {({ open, isLoading }) => (
+                  <button
+                    type="button"
+                    onClick={() => open()}
+                    disabled={!uploadPreset || isLoading}
+                    className="group relative flex aspect-[16/6] w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-line bg-bg-soft text-sm text-fg-muted transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {shopForm.imageUrl ? (
+                      <Image
+                        src={optimizeCloudinaryImage(
+                          shopForm.imageUrl,
+                          "f_auto,q_auto,c_fill,w_1600",
+                        )}
+                        alt="Shop banner preview"
+                        fill
+                        sizes="(max-width: 768px) 100vw, 70vw"
+                        className="object-contain"
+                      />
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <ImageIcon size={18} />
+                        {uploadPreset ? "Upload shop banner" : "Cloudinary upload is disabled"}
+                      </span>
+                    )}
+                  </button>
+                )}
+              </CldUploadWidget>
+            </FieldLabel>
+            <div className="flex flex-col justify-end gap-3">
+              <p className="rounded-lg border border-line bg-white p-3 text-sm text-fg-soft">
+                This slider is separate from homepage hero slides.
+              </p>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setShowShopForm(false);
+                    setEditingShopId(null);
+                    setShopForm({ imageUrl: "", publicId: "" });
+                  }}
+                >
+                  <X size={16} />
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={savingShop || !shopForm.imageUrl}>
+                  <Save size={18} />
+                  {savingShop
+                    ? "Saving..."
+                    : editingShopId
+                      ? "Update banner"
+                      : "Create banner"}
+                </Button>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {loading ? (
+          <div className="animate-pulse rounded-lg bg-bg-soft p-12 text-center text-fg-muted">
+            Loading shop banners...
+          </div>
+        ) : shopBanners.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-line p-12 text-center text-sm text-fg-muted">
+            No shop banners yet.
+          </div>
+        ) : (
+          <div className="divide-y divide-line overflow-hidden rounded-lg border border-line">
+            {shopBanners.map((banner, index) => (
+              <div
+                key={banner._id}
+                draggable
+                onDragStart={() => handleShopDragStart(index)}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  handleShopDragOver(index);
+                }}
+                onDragEnd={handleShopDragEnd}
+                className={cn(
+                  "flex flex-col gap-4 bg-white p-4 transition-colors hover:bg-bg-soft sm:flex-row sm:items-center",
+                  draggedShopFrom === index && "bg-blue-50 opacity-40",
+                )}
+              >
+                <div className="hidden cursor-grab text-fg-muted active:cursor-grabbing sm:block">
+                  <GripVertical size={20} />
+                </div>
+                <div className="relative aspect-[16/6] w-full overflow-hidden rounded-lg border border-line bg-black sm:h-20 sm:w-40 sm:flex-shrink-0">
+                  <Image
+                    src={optimizeCloudinaryImage(
+                      banner.imageUrl,
+                      "f_auto,q_auto,c_fit,w_500",
+                    )}
+                    alt=""
+                    fill
+                    sizes="(max-width: 640px) 100vw, 160px"
+                    className="object-contain"
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="truncate font-semibold">
+                      Shop banner {index + 1}
+                    </h3>
+                    <span
+                      className={cn(
+                        "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest",
+                        banner.isActive
+                          ? "border-emerald-100 bg-emerald-50 text-emerald-600"
+                          : "border-line bg-bg-soft text-fg-muted",
+                      )}
+                    >
+                      {banner.isActive ? "Active" : "Hidden"}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate font-mono text-[11px] text-fg-muted">
+                    {banner.publicId || banner.imageUrl}
+                  </p>
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleShopBannerActive(banner)}
+                    className={cn(
+                      "rounded-lg p-2 transition-all",
+                      banner.isActive
+                        ? "text-orange-500 hover:bg-orange-50"
+                        : "text-blue-500 hover:bg-blue-50",
+                    )}
+                    aria-label={banner.isActive ? "Hide banner" : "Activate banner"}
+                  >
+                    {banner.isActive ? <XCircle size={18} /> : <CheckCircle2 size={18} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startEditShopBanner(banner)}
+                    className="rounded-lg p-2 text-fg-muted hover:bg-blue-50 hover:text-blue-600"
+                    aria-label="Edit banner"
+                  >
+                    <Pencil size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteShopBanner(banner._id)}
+                    className="rounded-lg p-2 text-fg-muted hover:bg-red-50 hover:text-red-600"
+                    aria-label="Delete banner"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

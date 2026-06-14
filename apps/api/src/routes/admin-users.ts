@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { UserModel } from "../models/User.js";
-import { adminOnlyRequired, authRequired } from "../lib/auth.js";
+import { adminOnlyRequired } from "../lib/auth.js";
 
 const router = Router();
 

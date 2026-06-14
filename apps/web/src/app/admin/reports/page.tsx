@@ -5,6 +5,8 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDate } from "@/lib/format";
+import { Button, Card, Select } from "@/components/ui";
+import { cn } from "@/lib/cn";
 
 type PeriodView = "monthly" | "yearly";
 interface Period {
@@ -28,9 +30,22 @@ const MONTHS = [
   "December",
 ];
 
+function dhakaTodayParts(): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(new Date())
+    .split("-")
+    .map(Number);
+  return { year: parts[0], month: parts[1] - 1, day: parts[2] };
+}
+
 function defaultPeriod(): Period {
-  const now = new Date();
-  return { view: "monthly", month: now.getMonth(), year: now.getFullYear() };
+  const today = dhakaTodayParts();
+  return { view: "monthly", month: today.month, year: today.year };
 }
 
 function periodRange(p: Period): { from: string; to: string; label: string } {
@@ -42,7 +57,7 @@ function periodRange(p: Period): { from: string; to: string; label: string } {
     };
   }
   const mm = String(p.month + 1).padStart(2, "0");
-  const last = new Date(p.year, p.month + 1, 0).getDate();
+  const last = new Date(Date.UTC(p.year, p.month + 1, 0)).getUTCDate();
   const dd = String(last).padStart(2, "0");
   return {
     from: `${p.year}-${mm}-01`,
@@ -165,22 +180,22 @@ function MoneyRow({ label, value, sign = 1, auto, hint, onChange }: MoneyRowProp
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 py-3 hairline-b last:border-b-0">
+    <div className="flex items-center justify-between gap-4 border-b border-line py-3 last:border-b-0">
       <div className="min-w-0">
-        <div className="text-sm text-[var(--fg)]">{label}</div>
+        <div className="text-sm text-foreground">{label}</div>
         {hint && (
-          <div className="text-[11px] text-[var(--fg-muted)] mt-0.5">{hint}</div>
+          <div className="mt-0.5 text-[11px] text-fg-muted">{hint}</div>
         )}
       </div>
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex shrink-0 items-center gap-2">
         {auto ? (
-          <span className="text-[10px] uppercase tracking-widest text-[var(--fg-muted)]">
+          <span className="text-[10px] uppercase tracking-widest text-fg-muted">
             auto
           </span>
         ) : null}
         {onChange ? (
-          <div className="flex items-center gap-1 rounded-lg border border-[var(--line)] bg-white px-2.5 h-9 focus-within:border-[var(--fg)] transition-colors">
-            <span className="text-[var(--fg-muted)] text-sm">৳</span>
+          <div className="flex h-9 items-center gap-1 rounded-lg border border-line bg-white px-2.5 transition-colors focus-within:border-foreground">
+            <span className="text-sm text-fg-muted">৳</span>
             <input
               type="text"
               inputMode="decimal"
@@ -190,14 +205,15 @@ function MoneyRow({ label, value, sign = 1, auto, hint, onChange }: MoneyRowProp
               onKeyDown={(e) => {
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();
               }}
-              className="w-24 bg-transparent outline-none text-sm font-medium text-right tabular-nums"
+              className="w-24 bg-transparent text-right text-sm font-medium tabular-nums outline-none"
             />
           </div>
         ) : (
           <span
-            className={`text-sm font-semibold tabular-nums ${
-              sign < 0 ? "text-rose-600" : ""
-            }`}
+            className={cn(
+              "text-sm font-semibold tabular-nums",
+              sign < 0 && "text-rose-600",
+            )}
           >
             {sign < 0 ? "−" : ""}
             {formatBDT(value)}
@@ -240,8 +256,8 @@ function CustomMoneyRow({
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 py-3 hairline-b last:border-b-0">
-      <div className="flex-1 min-w-0">
+    <div className="flex items-center justify-between gap-3 border-b border-line py-3 last:border-b-0">
+      <div className="min-w-0 flex-1">
         <input
           type="text"
           value={label}
@@ -251,13 +267,13 @@ function CustomMoneyRow({
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           }}
-          className="w-full bg-transparent outline-none text-sm font-medium text-[var(--fg)] placeholder:text-[var(--fg-muted)] border-b border-transparent focus:border-[var(--fg)] transition-colors"
+          className="w-full border-b border-transparent bg-transparent text-sm font-medium text-foreground outline-none transition-colors placeholder:text-fg-muted focus:border-foreground"
           maxLength={120}
         />
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <div className="flex items-center gap-1 rounded-lg border border-[var(--line)] bg-white px-2.5 h-9 focus-within:border-[var(--fg)] transition-colors">
-          <span className="text-[var(--fg-muted)] text-sm">৳</span>
+      <div className="flex shrink-0 items-center gap-2">
+        <div className="flex h-9 items-center gap-1 rounded-lg border border-line bg-white px-2.5 transition-colors focus-within:border-foreground">
+          <span className="text-sm text-fg-muted">৳</span>
           <input
             type="text"
             inputMode="decimal"
@@ -267,14 +283,14 @@ function CustomMoneyRow({
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
-            className="w-24 bg-transparent outline-none text-sm font-medium text-right tabular-nums"
+            className="w-24 bg-transparent text-right text-sm font-medium tabular-nums outline-none"
           />
         </div>
         <button
           type="button"
           onClick={onRemove}
           aria-label="Remove expense"
-          className="no-print h-9 w-9 inline-flex items-center justify-center rounded-lg border border-transparent text-[var(--fg-muted)] hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors"
+          className="no-print inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-fg-muted transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
         >
           ×
         </button>
@@ -303,7 +319,7 @@ export default function AccountingPage() {
 
   // Years offered in the picker — current year + 4 prior.
   const yearOptions = useMemo(() => {
-    const current = new Date().getFullYear();
+    const current = dhakaTodayParts().year;
     return Array.from({ length: 5 }, (_, i) => current - i);
   }, []);
 
@@ -487,35 +503,27 @@ export default function AccountingPage() {
       <header className="mb-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <span className="eyebrow">Admin</span>
-            <h1 className="text-3xl font-semibold tracking-tight mt-2">Accounting</h1>
-            <p className="text-sm text-[var(--fg-soft)] mt-1">
+            <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+              Admin
+            </span>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">Accounting</h1>
+            <p className="mt-1 text-sm text-fg-soft">
               {periodLabel} · live revenue + cost from orders, manual entries persist per period.
             </p>
           </div>
           <div className="no-print flex items-center gap-2">
-            <button
-              type="button"
-              onClick={saveNow}
-              disabled={saving}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--fg)] text-white text-sm font-medium px-4 h-9 disabled:opacity-60"
-            >
+            <Button onClick={saveNow} disabled={saving} size="sm">
               {saving ? "Saving…" : "Save"}
-            </button>
-            <button
-              type="button"
-              onClick={downloadPdf}
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-white text-[var(--fg)] text-sm font-medium px-4 h-9 hover:bg-[var(--bg-soft)]"
-            >
+            </Button>
+            <Button variant="secondary" onClick={downloadPdf} size="sm">
               Download PDF
-            </button>
+            </Button>
           </div>
         </div>
 
-        <div className="mt-5 no-print flex flex-wrap items-center gap-3">
-          {/* View by toggle */}
+        <div className="no-print mt-5 flex flex-wrap items-center gap-3">
           <div
-            className="inline-flex p-1 rounded-full border border-[var(--line)] bg-[var(--bg-soft)]"
+            className="inline-flex rounded-full border border-line bg-bg-soft p-1"
             role="tablist"
             aria-label="View by"
           >
@@ -528,9 +536,12 @@ export default function AccountingPage() {
                   role="tab"
                   aria-selected={active}
                   onClick={() => setPeriod((p) => ({ ...p, view: v }))}
-                  className={`px-3 h-7 rounded-full text-xs font-medium transition-colors ${
-                    active ? "bg-[var(--fg)] text-white" : "text-[var(--fg-soft)] hover:text-[var(--fg)]"
-                  }`}
+                  className={cn(
+                    "h-7 rounded-full px-3 text-xs font-medium transition-colors",
+                    active
+                      ? "bg-foreground text-white"
+                      : "text-fg-soft hover:text-foreground",
+                  )}
                 >
                   {v === "monthly" ? "Monthly" : "Yearly"}
                 </button>
@@ -538,12 +549,11 @@ export default function AccountingPage() {
             })}
           </div>
 
-          {/* Month dropdown — only when monthly */}
           {period.view === "monthly" && (
-            <label className="inline-flex items-center gap-2 text-xs text-[var(--fg-soft)]">
+            <label className="inline-flex items-center gap-2 text-xs text-fg-soft">
               Month
-              <select
-                className="select h-9 py-0 text-sm"
+              <Select
+                className="h-9 py-0 text-sm"
                 value={period.month}
                 onChange={(e) =>
                   setPeriod((p) => ({ ...p, month: Number(e.target.value) }))
@@ -554,14 +564,14 @@ export default function AccountingPage() {
                     {name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           )}
 
-          <label className="inline-flex items-center gap-2 text-xs text-[var(--fg-soft)]">
+          <label className="inline-flex items-center gap-2 text-xs text-fg-soft">
             Year
-            <select
-              className="select h-9 py-0 text-sm"
+            <Select
+              className="h-9 py-0 text-sm"
               value={period.year}
               onChange={(e) =>
                 setPeriod((p) => ({ ...p, year: Number(e.target.value) }))
@@ -572,16 +582,16 @@ export default function AccountingPage() {
                   {y}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
 
           {savedAt && (
-            <span className="text-[11px] text-[var(--fg-muted)]">
+            <span className="text-[11px] text-fg-muted">
               Saved · {new Date(savedAt).toLocaleString()}
             </span>
           )}
           {saveFlash && (
-            <span className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
               {saveFlash}
             </span>
           )}
@@ -589,7 +599,7 @@ export default function AccountingPage() {
       </header>
 
       {/* Top row — 4 metric cards */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Revenue" value={formatBDT(revenue)} hint="Money in total" />
         <MetricCard
           label="Expenses"
@@ -608,8 +618,7 @@ export default function AccountingPage() {
         />
       </div>
 
-      {/* Money In / Money Out */}
-      <div className="grid lg:grid-cols-2 gap-4 mb-6">
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
         <Section title="Money In" subtitle="Gross sales and other inflows">
           <MoneyRow
             key={`mi-gs-${from}-${to}-${grossRevenue}`}
@@ -681,7 +690,7 @@ export default function AccountingPage() {
           <button
             type="button"
             onClick={addCustomExpense}
-            className="no-print mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--fg-soft)] hover:text-[var(--fg)] border border-dashed border-[var(--line)] hover:border-[var(--fg)] rounded-lg px-3 h-8 transition-colors"
+            className="no-print mt-2 inline-flex h-8 items-center gap-1.5 rounded-lg border border-dashed border-line px-3 text-xs font-medium text-fg-soft transition-colors hover:border-foreground hover:text-foreground"
           >
             <span aria-hidden="true">+</span> Add expense
           </button>
@@ -689,13 +698,12 @@ export default function AccountingPage() {
         </Section>
       </div>
 
-      {/* Profit summary bar */}
-      <section className="card-soft p-5 mb-6">
-        <div className="flex items-center justify-between gap-3 mb-3">
+      <Card tone="soft" padding="md" className="mb-6">
+        <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">Profit summary</h3>
-          <span className="text-xs text-[var(--fg-muted)]">Revenue − Expenses = Net profit</span>
+          <span className="text-xs text-fg-muted">Revenue − Expenses = Net profit</span>
         </div>
-        <div className="grid sm:grid-cols-3 gap-4 mb-4">
+        <div className="mb-4 grid gap-4 sm:grid-cols-3">
           <SummaryStat label="Revenue" value={formatBDT(revenue)} dotColor="#0f172a" />
           <SummaryStat label="Expenses" value={formatBDT(expenses)} dotColor="#dc2626" />
           <SummaryStat
@@ -727,13 +735,12 @@ export default function AccountingPage() {
             negativeValue={netProfit}
           />
         </div>
-      </section>
+      </Card>
 
-      {/* Expense breakdown + transactions */}
-      <div className="grid lg:grid-cols-2 gap-4 mb-6">
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
         <Section title="Expense breakdown" subtitle="Share of total money out">
           {moneyOutTotal === 0 ? (
-            <div className="text-xs text-[var(--fg-muted)] py-6">
+            <div className="py-6 text-xs text-fg-muted">
               No expenses recorded for this range yet.
             </div>
           ) : (
@@ -742,7 +749,7 @@ export default function AccountingPage() {
                 const share = pct(row.value, moneyOutTotal);
                 return (
                   <div key={row.key}>
-                    <div className="flex items-center justify-between text-sm mb-1.5">
+                    <div className="mb-1.5 flex items-center justify-between text-sm">
                       <span className="flex items-center gap-2">
                         <span
                           className="inline-block h-2 w-2 rounded-full"
@@ -750,14 +757,14 @@ export default function AccountingPage() {
                         />
                         {row.label}
                       </span>
-                      <span className="tabular-nums text-[var(--fg-soft)]">
+                      <span className="tabular-nums text-fg-soft">
                         {formatBDT(row.value)}{" "}
-                        <span className="text-[var(--fg-muted)] text-xs">
+                        <span className="text-xs text-fg-muted">
                           ({(share * 100).toFixed(1)}%)
                         </span>
                       </span>
                     </div>
-                    <div className="h-2 rounded-full bg-[var(--bg-soft)] overflow-hidden">
+                    <div className="h-2 overflow-hidden rounded-full bg-bg-soft">
                       <div
                         className="h-full transition-all"
                         style={{
@@ -778,33 +785,33 @@ export default function AccountingPage() {
           subtitle={`${reports?.transactions?.length ?? 0} most recent in range`}
         >
           {loading ? (
-            <div className="text-xs text-[var(--fg-muted)] py-6">Loading…</div>
+            <div className="py-6 text-xs text-fg-muted">Loading…</div>
           ) : !reports?.transactions?.length ? (
-            <div className="text-xs text-[var(--fg-muted)] py-6">
+            <div className="py-6 text-xs text-fg-muted">
               No transactions in this period.
             </div>
           ) : (
-            <ul className="divide-y divide-[var(--line)]">
+            <ul className="divide-y divide-[color:var(--line)]">
               {reports.transactions.map((t) => (
                 <li key={t._id}>
                   <Link
                     href={`/admin/orders`}
-                    className="flex items-center justify-between gap-3 py-3 hover:bg-[var(--bg-soft)] -mx-3 px-3 rounded-lg transition-colors"
+                    className="-mx-3 flex items-center justify-between gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-bg-soft"
                   >
                     <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">
+                      <div className="truncate text-sm font-medium">
                         {t.orderNumber}
                         {t.customer?.name ? (
-                          <span className="text-[var(--fg-soft)] font-normal">
+                          <span className="font-normal text-fg-soft">
                             {" "}· {t.customer.name}
                           </span>
                         ) : null}
                       </div>
-                      <div className="text-[11px] text-[var(--fg-muted)] mt-0.5 capitalize">
+                      <div className="mt-0.5 text-[11px] capitalize text-fg-muted">
                         {formatDate(t.createdAt)} · {t.status} · {t.paymentMethod}
                       </div>
                     </div>
-                    <div className="text-sm font-semibold tabular-nums shrink-0">
+                    <div className="shrink-0 text-sm font-semibold tabular-nums">
                       {formatBDT(t.total)}
                     </div>
                   </Link>
@@ -815,8 +822,7 @@ export default function AccountingPage() {
         </Section>
       </div>
 
-      {/* Bottom KPI pills */}
-      <div className="grid sm:grid-cols-3 gap-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         <KpiPill
           label="Gross margin"
           value={grossRevenue > 0 ? `${(grossMarginRate * 100).toFixed(1)}%` : "—"}
@@ -851,24 +857,20 @@ function MetricCard({
   hint?: string;
   tone?: "positive" | "negative";
 }) {
-  const toneClass =
-    tone === "positive"
-      ? "text-emerald-600"
-      : tone === "negative"
-      ? "text-rose-600"
-      : "";
   return (
-    <div className="card-soft p-5">
-      <div className="text-xs uppercase tracking-wider text-[var(--fg-muted)]">
-        {label}
-      </div>
-      <div className={`text-3xl font-semibold tracking-tight mt-2 tabular-nums ${toneClass}`}>
+    <Card tone="soft" padding="md">
+      <div className="text-xs uppercase tracking-wider text-fg-muted">{label}</div>
+      <div
+        className={cn(
+          "mt-2 text-3xl font-semibold tracking-tight tabular-nums",
+          tone === "positive" && "text-emerald-600",
+          tone === "negative" && "text-rose-600",
+        )}
+      >
         {value}
       </div>
-      {hint && (
-        <div className="text-xs text-[var(--fg-muted)] mt-2">{hint}</div>
-      )}
-    </div>
+      {hint && <div className="mt-2 text-xs text-fg-muted">{hint}</div>}
+    </Card>
   );
 }
 
@@ -882,15 +884,15 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="card-soft p-5">
+    <Card tone="soft" padding="md">
       <header className="mb-2">
         <h2 className="text-sm font-semibold">{title}</h2>
         {subtitle && (
-          <p className="text-[11px] text-[var(--fg-muted)] mt-0.5">{subtitle}</p>
+          <p className="mt-0.5 text-[11px] text-fg-muted">{subtitle}</p>
         )}
       </header>
       {children}
-    </section>
+    </Card>
   );
 }
 
@@ -904,12 +906,13 @@ function TotalRow({
   positive?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between mt-3 pt-3 border-t border-[var(--line-strong)]">
+    <div className="mt-3 flex items-center justify-between border-t border-line-strong pt-3">
       <span className="text-sm font-semibold">{label}</span>
       <span
-        className={`text-base font-semibold tabular-nums ${
-          positive ? "text-emerald-600" : "text-[var(--fg)]"
-        }`}
+        className={cn(
+          "text-base font-semibold tabular-nums",
+          positive ? "text-emerald-600" : "text-foreground",
+        )}
       >
         {formatBDT(value)}
       </span>
@@ -930,11 +933,10 @@ function SummaryStat({
 }) {
   return (
     <div
-      className={`rounded-xl p-4 ${
-        highlight
-          ? "bg-black text-white"
-          : "bg-white border border-[var(--line)]"
-      }`}
+      className={cn(
+        "rounded-xl p-4",
+        highlight ? "bg-black text-white" : "border border-line bg-white",
+      )}
     >
       <div className="flex items-center gap-2">
         <span
@@ -942,14 +944,15 @@ function SummaryStat({
           style={{ background: dotColor }}
         />
         <span
-          className={`text-xs uppercase tracking-wider ${
-            highlight ? "text-white/70" : "text-[var(--fg-muted)]"
-          }`}
+          className={cn(
+            "text-xs uppercase tracking-wider",
+            highlight ? "text-white/70" : "text-fg-muted",
+          )}
         >
           {label}
         </span>
       </div>
-      <div className="text-2xl font-semibold tracking-tight mt-2 tabular-nums">
+      <div className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
         {value}
       </div>
     </div>
@@ -974,15 +977,15 @@ function BarRow({
   const width = max > 0 ? (value / max) * 100 : 0;
   return (
     <div>
-      <div className="flex items-center justify-between text-xs text-[var(--fg-soft)] mb-1">
+      <div className="mb-1 flex items-center justify-between text-xs text-fg-soft">
         <span>{label}</span>
-        <span className="tabular-nums font-medium text-[var(--fg)]">
+        <span className="font-medium tabular-nums text-foreground">
           {negative && negativeValue !== undefined
             ? formatBDT(negativeValue)
             : formatBDT(value)}
         </span>
       </div>
-      <div className="h-2.5 rounded-full bg-[var(--bg-soft)] overflow-hidden">
+      <div className="h-2.5 overflow-hidden rounded-full bg-bg-soft">
         <div
           className="h-full rounded-full transition-all"
           style={{ width: `${width}%`, background: color }}
@@ -1004,21 +1007,22 @@ function KpiPill({
   hint?: string;
 }) {
   return (
-    <div className="card-soft p-5 flex items-center justify-between gap-4">
+    <Card tone="soft" padding="md" className="flex items-center justify-between gap-4">
       <div>
-        <div className="text-xs uppercase tracking-wider text-[var(--fg-muted)]">
+        <div className="text-xs uppercase tracking-wider text-fg-muted">
           {label}
         </div>
-        <div className="text-2xl font-semibold tracking-tight mt-2 tabular-nums">
+        <div className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
           {value}
         </div>
-        {hint && (
-          <div className="text-[11px] text-[var(--fg-muted)] mt-1">{hint}</div>
-        )}
+        {hint && <div className="mt-1 text-[11px] text-fg-muted">{hint}</div>}
       </div>
       {status && (
         <span
-          className={`inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider px-2.5 py-1 rounded-full border ${TONE_CLASSES[status.tone]}`}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider",
+            TONE_CLASSES[status.tone],
+          )}
         >
           <span
             className="inline-block h-1.5 w-1.5 rounded-full"
@@ -1034,6 +1038,6 @@ function KpiPill({
           {status.label}
         </span>
       )}
-    </div>
+    </Card>
   );
 }

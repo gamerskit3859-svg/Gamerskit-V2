@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 10,
+      "memory": 1024
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(api|health)(.*)",
+      "destination": "/api/index.js"
+    }
+  ]
+}

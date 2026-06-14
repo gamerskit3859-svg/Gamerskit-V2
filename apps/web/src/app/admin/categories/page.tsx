@@ -1,9 +1,21 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { CldUploadWidget } from "next-cloudinary";
+import {
+  CldUploadWidget,
+  type CloudinaryUploadWidgetResults,
+} from "next-cloudinary";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
+import {
+  Button,
+  Card,
+  FieldLabel,
+  Input,
+  Select,
+  Textarea,
+} from "@/components/ui";
+import { cn } from "@/lib/cn";
 
 interface Category {
   _id: string;
@@ -22,6 +34,40 @@ interface Category {
   updatedAt: string;
 }
 
+const blankForm = {
+  slug: "",
+  name: "",
+  description: "",
+  image: "",
+  icon: "",
+  parentId: "",
+  order: 0,
+  active: true,
+  featured: false,
+};
+
+function flattenCategories(
+  items: Category[],
+  depth = 0,
+): Array<Category & { depth: number }> {
+  return items.flatMap((item) => [
+    { ...item, depth },
+    ...flattenCategories(item.subcategories || [], depth + 1),
+  ]);
+}
+
+function collectDescendantIds(category: Category | undefined): Set<string> {
+  const ids = new Set<string>();
+  const stack = [...(category?.subcategories || [])];
+  while (stack.length > 0) {
+    const item = stack.pop();
+    if (!item || ids.has(item._id)) continue;
+    ids.add(item._id);
+    stack.push(...(item.subcategories || []));
+  }
+  return ids;
+}
+
 export default function AdminCategories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,29 +75,16 @@ export default function AdminCategories() {
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-
-  const [formData, setFormData] = useState({
-    slug: "",
-    name: "",
-    description: "",
-    image: "",
-    icon: "",
-    parentId: "",
-    order: 0,
-    active: true,
-    featured: false,
-  });
+  const [formData, setFormData] = useState(blankForm);
 
   const token = getAdminToken();
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
-
-  async function loadCategories() {
+  const loadCategories = useCallback(async () => {
     try {
       setLoading(true);
-      const result = await api.listCategories();
+      const result = token
+        ? await api.listCategoriesAdmin(token)
+        : await api.listCategoriesFresh();
       setCategories(result.items);
       setError(null);
     } catch (err) {
@@ -59,20 +92,14 @@ export default function AdminCategories() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [token]);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadCategories);
+  }, [loadCategories]);
 
   function resetForm() {
-    setFormData({
-      slug: "",
-      name: "",
-      description: "",
-      image: "",
-      icon: "",
-      parentId: "",
-      order: 0,
-      active: true,
-      featured: false,
-    });
+    setFormData(blankForm);
     setEditingId(null);
     setShowForm(false);
   }
@@ -96,6 +123,10 @@ export default function AdminCategories() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
+    if (editingId && formData.parentId === editingId) {
+      setError("A category cannot be its own parent.");
+      return;
+    }
 
     setIsCreating(true);
     try {
@@ -114,7 +145,8 @@ export default function AdminCategories() {
   }
 
   async function deleteCategory(id: string) {
-    if (!token || !confirm("Are you sure you want to delete this category?")) return;
+    if (!token || !confirm("Are you sure you want to delete this category?"))
+      return;
 
     try {
       await api.deleteCategory(id, token);
@@ -129,163 +161,181 @@ export default function AdminCategories() {
       {cats.map((cat) => (
         <div key={cat._id}>
           <div
-            className={`grid grid-cols-[1fr_2fr_1fr_1fr_80px_80px_80px] gap-4 items-center p-3 border-b ${
-              level > 0 ? "bg-gray-50 pl-12" : ""
-            }`}
+            className={cn(
+              "grid min-w-[820px] grid-cols-[1fr_2fr_1fr_1fr_80px_80px_80px] items-center gap-4 border-b border-line p-3",
+              level > 0 && "bg-bg-soft pl-12",
+            )}
           >
-            <span className="text-sm font-mono text-gray-500">{cat.slug}</span>
+            <span className="font-mono text-sm text-fg-muted">{cat.slug}</span>
             <div>
-              <div className="font-medium flex items-center gap-2">
+              <div className="flex items-center gap-2 font-medium">
                 {cat.name}
                 {cat.featured && (
-                  <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">
+                  <span className="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">
                     Featured
                   </span>
                 )}
               </div>
               {cat.description && (
-                <div className="text-sm text-gray-600">{cat.description}</div>
+                <div className="text-sm text-fg-soft">{cat.description}</div>
               )}
             </div>
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-fg-soft">
               {cat.active ? "✓ Active" : "Inactive"}
             </span>
-            <span className="text-sm text-gray-600">{cat.productCount} products</span>
+            <span className="text-sm text-fg-soft">
+              {cat.productCount} products
+            </span>
             <button
+              type="button"
               onClick={() => editCategory(cat)}
-              className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition"
+              className="rounded bg-blue-100 px-2 py-1 text-xs text-blue-700 transition hover:bg-blue-200"
             >
               Edit
             </button>
             <button
+              type="button"
               onClick={() => deleteCategory(cat._id)}
-              className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition"
-              disabled={cat.productCount > 0 || (cat.subcategories?.length ?? 0) > 0}
+              className="rounded bg-red-100 px-2 py-1 text-xs text-red-700 transition hover:bg-red-200 disabled:opacity-50"
+              disabled={
+                cat.productCount > 0 ||
+                (cat.subcategories?.length ?? 0) > 0
+              }
             >
               Delete
             </button>
           </div>
-          {cat.subcategories && cat.subcategories.length > 0 && (
-            renderCategories(cat.subcategories, level + 1)
-          )}
+          {cat.subcategories &&
+            cat.subcategories.length > 0 &&
+            renderCategories(cat.subcategories, level + 1)}
         </div>
       ))}
     </>
   );
 
+  const flatCategories = flattenCategories(categories);
+  const editingCategory = flatCategories.find((cat) => cat._id === editingId);
+  const blockedParentIds = collectDescendantIds(editingCategory);
+  if (editingId) blockedParentIds.add(editingId);
+  const parentOptions = flatCategories.filter(
+    (cat) => !blockedParentIds.has(cat._id),
+  );
+
   return (
     <div className="min-h-screen">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Categories</h1>
-          <p className="text-gray-600">Manage product categories and subcategories</p>
-        </div>
+      <header className="mb-8">
+        <h1 className="mb-2 text-3xl font-bold">Categories</h1>
+        <p className="text-fg-soft">
+          Manage product categories and subcategories
+        </p>
+      </header>
 
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-4 p-4 bg-red-100 text-red-700 rounded-lg"
-          >
-            {error}
-          </motion.div>
-        )}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 rounded-lg bg-red-100 p-4 text-red-700"
+        >
+          {error}
+        </motion.div>
+      )}
 
-        <div className="mb-6">
-          <button
-            onClick={() => {
-              resetForm();
-              setShowForm(!showForm);
-            }}
-            className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition"
-          >
-            {showForm ? "Cancel" : "+ New Category"}
-          </button>
-        </div>
+      <div className="mb-6">
+        <Button
+          onClick={() => {
+            resetForm();
+            setShowForm(!showForm);
+          }}
+        >
+          {showForm ? "Cancel" : "+ New Category"}
+        </Button>
+      </div>
 
-        {showForm && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-8 p-6 bg-white rounded-lg border"
-          >
-            <h2 className="text-xl font-bold mb-4">
+      {showForm && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8"
+        >
+          <Card padding="lg">
+            <h2 className="mb-4 text-xl font-bold">
               {editingId ? "Edit Category" : "Create New Category"}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Slug *</label>
-                  <input
-                    type="text"
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FieldLabel label="Slug" required>
+                  <Input
                     value={formData.slug}
                     onChange={(e) =>
                       setFormData({ ...formData, slug: e.target.value })
                     }
-                    className="w-full px-3 py-2 border rounded-lg"
                     placeholder="e.g., rc-cars"
                     required
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Name *</label>
-                  <input
-                    type="text"
+                </FieldLabel>
+                <FieldLabel label="Name" required>
+                  <Input
                     value={formData.name}
                     onChange={(e) =>
                       setFormData({ ...formData, name: e.target.value })
                     }
-                    className="w-full px-3 py-2 border rounded-lg"
                     placeholder="e.g., RC Cars"
                     required
                   />
-                </div>
+                </FieldLabel>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
-                <textarea
+              <FieldLabel label="Description">
+                <Textarea
                   value={formData.description}
                   onChange={(e) =>
                     setFormData({ ...formData, description: e.target.value })
                   }
-                  className="w-full px-3 py-2 border rounded-lg"
                   placeholder="Category description"
                   rows={3}
                 />
-              </div>
+              </FieldLabel>
 
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium mb-4 p-3 border-2 border-yellow-200 bg-yellow-50 rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.featured}
-                    onChange={(e) =>
-                      setFormData({ ...formData, featured: e.target.checked })
-                    }
-                    className="w-4 h-4"
-                  />
-                  <span>🌟 Mark as Featured Category</span>
-                </label>
-              </div>
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border-2 border-yellow-200 bg-yellow-50 p-3 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={formData.featured}
+                  onChange={(e) =>
+                    setFormData({ ...formData, featured: e.target.checked })
+                  }
+                  className="h-4 w-4"
+                />
+                <span>🌟 Mark as Featured Category</span>
+              </label>
 
               {formData.featured && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="p-4 bg-blue-50 rounded-lg border border-blue-200"
+                  className="rounded-lg border border-blue-200 bg-blue-50 p-4"
                 >
-                  <h3 className="font-semibold text-sm mb-3 text-blue-900">
+                  <h3 className="mb-3 text-sm font-semibold text-blue-900">
                     Upload Featured Image (via Cloudinary)
                   </h3>
-                  <div className="bg-white rounded-lg p-4 border-2 border-dashed border-blue-300">
+                  <div className="rounded-lg border-2 border-dashed border-blue-300 bg-white p-4">
                     <CldUploadWidget
-                      uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET}
-                      onSuccess={(result: any) => {
+                      uploadPreset={
+                        process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
+                      }
+                      onSuccess={(result: CloudinaryUploadWidgetResults) => {
                         if (result.event === "success") {
-                          setFormData({
-                            ...formData,
-                            image: result.info.secure_url,
-                          });
+                          const info = result.info;
+                          if (
+                            info &&
+                            typeof info === "object" &&
+                            "secure_url" in info &&
+                            typeof info.secure_url === "string"
+                          ) {
+                            setFormData({
+                              ...formData,
+                              image: info.secure_url,
+                            });
+                          }
                         }
                       }}
                     >
@@ -293,7 +343,7 @@ export default function AdminCategories() {
                         <button
                           type="button"
                           onClick={() => open()}
-                          className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium text-sm"
+                          className="w-full rounded-lg bg-blue-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-600"
                         >
                           📸 Click to Upload Image
                         </button>
@@ -302,13 +352,14 @@ export default function AdminCategories() {
                   </div>
                   {formData.image && (
                     <div className="mt-4">
-                      <p className="text-xs text-gray-600 mb-2">Preview:</p>
+                      <p className="mb-2 text-xs text-fg-soft">Preview:</p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={formData.image}
                         alt="Featured category preview"
                         className="max-h-40 rounded-lg object-cover"
                       />
-                      <p className="text-xs text-gray-500 mt-2 break-all">
+                      <p className="mt-2 break-all text-xs text-fg-muted">
                         {formData.image}
                       </p>
                     </div>
@@ -316,71 +367,65 @@ export default function AdminCategories() {
                 </motion.div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Icon</label>
-                  <input
-                    type="text"
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FieldLabel label="Icon">
+                  <Input
                     value={formData.icon}
                     onChange={(e) =>
                       setFormData({ ...formData, icon: e.target.value })
                     }
-                    className="w-full px-3 py-2 border rounded-lg"
                     placeholder="Icon name or URL"
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Manual Image URL</label>
-                  <input
-                    type="text"
+                </FieldLabel>
+                <FieldLabel label="Manual Image URL">
+                  <Input
                     value={formData.image}
                     onChange={(e) =>
                       setFormData({ ...formData, image: e.target.value })
                     }
-                    className="w-full px-3 py-2 border rounded-lg"
                     placeholder="https://..."
                     disabled={formData.featured}
                   />
                   {formData.featured && (
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="mt-1 text-xs text-fg-muted">
                       Use Cloudinary upload above or enter URL manually
                     </p>
                   )}
-                </div>
+                </FieldLabel>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Parent Category</label>
-                  <select
+              <div className="grid gap-4 sm:grid-cols-3">
+                <FieldLabel label="Parent Category">
+                  <Select
                     value={formData.parentId}
                     onChange={(e) =>
                       setFormData({ ...formData, parentId: e.target.value })
                     }
-                    className="w-full px-3 py-2 border rounded-lg"
                   >
                     <option value="">None (Root category)</option>
-                    {categories.map((cat) => (
+                    {parentOptions.map((cat) => (
                       <option key={cat._id} value={cat._id}>
+                        {"  ".repeat(cat.depth)}
+                        {cat.depth > 0 ? "- " : ""}
                         {cat.name}
                       </option>
                     ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Order</label>
-                  <input
+                  </Select>
+                </FieldLabel>
+                <FieldLabel label="Order">
+                  <Input
                     type="number"
                     value={formData.order}
                     onChange={(e) =>
-                      setFormData({ ...formData, order: Number(e.target.value) })
+                      setFormData({
+                        ...formData,
+                        order: Number(e.target.value),
+                      })
                     }
-                    className="w-full px-3 py-2 border rounded-lg"
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Status</label>
-                  <select
+                </FieldLabel>
+                <FieldLabel label="Status">
+                  <Select
                     value={formData.active ? "active" : "inactive"}
                     onChange={(e) =>
                       setFormData({
@@ -388,53 +433,51 @@ export default function AdminCategories() {
                         active: e.target.value === "active",
                       })
                     }
-                    className="w-full px-3 py-2 border rounded-lg"
                   >
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
-                  </select>
-                </div>
+                  </Select>
+                </FieldLabel>
               </div>
 
               <div className="flex gap-2">
-                <button
-                  type="submit"
-                  disabled={isCreating}
-                  className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition disabled:opacity-50"
-                >
+                <Button type="submit" disabled={isCreating}>
                   {isCreating ? "Saving..." : "Save Category"}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={resetForm}
-                  className="px-4 py-2 border rounded-lg hover:bg-gray-50 transition"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </form>
-          </motion.div>
-        )}
+          </Card>
+        </motion.div>
+      )}
 
-        {loading ? (
-          <div className="text-center py-12 text-gray-600">Loading categories...</div>
-        ) : categories.length === 0 ? (
-          <div className="text-center py-12 text-gray-600">
-            No categories yet. Create one to get started.
+      {loading ? (
+        <div className="py-12 text-center text-fg-soft">
+          Loading categories...
+        </div>
+      ) : categories.length === 0 ? (
+        <div className="py-12 text-center text-fg-soft">
+          No categories yet. Create one to get started.
+        </div>
+      ) : (
+        <Card padding="none" className="overflow-x-auto">
+          <div className="grid min-w-[820px] grid-cols-[1fr_2fr_1fr_1fr_80px_80px_80px] items-center gap-4 bg-bg-soft p-3 text-sm font-semibold">
+            <div>Slug</div>
+            <div>Name</div>
+            <div>Status</div>
+            <div>Products</div>
+            <div></div>
+            <div></div>
           </div>
-        ) : (
-          <div className="bg-white rounded-lg border overflow-hidden overflow-x-auto">
-            <div className="grid grid-cols-[1fr_2fr_1fr_1fr_80px_80px_80px] gap-4 items-center p-3 bg-gray-100 font-semibold text-sm">
-              <div>Slug</div>
-              <div>Name</div>
-              <div>Status</div>
-              <div>Products</div>
-              <div></div>
-              <div></div>
-            </div>
-            {renderCategories(categories)}
-          </div>
-        )}
-      </div>
+          {renderCategories(categories)}
+        </Card>
+      )}
+    </div>
   );
 }

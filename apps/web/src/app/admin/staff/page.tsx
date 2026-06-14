@@ -4,11 +4,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatDateTime } from "@/lib/format";
-import type { AdminUserSummary, UserRole } from "@gamerskit/shared";
+import { useDebouncedSearch } from "@/lib/hooks";
+import type { AdminUserSummary, UserRole } from "@/types/shared";
+import {
+  Button,
+  Card,
+  FieldLabel,
+  Input,
+  Select,
+} from "@/components/ui";
 
 export default function StaffPage() {
   const [items, setItems] = useState<AdminUserSummary[]>([]);
-  const [q, setQ] = useState("");
+  const {
+    value: q,
+    setValue: setQ,
+    debouncedValue: searchQuery,
+  } = useDebouncedSearch("");
   const [role, setRole] = useState<UserRole | "all">("all");
   const [loading, setLoading] = useState(true);
   const [openCreate, setOpenCreate] = useState(false);
@@ -25,15 +37,24 @@ export default function StaffPage() {
   useEffect(() => {
     let cancelled = false;
     const token = getAdminToken();
-    if (!token) return;
     void (async () => {
       setLoading(true);
+      setError(null);
       try {
+        if (!token) throw new Error("Admin token not found. Please login again.");
         const r = await api.users(
-          { role: role === "all" ? undefined : role, q: q || undefined },
+          {
+            role: role === "all" ? undefined : role,
+            q: searchQuery || undefined,
+          },
           token,
         );
         if (!cancelled) setItems(r.items);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load users.");
+          setItems([]);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -41,13 +62,18 @@ export default function StaffPage() {
     return () => {
       cancelled = true;
     };
-  }, [q, role]);
+  }, [searchQuery, role]);
 
   async function changeRole(id: string, newRole: UserRole) {
     const token = getAdminToken();
     if (!token) return;
-    const r = await api.updateUser(id, { role: newRole }, token);
-    setItems((prev) => prev.map((u) => (u._id === id ? r.item : u)));
+    setError(null);
+    try {
+      const r = await api.updateUser(id, { role: newRole }, token);
+      setItems((prev) => prev.map((u) => (u._id === id ? r.item : u)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to change role.");
+    }
   }
 
   async function remove(u: AdminUserSummary) {
@@ -87,20 +113,20 @@ export default function StaffPage() {
     >
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <span className="eyebrow">Admin</span>
-          <h1 className="text-3xl font-semibold tracking-tight mt-2">Staff</h1>
-          <p className="text-sm text-[var(--fg-soft)] mt-1">
+          <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+            Admin
+          </span>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Staff</h1>
+          <p className="mt-1 text-sm text-fg-soft">
             Manage admin and staff accounts that can sign in to this dashboard.
           </p>
         </div>
-        <button onClick={() => setOpenCreate(true)} className="btn btn-primary">
-          + Invite member
-        </button>
+        <Button onClick={() => setOpenCreate(true)}>+ Invite member</Button>
       </header>
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        <select
-          className="select !w-auto"
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <Select
+          className="!w-full sm:!w-auto"
           value={role}
           onChange={(e) => setRole(e.target.value as UserRole | "all")}
         >
@@ -108,55 +134,74 @@ export default function StaffPage() {
           <option value="admin">Admins</option>
           <option value="staff">Staff</option>
           <option value="customer">Customers</option>
-        </select>
-        <input
-          className="input !w-72 !ml-auto"
+        </Select>
+        <Input
+          className="!w-full sm:!ml-auto sm:!w-72"
           placeholder="Search…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
 
-      <div className="card-soft p-0 overflow-hidden">
+      {error && !openCreate && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <Card tone="soft" padding="none" className="overflow-hidden">
         {loading ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)]">Loading…</div>
+          <div className="p-8 text-sm text-fg-muted">Loading…</div>
         ) : items.length === 0 ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)] text-center">No users.</div>
+          <div className="p-8 text-center text-sm text-fg-muted">
+            No users.
+          </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-white text-xs text-[var(--fg-soft)] text-left">
+            <table className="min-w-[720px] w-full text-sm">
+              <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
-                  <th className="py-3 px-4">Email</th>
-                  <th className="py-3 px-4">Name</th>
-                  <th className="py-3 px-4">Phone</th>
-                  <th className="py-3 px-4">Role</th>
-                  <th className="py-3 px-4">Joined</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3">Phone</th>
+                  <th className="px-4 py-3">Role</th>
+                  <th className="px-4 py-3">Joined</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((u) => (
-                  <tr key={u._id} className="hairline-t bg-white">
-                    <td className="py-3 px-4 font-medium">{u.email}</td>
-                    <td className="py-3 px-4 text-[var(--fg-soft)]">{u.name || "—"}</td>
-                    <td className="py-3 px-4 text-[var(--fg-soft)]">{u.phone || "—"}</td>
-                    <td className="py-3 px-4">
-                      <select
-                        className="select !w-auto !py-1 !text-xs"
+                  <tr
+                    key={u._id}
+                    className="border-t border-line bg-white"
+                  >
+                    <td className="px-4 py-3 font-medium">{u.email}</td>
+                    <td className="px-4 py-3 text-fg-soft">{u.name || "—"}</td>
+                    <td className="px-4 py-3 text-fg-soft">
+                      {u.phone || "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Select
+                        className="!w-auto !py-1 !text-xs"
                         value={u.role}
-                        onChange={(e) => changeRole(u._id, e.target.value as UserRole)}
+                        onChange={(e) =>
+                          changeRole(u._id, e.target.value as UserRole)
+                        }
                       >
                         <option value="customer">Customer</option>
                         <option value="staff">Staff</option>
                         <option value="admin">Admin</option>
-                      </select>
+                      </Select>
                     </td>
-                    <td className="py-3 px-4 text-xs text-[var(--fg-muted)]">
+                    <td className="px-4 py-3 text-xs text-fg-muted">
                       {formatDateTime(u.createdAt)}
                     </td>
-                    <td className="py-3 px-4 text-right">
-                      <button onClick={() => remove(u)} className="text-xs underline text-red-600">
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => remove(u)}
+                        className="text-xs text-red-600 underline"
+                      >
                         Remove
                       </button>
                     </td>
@@ -166,7 +211,7 @@ export default function StaffPage() {
             </table>
           </div>
         )}
-      </div>
+      </Card>
 
       <AnimatePresence>
         {openCreate && (
@@ -174,7 +219,7 @@ export default function StaffPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-3 py-6 backdrop-blur-sm sm:p-4"
             onClick={() => !busy && setOpenCreate(false)}
           >
             <motion.div
@@ -183,77 +228,77 @@ export default function StaffPage() {
               exit={{ y: 20, opacity: 0 }}
               transition={{ type: "spring", damping: 24 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl"
+              className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl sm:p-6"
             >
-              <h2 className="text-xl font-semibold mb-4">Invite member</h2>
+              <h2 className="mb-4 text-xl font-semibold">Invite member</h2>
               <div className="space-y-3">
-                <div>
-                  <label className="eyebrow">Email</label>
-                  <input
+                <FieldLabel label="Email">
+                  <Input
                     type="email"
-                    className="input mt-1"
                     value={draft.email}
-                    onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, email: e.target.value })
+                    }
                   />
-                </div>
-                <div>
-                  <label className="eyebrow">Name</label>
-                  <input
-                    className="input mt-1"
+                </FieldLabel>
+                <FieldLabel label="Name">
+                  <Input
                     value={draft.name}
-                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, name: e.target.value })
+                    }
                   />
-                </div>
-                <div>
-                  <label className="eyebrow">Phone</label>
-                  <input
-                    className="input mt-1"
+                </FieldLabel>
+                <FieldLabel label="Phone">
+                  <Input
                     value={draft.phone}
-                    onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, phone: e.target.value })
+                    }
                   />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="eyebrow">Role</label>
-                    <select
-                      className="select mt-1"
+                </FieldLabel>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FieldLabel label="Role">
+                    <Select
                       value={draft.role}
                       onChange={(e) =>
-                        setDraft({ ...draft, role: e.target.value as "staff" | "admin" })
+                        setDraft({
+                          ...draft,
+                          role: e.target.value as "staff" | "admin",
+                        })
                       }
                     >
                       <option value="staff">Staff</option>
                       <option value="admin">Admin</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="eyebrow">Temp password</label>
-                    <input
-                      className="input mt-1"
+                    </Select>
+                  </FieldLabel>
+                  <FieldLabel label="Temp password">
+                    <Input
                       type="text"
                       value={draft.password}
-                      onChange={(e) => setDraft({ ...draft, password: e.target.value })}
+                      onChange={(e) =>
+                        setDraft({ ...draft, password: e.target.value })
+                      }
                       placeholder="min 6 chars"
                     />
-                  </div>
+                  </FieldLabel>
                 </div>
                 {error && <p className="text-sm text-red-600">{error}</p>}
               </div>
               <div className="mt-6 flex justify-end gap-2">
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => setOpenCreate(false)}
-                  className="btn btn-ghost"
                   disabled={busy}
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={createStaff}
-                  className="btn btn-primary"
                   disabled={busy || !draft.email || draft.password.length < 6}
                 >
                   {busy ? "Inviting…" : "Send invite"}
-                </button>
+                </Button>
               </div>
             </motion.div>
           </motion.div>

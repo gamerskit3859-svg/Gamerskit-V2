@@ -1,0 +1,53 @@
+# GamersKit — VPS production
+#
+# Deploy workflow:
+#   1. Build & push images locally (see commands below)
+#   2. Copy this file + .env.gamerskit to the VPS
+#   3. On VPS: docker compose -f docker-compose.gamerskit.yml up -d
+#
+# Build & push (run once per release, from your local machine):
+#   docker build -t YOUR_HUB/gamerskit-api:1.0.0 ./api
+#   docker build \
+#     --build-arg NEXT_PUBLIC_API_URL=http://YOUR_VPS_IP:4202 \
+#     --build-arg NEXT_PUBLIC_SITE_URL=http://YOUR_VPS_IP:4200 \
+#     -t YOUR_HUB/gamerskit-web:1.0.0 ./web
+#   docker push YOUR_HUB/gamerskit-api:1.0.0
+#   docker push YOUR_HUB/gamerskit-web:1.0.0
+
+services:
+  # ── Express API  →  host:4202 ──────────────────────────────────────────────
+  api:
+    image: nasi07/gamerskit-api:1.0.0
+    container_name: gamerskit-api
+    restart: unless-stopped
+    env_file:
+      - .env.gamerskit
+    ports:
+      - "4202:4000"
+    networks:
+      - gk_network
+
+  # ── Next.js frontend  →  host:4200 ────────────────────────────────────────
+  web:
+    image: nasi07/gamerskit-web:1.0.1
+    container_name: gamerskit-web
+    restart: unless-stopped
+    env_file:
+      - .env.gamerskit
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      # SSR/RSC fetches go directly to the API over the Docker-internal network.
+      # NEXT_PUBLIC_API_URL (browser bundle) is baked in at build time above.
+      INTERNAL_API_URL: http://api:4000
+    ports:
+      - "4200:3000"
+    depends_on:
+      - api
+    networks:
+      - gk_network
+
+networks:
+  gk_network:
+    driver: bridge

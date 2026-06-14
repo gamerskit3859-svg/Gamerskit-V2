@@ -1,12 +1,14 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { getCourierStatusText, getCourierTrackUrl } from "@/lib/courier";
 import { formatBDT, formatDateTime } from "@/lib/format";
-import type { Order } from "@gamerskit/shared";
+import type { Order, OrderStatus } from "@/types/shared";
+import { Button, LinkButton, Card, Section, Input } from "@/components/ui";
+import { cn } from "@/lib/cn";
 
-const STATUSES: Array<{ key: string; label: string }> = [
+const STATUSES: Array<{ key: OrderStatus; label: string }> = [
   { key: "pending", label: "Pending confirmation" },
   { key: "confirmed", label: "Confirmed" },
   { key: "processing", label: "Processing" },
@@ -14,123 +16,151 @@ const STATUSES: Array<{ key: string; label: string }> = [
   { key: "delivered", label: "Delivered" },
 ];
 
+function statusPillColor(status: OrderStatus) {
+  if (status === "delivered") return "bg-emerald-100 text-emerald-700";
+  if (status === "cancelled" || status === "refunded")
+    return "bg-red-100 text-red-700";
+  return "bg-sky-100 text-sky-700";
+}
+
 export default function TrackPage() {
-  const router = useRouter();
   const [phone, setPhone] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emptyMessage, setEmptyMessage] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!phone.trim()) return;
+    const query = phone.trim();
+
+    if (!query) {
+      setError(null);
+      setEmptyMessage("Please enter your order phone number to start tracking.");
+      setSearched(false);
+      setOrders([]);
+      return;
+    }
 
     setLoading(true);
     setError(null);
+    setEmptyMessage(null);
     setSearched(true);
 
     try {
-      const result = await api.getOrdersByPhone(phone.trim());
+      const result = await api.getOrdersByPhone(query);
       setOrders(result.orders);
     } catch (err) {
-      setError((err as Error).message);
+      const status = (err as { status?: number }).status;
+      if (status === 404) {
+        setEmptyMessage(
+          "No order found with this tracking information. Please check your order ID or phone number and try again.",
+        );
+      } else {
+        setError(
+          "We could not search orders right now. Please try again in a moment.",
+        );
+      }
       setOrders([]);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const resetSearch = () => {
+  function resetSearch() {
     setPhone("");
     setOrders([]);
     setError(null);
+    setEmptyMessage(null);
     setSearched(false);
-  };
+  }
 
   return (
-    <section className="px-5 lg:px-8 max-w-4xl mx-auto py-16">
-      <div className="text-center mb-12">
-        <span className="eyebrow">Tracking</span>
-        <h1 className="display-2 mt-2">Find your order.</h1>
-        <p className="mt-3 text-[var(--fg-soft)]">
+    <Section width="narrow" spacing="lg" className="!max-w-4xl">
+      <div className="mb-12 text-center">
+        <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+          Tracking
+        </span>
+        <h1 className="mt-2 text-[clamp(36px,5vw,64px)] leading-[1.06] tracking-[-0.035em] font-semibold">
+          Find your order.
+        </h1>
+        <p className="mt-3 text-fg-soft">
           Enter your phone number to find all your orders.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="max-w-md mx-auto mb-12">
-        <div className="flex gap-2">
-          <input
+      <form onSubmit={handleSubmit} className="mx-auto mb-12 max-w-md">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
             type="tel"
-            className="input flex-1"
             placeholder="01XXXXXXXXX"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             pattern="^01[3-9]\d{8}$"
             title="Enter a valid Bangladeshi phone number (e.g., 01712345678)"
+            className="flex-1"
           />
-          <button
+          <Button
             type="submit"
             disabled={loading || !phone.trim()}
-            className="btn btn-primary disabled:opacity-50">
+            className="w-full sm:w-auto"
+          >
             {loading ? "Searching..." : "Find Orders"}
-          </button>
+          </Button>
         </div>
       </form>
 
       {error && (
-        <div className="max-w-md mx-auto mb-8 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-center">
-          {error === "not found"
-            ? "No orders found for this phone number."
-            : `Error: ${error}`}
+        <div className="mx-auto mb-8 max-w-md rounded-lg border border-red-200 bg-red-50 p-4 text-center text-red-700">
+          {error}
         </div>
       )}
 
-      {searched && !loading && orders.length === 0 && !error && (
-        <div className="max-w-md mx-auto mb-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-center">
-          No orders found for this phone number. Please check the number and try
-          again.
+      {(emptyMessage || (searched && !loading && orders.length === 0 && !error)) && (
+        <div className="mx-auto mb-8 max-w-md rounded-lg border border-amber-200 bg-amber-50 p-4 text-center text-amber-700">
+          {emptyMessage ??
+            "No order found with this tracking information. Please check your order ID or phone number and try again."}
         </div>
       )}
 
       {orders.length > 0 && (
         <div className="space-y-6">
-          <div className="text-center mb-8">
+          <div className="mb-8 text-center">
             <h2 className="text-xl font-semibold">
               Found {orders.length} order{orders.length !== 1 ? "s" : ""}
             </h2>
             <button
+              type="button"
               onClick={resetSearch}
-              className="mt-2 text-sm text-[var(--fg-soft)] hover:text-[var(--fg)] underline">
+              className="mt-2 text-sm text-fg-soft underline hover:text-foreground"
+            >
               Search for a different number
             </button>
           </div>
 
           {orders.map((order) => (
-            <div key={order._id} className="card-soft p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="font-semibold text-lg">
+            <Card key={order._id} tone="soft">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <h3 className="break-words text-lg font-semibold">
                     Order {order.orderNumber}
                   </h3>
-                  <p className="text-sm text-[var(--fg-soft)] mt-1">
+                  <p className="mt-1 text-sm text-fg-soft">
                     Placed on {formatDateTime(order.createdAt)}
                   </p>
-                  <p className="text-sm text-[var(--fg-soft)]">
+                  <p className="text-sm text-fg-soft">
                     Customer: {order.customer.name}
                   </p>
                 </div>
-                <div className="text-right">
+                <div className="sm:text-right">
                   <div className="font-semibold">{formatBDT(order.total)}</div>
                   <div
-                    className={`text-sm px-2 py-1 rounded-full mt-1 ${
-                      order.status === "delivered"
-                        ? "bg-green-100 text-green-700"
-                        : order.status === "cancelled" ||
-                            order.status === "refunded"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-blue-100 text-blue-700"
-                    }`}>
+                    className={cn(
+                      "mt-1 rounded-full px-2 py-1 text-sm",
+                      statusPillColor(order.status),
+                    )}
+                  >
                     {STATUSES.find((s) => s.key === order.status)?.label ||
                       order.status}
                   </div>
@@ -138,64 +168,101 @@ export default function TrackPage() {
               </div>
 
               {/* Status timeline */}
-              <div className="mb-4">
-                <div className="flex items-center gap-2 text-sm">
-                  {STATUSES.map((status, i) => {
-                    const currentIndex = STATUSES.findIndex(
-                      (s) => s.key === order.status,
-                    );
-                    const isCompleted = i <= currentIndex;
-                    const isCurrent = i === currentIndex;
+              <StatusTimeline status={order.status} />
 
-                    return (
-                      <div key={status.key} className="flex items-center">
-                        <div
-                          className={`w-2 h-2 rounded-full ${
-                            isCompleted ? "bg-black" : "bg-gray-300"
-                          } ${isCurrent ? "ring-2 ring-black ring-offset-1" : ""}`}
-                        />
-                        {i < STATUSES.length - 1 && (
-                          <div
-                            className={`w-8 h-0.5 ${
-                              isCompleted ? "bg-black" : "bg-gray-300"
-                            }`}
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="flex justify-between text-xs text-[var(--fg-soft)] mt-1">
-                  {STATUSES.map((status) => (
-                    <span key={status.key}>{status.label}</span>
-                  ))}
+              <div className="mb-4 rounded-lg border border-line bg-white p-4 text-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h4 className="font-semibold">Delivery Tracking</h4>
+                    <p className="mt-1 text-fg-soft">
+                      {order.courier
+                        ? `Steadfast · ${getCourierStatusText(order.courier)}`
+                        : "Courier tracking is not available yet."}
+                    </p>
+                    {order.courier?.trackingCode && (
+                      <p className="mt-1 font-mono text-xs text-fg-muted">
+                        {order.courier.trackingCode}
+                      </p>
+                    )}
+                  </div>
+                  {getCourierTrackUrl(order.courier?.trackingCode) && (
+                    <a
+                      href={getCourierTrackUrl(order.courier?.trackingCode) ?? "#"}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-black/10 px-4 text-xs font-semibold hover:bg-neutral-100"
+                    >
+                      Track Delivery
+                    </a>
+                  )}
                 </div>
               </div>
 
               {/* Order items summary */}
-              <div className="border-t pt-4">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-[var(--fg-soft)]">
+              <div className="border-t border-line pt-4">
+                <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-fg-soft">
                     {order.items.length} item
                     {order.items.length !== 1 ? "s" : ""}
                   </span>
                   <Link
                     href={`/order/${order.orderNumber}`}
-                    className="text-black hover:underline font-medium">
+                    className="font-medium text-black hover:underline"
+                  >
                     View details →
                   </Link>
                 </div>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
 
-      <div className="text-center mt-12">
-        <Link href="/shop" className="btn btn-ghost">
+      <div className="mt-12 text-center">
+        <LinkButton href="/shop" variant="ghost">
           Continue shopping
-        </Link>
+        </LinkButton>
       </div>
-    </section>
+    </Section>
+  );
+}
+
+function StatusTimeline({ status }: { status: OrderStatus }) {
+  const currentIndex = STATUSES.findIndex((s) => s.key === status);
+
+  return (
+    <div className="mb-4 overflow-x-auto pb-1">
+      <div className="flex min-w-[520px] items-center gap-2 text-sm">
+        {STATUSES.map((s, i) => {
+          const isCompleted = i <= currentIndex;
+          const isCurrent = i === currentIndex;
+
+          return (
+            <div key={s.key} className="flex items-center">
+              <div
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  isCompleted ? "bg-black" : "bg-gray-300",
+                  isCurrent && "ring-2 ring-offset-1 ring-black",
+                )}
+              />
+              {i < STATUSES.length - 1 && (
+                <div
+                  className={cn(
+                    "h-0.5 w-8",
+                    isCompleted ? "bg-black" : "bg-gray-300",
+                  )}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-1 flex min-w-[520px] justify-between text-xs text-fg-soft">
+        {STATUSES.map((s) => (
+          <span key={s.key}>{s.label}</span>
+        ))}
+      </div>
+    </div>
   );
 }

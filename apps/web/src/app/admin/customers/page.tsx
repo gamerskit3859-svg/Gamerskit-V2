@@ -4,25 +4,45 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDateTime } from "@/lib/format";
-import type { AdminCustomer } from "@gamerskit/shared";
+import { useDebouncedSearch } from "@/lib/hooks";
+import type { AdminCustomer } from "@/types/shared";
+import { Button, Card, Input } from "@/components/ui";
+
+const PAGE_SIZE = 30;
 
 export default function CustomersPage() {
   const [items, setItems] = useState<AdminCustomer[]>([]);
   const [total, setTotal] = useState(0);
-  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const {
+    value: q,
+    setValue: setQ,
+    debouncedValue: searchQuery,
+  } = useDebouncedSearch("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const token = getAdminToken();
-    if (!token) return;
     void (async () => {
       setLoading(true);
+      setError(null);
       try {
-        const r = await api.customers({ q: q || undefined, limit: 100 }, token);
+        if (!token) throw new Error("Admin token not found. Please login again.");
+        const r = await api.customers(
+          { q: searchQuery || undefined, page, limit: PAGE_SIZE },
+          token,
+        );
         if (cancelled) return;
         setItems(r.items);
         setTotal(r.total);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load customers.");
+          setItems([]);
+          setTotal(0);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -30,7 +50,9 @@ export default function CustomersPage() {
     return () => {
       cancelled = true;
     };
-  }, [q]);
+  }, [searchQuery, page]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <motion.div
@@ -39,53 +61,73 @@ export default function CustomersPage() {
       transition={{ duration: 0.4 }}
     >
       <header className="mb-6">
-        <span className="eyebrow">Admin</span>
-        <h1 className="text-3xl font-semibold tracking-tight mt-2">Customers</h1>
-        <p className="text-sm text-[var(--fg-soft)] mt-1">
+        <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+          Admin
+        </span>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Customers</h1>
+        <p className="mt-1 text-sm text-fg-soft">
           {total} unique customers across the order history.
         </p>
         <div className="mt-5">
-          <input
-            className="input !w-80"
+          <Input
+            className="!w-full sm:!w-80"
             placeholder="Search by name, phone, or email…"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setQ(e.target.value);
+            }}
           />
         </div>
       </header>
 
-      <div className="card-soft p-0 overflow-hidden">
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <Card tone="soft" padding="none" className="overflow-hidden">
         {loading ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)]">Loading…</div>
+          <div className="p-8 text-sm text-fg-muted">Loading…</div>
         ) : items.length === 0 ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)] text-center">
+          <div className="p-8 text-center text-sm text-fg-muted">
             No customers match.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-white text-xs text-[var(--fg-soft)] text-left">
+            <table className="min-w-[760px] w-full text-sm">
+              <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
-                  <th className="py-3 px-4">Customer</th>
-                  <th className="py-3 px-4">Contact</th>
-                  <th className="py-3 px-4">City</th>
-                  <th className="py-3 px-4">Orders</th>
-                  <th className="py-3 px-4">Lifetime value</th>
-                  <th className="py-3 px-4">Last order</th>
+                  <th className="px-4 py-3">Customer</th>
+                  <th className="px-4 py-3">Contact</th>
+                  <th className="px-4 py-3">City</th>
+                  <th className="px-4 py-3">Orders</th>
+                  <th className="px-4 py-3">Lifetime value</th>
+                  <th className="px-4 py-3">Last order</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((c, i) => (
-                  <tr key={`${c._id}-${i}`} className="hairline-t bg-white">
-                    <td className="py-3 px-4 font-medium">{c.name || "—"}</td>
-                    <td className="py-3 px-4 text-[var(--fg-soft)]">
+                  <tr
+                    key={`${c._id}-${i}`}
+                    className="border-t border-line bg-white"
+                  >
+                    <td className="px-4 py-3 font-medium">{c.name || "—"}</td>
+                    <td className="px-4 py-3 text-fg-soft">
                       <div>{c.phone || "—"}</div>
-                      <div className="text-xs text-[var(--fg-muted)]">{c.email || ""}</div>
+                      <div className="text-xs text-fg-muted">
+                        {c.email || ""}
+                      </div>
                     </td>
-                    <td className="py-3 px-4 text-[var(--fg-soft)]">{c.city || "—"}</td>
-                    <td className="py-3 px-4">{c.orders}</td>
-                    <td className="py-3 px-4 font-medium">{formatBDT(c.revenue)}</td>
-                    <td className="py-3 px-4 text-xs text-[var(--fg-muted)]">
+                    <td className="px-4 py-3 text-fg-soft">
+                      {c.city || "—"}
+                    </td>
+                    <td className="px-4 py-3">{c.orders}</td>
+                    <td className="px-4 py-3 font-medium">
+                      {formatBDT(c.revenue)}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-fg-muted">
                       {c.lastOrderAt ? formatDateTime(c.lastOrderAt) : "—"}
                     </td>
                   </tr>
@@ -94,7 +136,33 @@ export default function CustomersPage() {
             </table>
           </div>
         )}
-      </div>
+      </Card>
+
+      {!loading && totalPages > 1 && (
+        <div className="mt-4 flex flex-col gap-3 text-sm text-fg-soft sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            Page {page} of {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

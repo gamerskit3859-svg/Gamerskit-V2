@@ -1,44 +1,98 @@
+import { Suspense } from "react";
 import { CategoryNav } from "@/components/CategoryNav";
 import { ProductListing } from "@/components/ProductListing";
+import { ShopBanner, ShopBannerLoading } from "@/components/ShopBanner";
+import { api } from "@/lib/api";
+import { createMetadata, truncateDescription } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+type ShopSearchParams =
+  | Promise<{ category?: string }>
+  | Promise<{ [key: string]: string | string[] | undefined }>;
 
-export const metadata = {
-  title: "Shop everything",
-};
-
-export default function ShopPage({
+export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string }> | Promise<{ [key: string]: string | string[] | undefined }>;
+  searchParams: ShopSearchParams;
 }) {
-  // searchParams is async in Next.js App Router
-  const getParams = async () => {
-    const params = await searchParams;
-    return params as { category?: string };
-  };
-  
+  const params = await searchParams;
+  const categorySlug = (params as { category?: string }).category;
+
+  if (categorySlug) {
+    try {
+      const { item } = await api.getCategoryFresh(categorySlug);
+      const description = truncateDescription(
+        item.description ||
+          `Shop ${item.name} at GK Shop with cash on delivery across Bangladesh.`,
+      );
+
+      return createMetadata({
+        title: `${item.name} | Shop GK Shop`,
+        description,
+        path: `/shop?category=${encodeURIComponent(item.slug)}`,
+        keywords: [item.name, `${item.name} Bangladesh`, "GK Shop category"],
+        image: item.image || "/brand/logo.png",
+      });
+    } catch {
+      // Fall through to default shop metadata.
+    }
+  }
+
+  return createMetadata({
+    title: "Shop Gaming Gear, RC Cars & Jerseys",
+    description:
+      "Browse all GK Shop products including RC drift cars, F1 jerseys, e-sports apparel, and gaming accessories in Bangladesh.",
+    path: "/shop",
+    keywords: ["shop gaming gear", "RC cars", "F1 jerseys", "Bangladesh"],
+  });
+}
+
+export default async function ShopPage({
+  searchParams,
+}: {
+  searchParams: ShopSearchParams;
+}) {
+  const categories = await api
+    .listCategoriesFresh()
+    .then((r) => r.items)
+    .catch(() => []);
+
   return (
-    <>
-      <CategoryNav />
+    <main className="w-full max-w-full">
+      <CategoryNav initialCategories={categories} />
+      <Suspense fallback={<ShopBannerLoading />}>
+        <ShopBanner />
+      </Suspense>
       <ShopContent searchParams={searchParams} />
-    </>
+    </main>
   );
 }
 
 async function ShopContent({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string }> | Promise<{ [key: string]: string | string[] | undefined }>;
+  searchParams: ShopSearchParams;
 }) {
   const params = await searchParams;
   const category = (params as { category?: string }).category;
+  const categoryData = category
+    ? await api
+        .getCategoryFresh(category)
+        .then((res) => res.item)
+        .catch(() => null)
+    : null;
 
   return (
     <ProductListing
       category={category}
-      title="Everything in one place."
-      subtitle="Free delivery across Bangladesh, cash on delivery available, easy returns."
+      title={
+        categoryData ? `${categoryData.name}.` : "Everything in one place."
+      }
+      subtitle={
+        categoryData?.description ||
+        "Free delivery across Bangladesh, cash on delivery available, easy returns."
+      }
     />
   );
 }

@@ -4,7 +4,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT, formatDateTime } from "@/lib/format";
-import type { Coupon } from "@gamerskit/shared";
+import type { Coupon } from "@/types/shared";
+import {
+  Button,
+  Card,
+  FieldLabel,
+  Input,
+  Select,
+} from "@/components/ui";
+import { cn } from "@/lib/cn";
 
 interface DraftCoupon {
   code: string;
@@ -40,12 +48,18 @@ export default function CouponsPage() {
   useEffect(() => {
     let cancelled = false;
     const token = getAdminToken();
-    if (!token) return;
     void (async () => {
       setLoading(true);
+      setError(null);
       try {
+        if (!token) throw new Error("Admin token not found. Please login again.");
         const r = await api.listCoupons(token);
         if (!cancelled) setItems(r.items);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load coupons.");
+          setItems([]);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -95,7 +109,9 @@ export default function CouponsPage() {
     try {
       if (editing) {
         const r = await api.updateCoupon(editing._id, body, token);
-        setItems((prev) => prev.map((c) => (c._id === editing._id ? r.item : c)));
+        setItems((prev) =>
+          prev.map((c) => (c._id === editing._id ? r.item : c)),
+        );
       } else {
         const r = await api.createCoupon(body, token);
         setItems((prev) => [r.item, ...prev]);
@@ -111,16 +127,26 @@ export default function CouponsPage() {
   async function toggleActive(c: Coupon) {
     const token = getAdminToken();
     if (!token) return;
-    const r = await api.updateCoupon(c._id, { active: !c.active }, token);
-    setItems((prev) => prev.map((x) => (x._id === c._id ? r.item : x)));
+    setError(null);
+    try {
+      const r = await api.updateCoupon(c._id, { active: !c.active }, token);
+      setItems((prev) => prev.map((x) => (x._id === c._id ? r.item : x)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update coupon.");
+    }
   }
 
   async function remove(c: Coupon) {
     if (!confirm(`Delete coupon ${c.code}?`)) return;
     const token = getAdminToken();
     if (!token) return;
-    await api.deleteCoupon(c._id, token);
-    setItems((prev) => prev.filter((x) => x._id !== c._id));
+    setError(null);
+    try {
+      await api.deleteCoupon(c._id, token);
+      setItems((prev) => prev.filter((x) => x._id !== c._id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete coupon.");
+    }
   }
 
   return (
@@ -131,69 +157,97 @@ export default function CouponsPage() {
     >
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <span className="eyebrow">Admin</span>
-          <h1 className="text-3xl font-semibold tracking-tight mt-2">Coupons</h1>
-          <p className="text-sm text-[var(--fg-soft)] mt-1">
-            {items.length} coupons · click a row to edit, toggle active, or delete.
+          <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+            Admin
+          </span>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+            Coupons
+          </h1>
+          <p className="mt-1 text-sm text-fg-soft">
+            {items.length} coupons · click a row to edit, toggle active, or
+            delete.
           </p>
         </div>
-        <button onClick={startCreate} className="btn btn-primary">
-          + New coupon
-        </button>
+        <Button onClick={startCreate}>+ New coupon</Button>
       </header>
 
-      <div className="card-soft p-0 overflow-hidden">
+      {error && !openCreate && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <Card tone="soft" padding="none" className="overflow-hidden">
         {loading ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)]">Loading…</div>
+          <div className="p-8 text-sm text-fg-muted">Loading…</div>
         ) : items.length === 0 ? (
-          <div className="p-8 text-sm text-[var(--fg-muted)] text-center">
+          <div className="p-8 text-center text-sm text-fg-muted">
             No coupons yet — create your first one.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-white text-xs text-[var(--fg-soft)] text-left">
+            <table className="min-w-[820px] w-full text-sm">
+              <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
-                  <th className="py-3 px-4">Code</th>
-                  <th className="py-3 px-4">Discount</th>
-                  <th className="py-3 px-4">Min order</th>
-                  <th className="py-3 px-4">Redeemed</th>
-                  <th className="py-3 px-4">Window</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="px-4 py-3">Code</th>
+                  <th className="px-4 py-3">Discount</th>
+                  <th className="px-4 py-3">Min order</th>
+                  <th className="px-4 py-3">Redeemed</th>
+                  <th className="px-4 py-3">Window</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((c) => (
-                  <tr key={c._id} className="hairline-t bg-white">
-                    <td className="py-3 px-4 font-mono">{c.code}</td>
-                    <td className="py-3 px-4">
-                      {c.type === "percent" ? `${c.value}%` : formatBDT(c.value)}
+                  <tr
+                    key={c._id}
+                    className="border-t border-line bg-white"
+                  >
+                    <td className="px-4 py-3 font-mono">{c.code}</td>
+                    <td className="px-4 py-3">
+                      {c.type === "percent"
+                        ? `${c.value}%`
+                        : formatBDT(c.value)}
                     </td>
-                    <td className="py-3 px-4">{c.minOrder ? formatBDT(c.minOrder) : "—"}</td>
-                    <td className="py-3 px-4">
+                    <td className="px-4 py-3">
+                      {c.minOrder ? formatBDT(c.minOrder) : "—"}
+                    </td>
+                    <td className="px-4 py-3">
                       {c.redeemed}
                       {c.maxRedemptions ? ` / ${c.maxRedemptions}` : ""}
                     </td>
-                    <td className="py-3 px-4 text-xs text-[var(--fg-muted)]">
+                    <td className="px-4 py-3 text-xs text-fg-muted">
                       {c.startsAt ? formatDateTime(c.startsAt) : "any"} →{" "}
                       {c.endsAt ? formatDateTime(c.endsAt) : "any"}
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="px-4 py-3">
                       <button
+                        type="button"
                         onClick={() => toggleActive(c)}
-                        className={`px-2 py-0.5 rounded-full text-xs ${
-                          c.active ? "bg-black text-white" : "bg-[var(--bg-soft)] text-[var(--fg-soft)]"
-                        }`}
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-xs",
+                          c.active
+                            ? "bg-black text-white"
+                            : "bg-bg-soft text-fg-soft",
+                        )}
                       >
                         {c.active ? "Active" : "Inactive"}
                       </button>
                     </td>
-                    <td className="py-3 px-4 text-right space-x-3">
-                      <button onClick={() => startEdit(c)} className="text-xs underline">
+                    <td className="space-x-3 px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(c)}
+                        className="text-xs underline"
+                      >
                         Edit
                       </button>
-                      <button onClick={() => remove(c)} className="text-xs underline text-red-600">
+                      <button
+                        type="button"
+                        onClick={() => remove(c)}
+                        className="text-xs text-red-600 underline"
+                      >
                         Delete
                       </button>
                     </td>
@@ -203,7 +257,7 @@ export default function CouponsPage() {
             </table>
           </div>
         )}
-      </div>
+      </Card>
 
       <AnimatePresence>
         {openCreate && (
@@ -211,7 +265,7 @@ export default function CouponsPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-3 py-6 backdrop-blur-sm sm:p-4"
             onClick={() => !busy && setOpenCreate(false)}
           >
             <motion.div
@@ -220,111 +274,125 @@ export default function CouponsPage() {
               exit={{ y: 20, opacity: 0 }}
               transition={{ type: "spring", damping: 24 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-xl"
+              className="w-full max-w-lg rounded-2xl bg-white p-4 shadow-xl sm:p-6"
             >
-              <h2 className="text-xl font-semibold mb-4">
+              <h2 className="mb-4 text-xl font-semibold">
                 {editing ? `Edit ${editing.code}` : "New coupon"}
               </h2>
               <div className="space-y-3">
-                <div>
-                  <label className="eyebrow">Code</label>
-                  <input
-                    className="input mt-1 uppercase"
+                <FieldLabel label="Code">
+                  <Input
+                    className="uppercase"
                     value={draft.code}
-                    onChange={(e) => setDraft({ ...draft, code: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, code: e.target.value })
+                    }
                     placeholder="WELCOME10"
                   />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="eyebrow">Type</label>
-                    <select
-                      className="select mt-1"
+                </FieldLabel>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FieldLabel label="Type">
+                    <Select
                       value={draft.type}
                       onChange={(e) =>
-                        setDraft({ ...draft, type: e.target.value as DraftCoupon["type"] })
+                        setDraft({
+                          ...draft,
+                          type: e.target.value as DraftCoupon["type"],
+                        })
                       }
                     >
                       <option value="percent">Percent off</option>
                       <option value="fixed">Fixed amount</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="eyebrow">
-                      {draft.type === "percent" ? "Percent off" : "Amount (৳)"}
-                    </label>
-                    <input
+                    </Select>
+                  </FieldLabel>
+                  <FieldLabel
+                    label={
+                      draft.type === "percent" ? "Percent off" : "Amount (৳)"
+                    }
+                  >
+                    <Input
                       type="number"
-                      className="input mt-1"
                       value={draft.value}
-                      onChange={(e) => setDraft({ ...draft, value: Number(e.target.value) })}
+                      onChange={(e) =>
+                        setDraft({ ...draft, value: Number(e.target.value) })
+                      }
                     />
-                  </div>
+                  </FieldLabel>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="eyebrow">Min order (৳)</label>
-                    <input
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FieldLabel label="Min order (৳)">
+                    <Input
                       type="number"
-                      className="input mt-1"
                       value={draft.minOrder}
-                      onChange={(e) => setDraft({ ...draft, minOrder: Number(e.target.value) })}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          minOrder: Number(e.target.value),
+                        })
+                      }
                     />
-                  </div>
-                  <div>
-                    <label className="eyebrow">Max redemptions</label>
-                    <input
+                  </FieldLabel>
+                  <FieldLabel label="Max redemptions">
+                    <Input
                       type="number"
-                      className="input mt-1"
                       value={draft.maxRedemptions}
                       onChange={(e) =>
-                        setDraft({ ...draft, maxRedemptions: Number(e.target.value) })
+                        setDraft({
+                          ...draft,
+                          maxRedemptions: Number(e.target.value),
+                        })
                       }
                       placeholder="0 = unlimited"
                     />
-                  </div>
+                  </FieldLabel>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="eyebrow">Starts</label>
-                    <input
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FieldLabel label="Starts">
+                    <Input
                       type="date"
-                      className="input mt-1"
                       value={draft.startsAt}
-                      onChange={(e) => setDraft({ ...draft, startsAt: e.target.value })}
+                      onChange={(e) =>
+                        setDraft({ ...draft, startsAt: e.target.value })
+                      }
                     />
-                  </div>
-                  <div>
-                    <label className="eyebrow">Ends</label>
-                    <input
+                  </FieldLabel>
+                  <FieldLabel label="Ends">
+                    <Input
                       type="date"
-                      className="input mt-1"
                       value={draft.endsAt}
-                      onChange={(e) => setDraft({ ...draft, endsAt: e.target.value })}
+                      onChange={(e) =>
+                        setDraft({ ...draft, endsAt: e.target.value })
+                      }
                     />
-                  </div>
+                  </FieldLabel>
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={draft.active}
-                    onChange={(e) => setDraft({ ...draft, active: e.target.checked })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, active: e.target.checked })
+                    }
                   />
                   Active
                 </label>
                 {error && <p className="text-sm text-red-600">{error}</p>}
               </div>
               <div className="mt-6 flex justify-end gap-2">
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => setOpenCreate(false)}
-                  className="btn btn-ghost"
                   disabled={busy}
                 >
                   Cancel
-                </button>
-                <button onClick={save} className="btn btn-primary" disabled={busy || !draft.code}>
-                  {busy ? "Saving…" : editing ? "Save changes" : "Create coupon"}
-                </button>
+                </Button>
+                <Button onClick={save} disabled={busy || !draft.code}>
+                  {busy
+                    ? "Saving…"
+                    : editing
+                      ? "Save changes"
+                      : "Create coupon"}
+                </Button>
               </div>
             </motion.div>
           </motion.div>

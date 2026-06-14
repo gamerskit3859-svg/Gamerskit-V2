@@ -1,7 +1,24 @@
 "use client";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import type { AuthUser } from "@gamerskit/shared";
+import type { AuthUser } from "@/types/shared";
+
+export const COOKIE_SESSION = "cookie-session";
+export const AUTH_TOKEN_STORAGE_KEY = "gk_auth_token";
+
+function readStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+}
+
+function writeStoredToken(token: string): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+}
+
+function clearStoredToken(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+}
 
 interface AuthState {
   token: string | null;
@@ -10,14 +27,15 @@ interface AuthState {
   clear: () => void;
 }
 
-export const useAuth = create<AuthState>()(
-  persist(
-    (set) => ({
-      token: null,
-      user: null,
-      setSession: ({ token, user }) => set({ token, user }),
-      clear: () => set({ token: null, user: null }),
-    }),
-    { name: "gk-auth" },
-  ),
-);
+export const useAuth = create<AuthState>()((set) => ({
+  token: readStoredToken(),
+  user: null,
+  setSession: ({ token, user }) => {
+    if (token !== COOKIE_SESSION) writeStoredToken(token);
+    set({ token, user });
+  },
+  clear: () => {
+    clearStoredToken();
+    set({ token: null, user: null });
+  },
+}));

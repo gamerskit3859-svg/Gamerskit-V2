@@ -1,46 +1,86 @@
 "use client";
 import { useState, useEffect } from "react";
+import { Button, Input } from "@/components/ui";
+import { cn } from "@/lib/cn";
 
 export type DateRange = { from: string; to: string; label: string };
+const TIMEZONE = "Asia/Dhaka";
 
-const PRESETS: Array<{ key: string; label: string; days?: number; preset?: string }> = [
+const PRESETS: Array<{
+  key: string;
+  label: string;
+  days?: number;
+  preset?: string;
+}> = [
   { key: "today", label: "Today", days: 0 },
   { key: "yesterday", label: "Yesterday", preset: "yesterday" },
+  { key: "week", label: "This week", preset: "week" },
   { key: "7d", label: "Last 7 days", days: 7 },
   { key: "30d", label: "Last 30 days", days: 30 },
   { key: "month", label: "This month", preset: "month" },
   { key: "lastMonth", label: "Last month", preset: "lastMonth" },
+  { key: "all", label: "All time" },
 ];
 
-function isoDay(d: Date): string {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
-    .toISOString()
-    .slice(0, 10);
+function dhakaToday(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function addDays(day: string, days: number): string {
+  const [year, month, date] = day.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, date + days));
+  return next.toISOString().slice(0, 10);
+}
+
+function monthStart(day: string): string {
+  return `${day.slice(0, 8)}01`;
+}
+
+function lastMonthRange(day: string): { from: string; to: string } {
+  const [year, month] = day.split("-").map(Number);
+  const first = new Date(Date.UTC(year, month - 2, 1));
+  const last = new Date(Date.UTC(year, month - 1, 0));
+  return {
+    from: first.toISOString().slice(0, 10),
+    to: last.toISOString().slice(0, 10),
+  };
+}
+
+function weekStart(day: string): string {
+  const [year, month, date] = day.split("-").map(Number);
+  const current = new Date(Date.UTC(year, month - 1, date));
+  const daysSinceMonday = (current.getUTCDay() + 6) % 7;
+  current.setUTCDate(current.getUTCDate() - daysSinceMonday);
+  return current.toISOString().slice(0, 10);
 }
 
 function rangeFromPreset(preset: (typeof PRESETS)[number]): DateRange {
-  const today = new Date();
+  const today = dhakaToday();
   if (preset.key === "today") {
-    return { from: isoDay(today), to: isoDay(today), label: preset.label };
+    return { from: today, to: today, label: preset.label };
   }
   if (preset.preset === "yesterday") {
-    const y = new Date(today);
-    y.setDate(y.getDate() - 1);
-    return { from: isoDay(y), to: isoDay(y), label: preset.label };
+    const yesterday = addDays(today, -1);
+    return { from: yesterday, to: yesterday, label: preset.label };
+  }
+  if (preset.preset === "week") {
+    return { from: weekStart(today), to: today, label: preset.label };
   }
   if (preset.preset === "month") {
-    const first = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { from: isoDay(first), to: isoDay(today), label: preset.label };
+    return { from: monthStart(today), to: today, label: preset.label };
   }
   if (preset.preset === "lastMonth") {
-    const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const last = new Date(today.getFullYear(), today.getMonth(), 0);
-    return { from: isoDay(first), to: isoDay(last), label: preset.label };
+    return { ...lastMonthRange(today), label: preset.label };
   }
-  // days-based
-  const from = new Date(today);
-  from.setDate(from.getDate() - (preset.days ?? 0));
-  return { from: isoDay(from), to: isoDay(today), label: preset.label };
+  if (preset.key === "all") {
+    return { from: "1970-01-01", to: today, label: preset.label };
+  }
+  return { from: addDays(today, -(preset.days ?? 1) + 1), to: today, label: preset.label };
 }
 
 export function DateRangePicker({
@@ -62,54 +102,58 @@ export function DateRangePicker({
   }, [value.from, value.to]);
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex w-full max-w-full flex-wrap items-center gap-2">
       {PRESETS.map((p) => {
         const r = rangeFromPreset(p);
         const active = value.from === r.from && value.to === r.to;
         return (
           <button
             key={p.key}
+            type="button"
             onClick={() => {
               setShowCustom(false);
               onChange(r);
             }}
-            className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+            className={cn(
+              "rounded-full border px-3 py-1.5 text-xs transition-colors",
               active
-                ? "bg-black text-white border-black"
-                : "border-[var(--line-strong)] text-[var(--fg-soft)] hover:text-[var(--fg)]"
-            }`}
+                ? "border-black bg-black text-white"
+                : "border-line-strong text-fg-soft hover:text-foreground",
+            )}
           >
             {p.label}
           </button>
         );
       })}
       <button
+        type="button"
         onClick={() => setShowCustom((v) => !v)}
-        className="px-3 py-1.5 rounded-full text-xs border border-[var(--line-strong)] hover:text-[var(--fg)] text-[var(--fg-soft)]"
+        className="rounded-full border border-line-strong px-3 py-1.5 text-xs text-fg-soft hover:text-foreground"
       >
         Custom range
       </button>
       {showCustom && (
-        <div className="flex items-center gap-2 ml-2">
-          <input
+        <div className="flex w-full flex-col gap-2 sm:ml-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+          <Input
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            className="input !w-auto !py-1 !text-xs"
+            className="!w-full !py-1 !text-xs sm:!w-[140px]"
           />
-          <span className="text-xs">to</span>
-          <input
+          <span className="hidden text-xs sm:inline">to</span>
+          <Input
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="input !w-auto !py-1 !text-xs"
+            className="!w-full !py-1 !text-xs sm:!w-[140px]"
           />
-          <button
+          <Button
+            size="sm"
             onClick={() => onChange({ from, to, label: "Custom" })}
-            className="btn btn-primary !py-1 !px-3 !text-xs"
+            className="!py-1 !px-3 !text-xs"
           >
             Apply
-          </button>
+          </Button>
         </div>
       )}
     </div>

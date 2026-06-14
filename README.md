@@ -55,7 +55,7 @@ npm run dev:web    # http://localhost:3000
 
 The first time the API starts it bootstraps an admin account using
 `ADMIN_EMAIL` / `ADMIN_PASSWORD` (defaults: `admin@gamerskit.local` /
-`admin123` — change these). Sign in at <http://localhost:3000/admin/login>.
+`admin123` — change these). Sign in at <http://localhost:3000/admin>.
 
 ## Custom orders
 

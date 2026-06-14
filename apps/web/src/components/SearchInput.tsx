@@ -1,6 +1,5 @@
 "use client";
 import { Search, X } from "lucide-react";
-import { useDebouncedSearch } from "@/lib/hooks";
 
 interface SearchInputProps {
   value: string;

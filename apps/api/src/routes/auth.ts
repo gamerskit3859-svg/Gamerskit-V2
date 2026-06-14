@@ -2,7 +2,14 @@ import { Router } from "express";
 import { z } from "zod";
 import { UserModel } from "../models/User.js";
 import { OrderModel } from "../models/Order.js";
-import { authRequired, comparePassword, hashPassword, signToken, adminOnlyRequired } from "../lib/auth.js";
+import {
+  authRequired,
+  clearAuthCookie,
+  comparePassword,
+  hashPassword,
+  setAuthCookie,
+  signToken,
+} from "../lib/auth.js";
 
 const router = Router();
 
@@ -20,6 +27,34 @@ const oauthSchema = z.object({
   provider: z.enum(["google", "facebook"]),
   providerId: z.string(),
 });
+
+async function signInGoogleUser(profile: {
+  email: string;
+  name: string;
+  avatar?: string;
+  providerId: string;
+}) {
+  let user = await UserModel.findOne({ googleId: profile.providerId });
+
+  if (!user) {
+    user = await UserModel.findOne({ email: profile.email });
+    if (user) {
+      user.googleId = profile.providerId;
+      if (!user.avatar) user.avatar = profile.avatar ?? "";
+      await user.save();
+    } else {
+      user = await UserModel.create({
+        email: profile.email,
+        name: profile.name,
+        avatar: profile.avatar ?? "",
+        googleId: profile.providerId,
+        role: "customer",
+      });
+    }
+  }
+
+  return user;
+}
 
 router.post("/register", async (req, res) => {
   const parsed = credSchema.safeParse(req.body);
@@ -41,6 +76,7 @@ router.post("/register", async (req, res) => {
     phone: parsed.data.phone ?? "",
   });
   const token = signToken({ sub: String(user._id), email: user.email, role: user.role });
+  setAuthCookie(res, token);
   res.status(201).json({
     token,
     user: { id: user._id, email: user.email, role: user.role, name: user.name },
@@ -59,6 +95,7 @@ router.post("/login", async (req, res) => {
     return;
   }
   const token = signToken({ sub: String(user._id), email: user.email, role: user.role });
+  setAuthCookie(res, token);
   res.json({
     token,
     user: { id: user._id, email: user.email, role: user.role, name: user.name },
@@ -73,29 +110,15 @@ router.post("/oauth/google", async (req, res) => {
     return;
   }
 
-  let user = await UserModel.findOne({ googleId: parsed.data.providerId });
-  
-  if (!user) {
-    // Try to find by email
-    user = await UserModel.findOne({ email: parsed.data.email });
-    if (user) {
-      // Link Google account to existing user
-      user.googleId = parsed.data.providerId;
-      if (!user.avatar) user.avatar = parsed.data.avatar ?? "";
-      await user.save();
-    } else {
-      // Create new user
-      user = await UserModel.create({
-        email: parsed.data.email,
-        name: parsed.data.name,
-        avatar: parsed.data.avatar ?? "",
-        googleId: parsed.data.providerId,
-        role: "customer",
-      });
-    }
-  }
+  const user = await signInGoogleUser({
+    email: parsed.data.email,
+    name: parsed.data.name,
+    avatar: parsed.data.avatar,
+    providerId: parsed.data.providerId,
+  });
 
   const token = signToken({ sub: String(user._id), email: user.email, role: user.role });
+  setAuthCookie(res, token);
   res.json({
     token,
     user: { id: user._id, email: user.email, role: user.role, name: user.name },
@@ -132,10 +155,16 @@ router.post("/oauth/facebook", async (req, res) => {
   }
 
   const token = signToken({ sub: String(user._id), email: user.email, role: user.role });
+  setAuthCookie(res, token);
   res.json({
     token,
     user: { id: user._id, email: user.email, role: user.role, name: user.name },
   });
+});
+
+router.post("/logout", (_req, res) => {
+  clearAuthCookie(res);
+  res.status(204).end();
 });
 
 router.get("/me", authRequired, async (req, res) => {
@@ -162,9 +191,11 @@ router.get("/orders", authRequired, async (req, res) => {
     res.status(404).json({ error: "not found" });
     return;
   }
-  // match by email or phone since orders aren't linked by user id today
+  // Match on userId first (orders placed while signed in are linked directly),
+  // then fall back to email/phone for guest orders that share contact details.
   const filter: Record<string, unknown> = {
     $or: [
+      { userId: user._id },
       { "customer.email": user.email },
       ...(user.phone ? [{ "customer.phone": user.phone }] : []),
     ],

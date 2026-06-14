@@ -8,17 +8,61 @@
  *   3. POSTs the same event_id + payload to `/api/fb` so the server can call
  *      Meta's Conversions API (server CAPI). Meta dedupes on event_id.
  */
-import type { FbDataLayerItem, FbEventName } from "@gamerskit/shared";
+import type { FbDataLayerItem, FbEventName } from "@/types/shared";
+import { useAuth } from "@/lib/auth";
 
 declare global {
   interface Window {
-    fbq?: (...args: unknown[]) => void;
-    _fbq?: (...args: unknown[]) => void;
+    fbq?: FbqFunction;
+    _fbq?: FbqFunction;
     dataLayer?: Record<string, unknown>[];
   }
 }
 
-const PIXEL_ID = process.env.NEXT_PUBLIC_FB_PIXEL_ID;
+const PIXEL_ID = process.env.NEXT_PUBLIC_FB_PIXEL_ID || "649455848240895";
+
+type FbqFunction = ((...args: unknown[]) => void) & {
+  callMethod?: (...args: unknown[]) => void;
+  queue?: unknown[][];
+  loaded?: boolean;
+  version?: string;
+  push?: FbqFunction;
+};
+
+function ensureMetaPixel() {
+  if (typeof window === "undefined" || !PIXEL_ID) return;
+
+  if (!window.fbq) {
+    const fbq = ((...args: unknown[]) => {
+      if (fbq.callMethod) {
+        fbq.callMethod(...args);
+        return;
+      }
+      fbq.queue = fbq.queue ?? [];
+      fbq.queue.push(args);
+    }) as FbqFunction;
+
+    fbq.push = fbq;
+    fbq.loaded = true;
+    fbq.version = "2.0";
+    fbq.queue = [];
+    window.fbq = fbq;
+    window._fbq = fbq;
+    window.fbq("init", PIXEL_ID);
+  }
+
+  const hasPixelScript =
+    document.getElementById("meta-pixel-script") ||
+    document.querySelector('script[src*="connect.facebook.net/en_US/fbevents.js"]');
+
+  if (!hasPixelScript) {
+    const script = document.createElement("script");
+    script.id = "meta-pixel-script";
+    script.async = true;
+    script.src = "https://connect.facebook.net/en_US/fbevents.js";
+    document.head.appendChild(script);
+  }
+}
 
 function rid(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -33,8 +77,21 @@ function readCookie(name: string): string | undefined {
   return match?.[2];
 }
 
+function getTrackedUser(): TrackPayload["user"] | undefined {
+  const user = useAuth.getState().user;
+  if (!user) return undefined;
+  return {
+    email: user.email,
+    phone: user.phone,
+    firstName: user.name?.split(" ")[0],
+    lastName: user.name?.split(" ").slice(1).join(" "),
+  };
+}
+
 export type TrackPayload = {
   event: FbEventName;
+  eventId?: string;
+  sendCapi?: boolean;
   value?: number;
   currency?: string;
   contentIds?: string[];
@@ -51,61 +108,254 @@ export type TrackPayload = {
   };
 };
 
+type CartLikeLine = {
+  productId: string;
+  variantSku?: string;
+  title: string;
+  category?: string;
+  unitPrice: number;
+  quantity: number;
+};
+
 export function track(p: TrackPayload): string {
-  const eventId = rid();
+  const eventId = p.eventId ?? rid();
+  const userData = p.user ?? getTrackedUser();
+  const ecommerceItems = p.items?.map((item) => ({
+    item_id: item.id,
+    item_name: item.name,
+    item_category: item.category,
+    price: item.price,
+    quantity: item.quantity,
+    brand: item.brand ?? "GK Shop",
+  }));
+  const ecommerce =
+    p.items || p.value !== undefined
+      ? {
+          currency: p.currency ?? "BDT",
+          value: p.value ?? 0,
+          transaction_id: p.orderId,
+          order_id: p.orderId,
+          items: ecommerceItems ?? [],
+        }
+      : undefined;
   const payload = {
     event: gtmEvent(p.event),
     fb_event: p.event,
     event_id: eventId,
-    ecommerce:
-      p.items || p.value !== undefined
-        ? {
-            currency: p.currency ?? "BDT",
-            value: p.value ?? 0,
-            transaction_id: p.orderId,
-            items: p.items ?? [],
-          }
-        : undefined,
+    transaction_id: p.orderId,
+    order_id: p.orderId,
+    value: p.value,
+    currency: p.currency ?? "BDT",
+    ecommerce,
   };
   if (typeof window !== "undefined") {
+    ensureMetaPixel();
     window.dataLayer = window.dataLayer ?? [];
+    if (ecommerce) {
+      window.dataLayer.push({ ecommerce: null });
+    }
     window.dataLayer.push(payload);
 
-    if (window.fbq && PIXEL_ID) {
-      window.fbq("track", p.event, buildFbqParams(p), { eventID: eventId });
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[analytics] event", payload);
     }
 
-    // Fire-and-forget server CAPI proxy
-    void fetch("/api/fb/event", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        event_name: p.event,
-        event_id: eventId,
-        event_source_url: window.location.href,
-        user_data: {
-          ...(p.user ?? {}),
-          fbp: readCookie("_fbp"),
-          fbc: readCookie("_fbc") ?? fbcFromUrl(),
-        },
-        custom_data: {
-          currency: p.currency ?? "BDT",
-          value: p.value,
-          content_ids: p.contentIds,
-          content_name: p.contentName,
-          content_category: p.contentCategory,
-          contents: p.items?.map((i) => ({
-            id: i.id,
-            quantity: i.quantity,
-            item_price: i.price,
-          })),
-          num_items: p.items?.reduce((n, i) => n + i.quantity, 0),
-          order_id: p.orderId,
-        },
-      }),
-    }).catch(() => null);
+    // Wrap fbq() in try/catch — privacy extensions sometimes stub `fbq`
+    // with a function that throws on call, and we never want analytics to
+    // break the rest of the page.
+    if (window.fbq && PIXEL_ID) {
+      try {
+        window.fbq("track", p.event, buildFbqParams(p), { eventID: eventId });
+      } catch {
+        // Swallow — ad-blockers / privacy extensions. Already logged at
+        // the browser's network layer as ERR_BLOCKED_BY_CLIENT.
+      }
+    }
+
+    // Server CAPI proxy. We deliberately swallow the rejected promise —
+    // requests to /api/fb/* are commonly blocked by AdBlock and uBlock,
+    // which surface as ERR_BLOCKED_BY_CLIENT in DevTools. The block is
+    // expected (privacy extensions doing their job) and never affects the
+    // checkout / page-view flow because the call is fire-and-forget.
+    if (p.sendCapi !== false) {
+      void fetch("/api/fb/event", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          event_name: p.event,
+          event_id: eventId,
+          event_source_url: window.location.href,
+          user_data: {
+            ...(userData ?? {}),
+            fbp: readCookie("_fbp"),
+            fbc: readCookie("_fbc") ?? fbcFromUrl(),
+          },
+          custom_data: {
+            currency: p.currency ?? "BDT",
+            value: p.value,
+            content_ids: p.contentIds,
+            content_name: p.contentName,
+            content_category: p.contentCategory,
+            contents: p.items?.map((i) => ({
+              id: i.id,
+              quantity: i.quantity,
+              item_price: i.price,
+            })),
+            num_items: p.items?.reduce((n, i) => n + i.quantity, 0),
+            order_id: p.orderId,
+          },
+        }),
+      }).catch(() => null);
+    }
   }
   return eventId;
+}
+
+export function createEventId(): string {
+  return rid();
+}
+
+export function getBrowserMeta() {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  return {
+    fbp: readCookie("_fbp"),
+    fbc: readCookie("_fbc") ?? fbcFromUrl(),
+    clientUserAgent: window.navigator.userAgent,
+  };
+}
+
+export function trackPageView(url?: string) {
+  const pageUrl =
+    url ??
+    (typeof window !== "undefined"
+      ? `${window.location.pathname}${window.location.search}`
+      : undefined);
+
+  if (typeof window !== "undefined") {
+    ensureMetaPixel();
+    window.dataLayer = window.dataLayer ?? [];
+    window.dataLayer.push({
+      event: "page_view",
+      page_path: pageUrl,
+      page_location: window.location.href,
+    });
+
+    if (window.fbq && PIXEL_ID) {
+      try {
+        window.fbq("track", "PageView");
+      } catch {
+        // Ignore blocked Pixel calls.
+      }
+    }
+  }
+
+  return pageUrl ?? "";
+}
+
+export function trackViewContent(product: {
+  _id: string;
+  sku?: string;
+  title: string;
+  category?: string;
+  price: number;
+}) {
+  const itemId = product.sku || product._id;
+  return track({
+    event: "ViewContent",
+    contentIds: [itemId],
+    contentName: product.title,
+    contentCategory: product.category,
+    value: product.price,
+    currency: "BDT",
+    items: [
+      {
+        id: itemId,
+        name: product.title,
+        category: product.category,
+        price: product.price,
+        quantity: 1,
+      },
+    ],
+  });
+}
+
+export function trackAddToCart(
+  product: {
+    _id: string;
+    sku?: string;
+    title: string;
+    category?: string;
+    price: number;
+  },
+  quantity = 1,
+) {
+  const itemId = product.sku || product._id;
+  return track({
+    event: "AddToCart",
+    contentIds: [itemId],
+    contentName: product.title,
+    contentCategory: product.category,
+    value: product.price * quantity,
+    currency: "BDT",
+    items: [
+      {
+        id: itemId,
+        name: product.title,
+        category: product.category,
+        price: product.price,
+        quantity,
+      },
+    ],
+  });
+}
+
+export function trackInitiateCheckout(
+  lines: CartLikeLine[],
+  user?: TrackPayload["user"],
+) {
+  return track({
+    event: "InitiateCheckout",
+    currency: "BDT",
+    value: lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
+    contentIds: lines.map((line) => line.variantSku || line.productId),
+    items: lines.map((line) => ({
+      id: line.variantSku || line.productId,
+      name: line.title,
+      category: line.category,
+      price: line.unitPrice,
+      quantity: line.quantity,
+    })),
+    user,
+  });
+}
+
+export function trackPurchase(args: {
+  eventId: string;
+  orderId: string;
+  value: number;
+  items: Array<{
+    id: string;
+    name: string;
+    category?: string;
+    price: number;
+    quantity: number;
+  }>;
+  user?: TrackPayload["user"];
+}) {
+  return track({
+    event: "Purchase",
+    eventId: args.eventId,
+    sendCapi: false,
+    currency: "BDT",
+    value: args.value,
+    orderId: args.orderId,
+    contentIds: args.items.map((item) => item.id),
+    items: args.items,
+    user: args.user,
+  });
 }
 
 function buildFbqParams(p: TrackPayload): Record<string, unknown> {
@@ -134,6 +384,8 @@ function gtmEvent(fbEvent: FbEventName): string {
       return "view_item";
     case "AddToCart":
       return "add_to_cart";
+    case "RemoveFromCart":
+      return "remove_from_cart";
     case "InitiateCheckout":
       return "begin_checkout";
     case "Purchase":
