@@ -9,12 +9,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Minus, Plus, Ruler, Truck, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCart } from "@/lib/cart";
 import { trackAddToCart, trackViewContent } from "@/lib/fb-pixel";
 import { formatBDT } from "@/lib/format";
+import { getEffectivePrice } from "@/lib/pricing";
 import type { Product, ProductVariantOption } from "@/types/shared";
 import { Button, Card, Section } from "@/components/ui";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -328,13 +330,14 @@ function ProductInfoSection({ product }: { product: Product }) {
   const visibleDesc =
     isLong && !expanded ? desc.slice(0, DESC_LIMIT).trimEnd() + "…" : desc;
 
+  const effectivePrice = getEffectivePrice(product);
+  const hasDiscount = effectivePrice < product.price;
+
   // Fire pixel view event once per product
   useEffect(() => {
-    trackViewContent(product);
+    trackViewContent({ ...product, price: effectivePrice });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product]);
-
-  const hasSalePrice =
-    product.compareAtPrice != null && product.compareAtPrice > product.price;
 
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
@@ -346,14 +349,20 @@ function ProductInfoSection({ product }: { product: Product }) {
       {/* Price */}
       <div className="flex items-baseline gap-3">
         <span className="text-2xl font-semibold sm:text-3xl">
-          {formatBDT(product.price)}
+          {formatBDT(effectivePrice)}
         </span>
-        {hasSalePrice && (
+        {hasDiscount && (
           <span className="text-base text-fg-muted line-through sm:text-lg">
-            {formatBDT(product.compareAtPrice!)}
+            {formatBDT(product.price)}
           </span>
         )}
       </div>
+
+      {product.freeDelivery && (
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-700 sm:text-sm">
+          <Truck size={14} /> Free delivery
+        </span>
+      )}
 
       {/* Description with See more / See less */}
       {desc && (
@@ -417,7 +426,7 @@ function AddToCartSection({ product }: { product: Product }) {
     [...selectedOptions]
       .reverse()
       .find((option) => typeof option.price === "number")?.price ??
-    product.price;
+    getEffectivePrice(product);
   const selectedSku = selectedOptions
     .map((option) => option.sku)
     .filter(Boolean)
@@ -456,9 +465,36 @@ function AddToCartSection({ product }: { product: Product }) {
     router.push("/checkout");
   }
 
+  const [sizeChartOpen, setSizeChartOpen] = useState(false);
+
   return (
     /* Sticky bar on mobile; normal flow on md+ */
     <div className="pb-safe fixed bottom-0 left-0 right-0 z-50 border-t border-line bg-white/80 p-3 backdrop-blur-xl sm:p-4 md:relative md:z-auto md:mt-8 md:border-none md:bg-transparent md:p-0 md:backdrop-blur-none">
+      {sizeChartOpen && product.sizeChartUrl && createPortal(
+        <div
+          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onClick={() => setSizeChartOpen(false)}>
+          <div
+            className="relative max-h-[90vh] max-w-2xl w-full overflow-auto rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setSizeChartOpen(false)}
+              className="absolute right-3 top-3 z-10 rounded-full bg-white/90 p-1.5 shadow hover:bg-white"
+              aria-label="Close size chart">
+              <X size={18} />
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={product.sizeChartUrl}
+              alt="Size chart"
+              className="w-full rounded-2xl object-contain"
+            />
+          </div>
+        </div>,
+        document.body,
+      )}
+
       <div className="mx-auto flex max-w-[1280px] flex-col gap-3">
         {hasVariants && (
           <div className="grid gap-3 rounded-2xl border border-line bg-white p-3 sm:grid-cols-2">
@@ -494,6 +530,16 @@ function AddToCartSection({ product }: { product: Product }) {
               </div>
             ))}
           </div>
+        )}
+
+        {product.sizeChartUrl && (
+          <button
+            type="button"
+            onClick={() => setSizeChartOpen(true)}
+            className="flex items-center gap-1.5 self-start text-xs font-medium text-fg-muted underline-offset-2 hover:text-foreground hover:underline">
+            <Ruler size={13} />
+            Size Chart
+          </button>
         )}
 
         {/* Qty stepper + confirmation badge */}

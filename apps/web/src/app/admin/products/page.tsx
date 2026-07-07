@@ -46,14 +46,17 @@ interface DraftProduct {
   slug: string;
   category: string;
   price: number;
+  compareAtPrice: number;
   buyingPrice: number;
   stock: number;
+  sizeChartUrl: string;
   description: string;
   images: string[];
   variants: NonNullable<Product["variants"]>;
   isFeatured: boolean;
   isBestSelling: boolean;
   isNewArrival: boolean;
+  freeDelivery: boolean;
 }
 
 const blank = (firstCategorySlug?: string): DraftProduct => ({
@@ -61,14 +64,17 @@ const blank = (firstCategorySlug?: string): DraftProduct => ({
   slug: "",
   category: firstCategorySlug ?? "",
   price: 0,
+  compareAtPrice: 0,
   buyingPrice: 0,
   stock: 0,
+  sizeChartUrl: "",
   description: "",
   images: [],
   variants: [],
   isFeatured: false,
   isBestSelling: false,
   isNewArrival: false,
+  freeDelivery: false,
 });
 
 const PAGE_SIZE = 30;
@@ -97,14 +103,17 @@ function fromProduct(p: Product, categories: Category[]): DraftProduct {
     slug: p.slug,
     category: matchedCategory?.slug ?? "",
     price: p.price,
+    compareAtPrice: p.compareAtPrice ?? 0,
     buyingPrice: p.buyingPrice ?? 0,
     stock: p.stock,
+    sizeChartUrl: p.sizeChartUrl ?? "",
     description: p.description ?? "",
     images: p.images ?? [],
     variants: p.variants ?? [],
     isFeatured: !!(p.isFeatured ?? p.featured),
     isBestSelling: !!p.isBestSelling,
     isNewArrival: !!p.isNewArrival,
+    freeDelivery: !!p.freeDelivery,
   };
 }
 
@@ -322,8 +331,10 @@ export default function AdminProductsPage() {
         draft.title.trim().toLowerCase().replace(/\s+/g, "-"),
       category: selectedCategory._id,
       price: Number(draft.price),
+      compareAtPrice: draft.compareAtPrice > 0 ? Number(draft.compareAtPrice) : undefined,
       buyingPrice: Number(draft.buyingPrice) || 0,
       stock: Number(draft.stock),
+      sizeChartUrl: draft.sizeChartUrl.trim() || undefined,
       description: draft.description,
       images: draft.images,
       variants: draft.variants,
@@ -331,6 +342,7 @@ export default function AdminProductsPage() {
       isFeatured: draft.isFeatured,
       isBestSelling: draft.isBestSelling,
       isNewArrival: draft.isNewArrival,
+      freeDelivery: draft.freeDelivery,
     };
 
     try {
@@ -751,7 +763,7 @@ export default function AdminProductsPage() {
                   </FieldLabel>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <FieldLabel label="Selling price (৳)">
                     <Input
                       type="number"
@@ -765,6 +777,25 @@ export default function AdminProductsPage() {
                     />
                   </FieldLabel>
 
+                  <FieldLabel label="Discount price (৳)">
+                    <Input
+                      type="number"
+                      value={draft.compareAtPrice || ""}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          compareAtPrice: Number(e.target.value),
+                        })
+                      }
+                      placeholder="0"
+                    />
+                    <p className="mt-1 text-[11px] text-fg-muted">
+                      Must be lower than selling price. The selling price will show crossed out.
+                    </p>
+                  </FieldLabel>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
                   <FieldLabel label="Buying price (৳)">
                     <Input
                       type="number"
@@ -777,7 +808,6 @@ export default function AdminProductsPage() {
                       }
                       placeholder="0"
                     />
-
                     <p className="mt-1 text-[11px] text-fg-muted">
                       Wholesale cost per unit. Used to compute gross profit in
                       reports.
@@ -797,6 +827,38 @@ export default function AdminProductsPage() {
                     />
                   </FieldLabel>
                 </div>
+
+                <label className="flex items-start gap-2 rounded-lg border border-line bg-bg-soft p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={draft.freeDelivery}
+                    onChange={(e) =>
+                      setDraft({ ...draft, freeDelivery: e.target.checked })
+                    }
+                  />
+                  <span>
+                    <span className="font-medium">Free delivery</span>
+                    <span className="block text-xs text-fg-muted">
+                      Orders where every item has free delivery are shipped for ৳0.
+                      Otherwise the standard delivery charge applies.
+                    </span>
+                  </span>
+                </label>
+
+                <FieldLabel label="Size chart URL">
+                  <Input
+                    type="text"
+                    value={draft.sizeChartUrl}
+                    onChange={(e) =>
+                      setDraft({ ...draft, sizeChartUrl: e.target.value })
+                    }
+                    placeholder="https://... (image URL for the size chart)"
+                  />
+                  <p className="mt-1 text-[11px] text-fg-muted">
+                    Optional. A &quot;Size Chart&quot; button will appear on the product page.
+                  </p>
+                </FieldLabel>
 
                 <FieldLabel label="Product Images">
                   <div className="space-y-3">

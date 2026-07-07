@@ -7,6 +7,9 @@ import { Trash2, Plus, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
+import { getEffectivePrice } from "@/lib/pricing";
+import { getOrderDeliveryCharge } from "@/lib/delivery";
+import { allLocation } from "@/static/Location";
 import type { Product } from "@/types/shared";
 import {
   Button,
@@ -37,6 +40,7 @@ type Line = {
   originalPrice?: number;
   quantity: number;
   custom?: boolean;
+  freeDelivery?: boolean;
   note?: string;
 };
 
@@ -52,7 +56,6 @@ export default function CustomOrderPage() {
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
-  const [shippingFee, setShippingFee] = useState(0);
   const [discount, setDiscount] = useState(0);
   const [advance, setAdvance] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
@@ -63,12 +66,22 @@ export default function CustomOrderPage() {
     alternativePhone: "",
     email: "",
     address: "",
-    district: "Dhaka",
+    district: "Dhaka City",
     thana: "",
   });
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const locations = useMemo(() => allLocation(), []);
+  const selectedDistrict = useMemo(
+    () => locations.find((item) => item.district === customer.district),
+    [locations, customer.district],
+  );
+  const thanas = useMemo(
+    () => selectedDistrict?.thana.filter(Boolean) || [],
+    [selectedDistrict],
+  );
 
   useEffect(() => {
     api
@@ -104,9 +117,10 @@ export default function CustomOrderPage() {
           productId: p._id,
           title: p.title,
           image: p.images[0],
-          unitPrice: p.price,
+          unitPrice: getEffectivePrice(p),
           originalPrice: p.price,
           quantity: 1,
+          freeDelivery: p.freeDelivery === true,
         },
       ];
     });
@@ -136,6 +150,10 @@ export default function CustomOrderPage() {
   }
 
   const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
+  const shippingFee = getOrderDeliveryCharge(
+    lines.map((l) => ({ freeDelivery: l.freeDelivery })),
+    customer.district,
+  );
   const total = Math.max(0, subtotal + shippingFee - discount);
   const onlinePayment = paymentMethod === "bkash" || paymentMethod === "nagad";
   const paidAmount = onlinePayment && paymentType === "full" ? total : advance;
@@ -329,11 +347,12 @@ export default function CustomOrderPage() {
           )}
 
           <div className="mt-5 grid gap-3 border-t border-line pt-4 sm:grid-cols-2 lg:grid-cols-4">
-            <NumField
-              label="Shipping fee"
-              value={shippingFee}
-              onChange={setShippingFee}
-            />
+            <div className="flex flex-col gap-1">
+              <span className={eyebrow}>Shipping fee (auto)</span>
+              <div className="flex h-11 items-center rounded-[var(--radius-sm)] border border-line bg-bg-soft px-3 text-sm font-medium">
+                {shippingFee === 0 ? "Free delivery" : formatBDT(shippingFee)}
+              </div>
+            </div>
             <NumField label="Discount" value={discount} onChange={setDiscount} />
             <div className="flex flex-col gap-1">
               <span className={eyebrow}>Payment</span>
@@ -415,20 +434,43 @@ export default function CustomOrderPage() {
                 }
               />
               <div className="grid gap-2 sm:grid-cols-2">
-                <Input
-                  placeholder="District"
-                  value={customer.district}
-                  onChange={(e) =>
-                    setCustomer({ ...customer, district: e.target.value })
-                  }
-                />
-                <Input
-                  placeholder="Thana / Area"
-                  value={customer.thana}
-                  onChange={(e) =>
-                    setCustomer({ ...customer, thana: e.target.value })
-                  }
-                />
+                <label className="flex flex-col gap-1">
+                  <span className={eyebrow}>District</span>
+                  <Select
+                    value={customer.district}
+                    onChange={(e) =>
+                      setCustomer({
+                        ...customer,
+                        district: e.target.value,
+                        thana: "",
+                      })
+                    }
+                  >
+                    <option value="">Select district</option>
+                    {locations.map((item) => (
+                      <option key={item.name} value={item.district}>
+                        {item.district}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={eyebrow}>Thana / Area</span>
+                  <Select
+                    value={customer.thana}
+                    onChange={(e) =>
+                      setCustomer({ ...customer, thana: e.target.value })
+                    }
+                    disabled={!customer.district}
+                  >
+                    <option value="">Select thana</option>
+                    {thanas.map((thana) => (
+                      <option key={thana} value={thana}>
+                        {thana}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
               </div>
               <Textarea
                 placeholder="Internal notes"
@@ -516,7 +558,7 @@ export default function CustomOrderPage() {
                         {p.title}
                       </div>
                       <div className="text-xs capitalize text-fg-muted">
-                        {p.category.replace(/-/g, " ")} · {formatBDT(p.price)}
+                        {p.category.replace(/-/g, " ")} · {formatBDT(getEffectivePrice(p))}
                       </div>
                     </div>
                   </li>

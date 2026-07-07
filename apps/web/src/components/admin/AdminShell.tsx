@@ -188,7 +188,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen w-full overflow-x-clip bg-background lg:flex">
-      <aside className="hidden h-screen w-[260px] shrink-0 flex-col border-r border-line bg-white lg:sticky lg:top-0 lg:flex">
+      {/* Backdrop-blur only reads as "glass" when there's colour behind it to
+          reveal — this fixed layer gives the translucent sidebar/header/drawer
+          something to blur, since the dashboard itself is a flat surface. */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-[#0071e3]/25 blur-[110px]" />
+        <div className="absolute left-1/4 top-1/2 h-80 w-80 rounded-full bg-fuchsia-400/15 blur-[110px]" />
+        <div className="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-emerald-300/20 blur-[120px]" />
+      </div>
+
+      <aside className="hidden h-screen w-[260px] shrink-0 flex-col border-r border-line bg-white/70 backdrop-blur-2xl backdrop-saturate-150 lg:sticky lg:top-0 lg:flex">
         <div className="flex h-16 shrink-0 items-center border-b border-line px-5">
           <Link
             href="/"
@@ -219,7 +228,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-line bg-white/90 px-4 backdrop-blur lg:hidden">
+      <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-line bg-white/70 px-4 backdrop-blur-2xl backdrop-saturate-150 lg:hidden">
         <Link
           href="/admin"
           className="flex min-w-0 items-center gap-2 font-semibold">
@@ -249,7 +258,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             onClick={() => setDrawerOpen(false)}
             aria-label="Close admin navigation"
           />
-          <aside className="relative flex h-full min-h-0 w-[min(84vw,320px)] flex-col bg-bg-soft shadow-2xl">
+          <aside className="relative flex h-full min-h-0 w-[min(84vw,320px)] flex-col bg-bg-soft/90 backdrop-blur-2xl backdrop-saturate-150 shadow-2xl">
             <div className="flex h-16 shrink-0 items-center justify-between border-b border-line px-4">
               <Link
                 href="/"
@@ -286,7 +295,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <main className="w-full min-w-0 max-w-full flex-1 overflow-x-clip px-4 py-5 sm:px-6 lg:px-10 lg:py-8 xl:px-12">
+      <main className="relative w-full min-w-0 max-w-full flex-1 overflow-x-clip bg-background px-4 py-5 sm:px-6 lg:px-10 lg:py-8 xl:px-12">
         <div className="mx-auto w-full min-w-0 max-w-[1440px]">{children}</div>
       </main>
     </div>

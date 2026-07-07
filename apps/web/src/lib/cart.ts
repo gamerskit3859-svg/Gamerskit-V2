@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { track } from "@/lib/fb-pixel";
+import { getEffectivePrice } from "@/lib/pricing";
 import type { Product } from "@/types/shared";
 
 export type SelectedVariants = Record<string, string>;
@@ -21,6 +22,7 @@ export type CartLine = {
   unitPrice: number;
   quantity: number;
   category: string;
+  freeDelivery?: boolean;
   selectedVariants?: SelectedVariants;
   variantSku?: string;
 };
@@ -55,7 +57,14 @@ export const useCart = create<CartState>()(
           if (existing) {
             return {
               lines: s.lines.map((l) =>
-                (l.id ?? l.productId) === id ? { ...l, id, quantity: l.quantity + qty } : l,
+                (l.id ?? l.productId) === id
+                  ? {
+                      ...l,
+                      id,
+                      quantity: l.quantity + qty,
+                      freeDelivery: p.freeDelivery === true,
+                    }
+                  : l,
               ),
             };
           }
@@ -68,9 +77,10 @@ export const useCart = create<CartState>()(
                 slug: p.slug,
                 title: p.title,
                 image: p.images[0] ?? "",
-                unitPrice: selection.unitPrice ?? p.price,
+                unitPrice: selection.unitPrice ?? getEffectivePrice(p),
                 quantity: qty,
                 category: p.category,
+                freeDelivery: p.freeDelivery === true,
                 selectedVariants,
                 variantSku: selection.variantSku,
               },

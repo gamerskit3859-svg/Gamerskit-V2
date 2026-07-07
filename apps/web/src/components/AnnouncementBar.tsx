@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Clock, Truck } from "lucide-react";
 
-const DELIVERY_TEXT = "Free Delivery All Over Bangladesh";
+const DELIVERY_TEXT = "Free Delivery All Over Bangladesh (selected)";
 const OFFER_TEXT = "Offer ends in";
 
 function getSecondsUntilReset() {

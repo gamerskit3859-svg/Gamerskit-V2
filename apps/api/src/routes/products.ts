@@ -7,9 +7,9 @@ import { setPrivateNoStore } from "../lib/http.js";
 
 const router = Router();
 const PUBLIC_PRODUCT_FIELDS =
-  "slug title description category categorySlug price compareAtPrice images variants isFeatured isBestSelling isNewArrival featured createdAt updatedAt";
+  "slug title description category categorySlug price compareAtPrice freeDelivery sizeChartUrl images variants isFeatured isBestSelling isNewArrival featured createdAt updatedAt";
 const ADMIN_PRODUCT_FIELDS =
-  "slug title description category categorySlug price compareAtPrice cost buyingPrice stock images variants isFeatured isBestSelling isNewArrival featured createdAt updatedAt";
+  "slug title description category categorySlug price compareAtPrice freeDelivery cost buyingPrice stock sizeChartUrl images variants isFeatured isBestSelling isNewArrival featured createdAt updatedAt";
 
 type VariantGroup = {
   name?: string;

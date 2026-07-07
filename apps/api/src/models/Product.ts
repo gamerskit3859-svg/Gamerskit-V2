@@ -27,9 +27,11 @@ const ProductSchema = new Schema(
     categorySlug: { type: String, default: "", index: true }, // kept for compatibility
     price: { type: Number, required: true, min: 0 },
     compareAtPrice: { type: Number },
+    freeDelivery: { type: Boolean, default: false },
     cost: { type: Number },
     buyingPrice: { type: Number, default: 0, min: 0 },
     stock: { type: Number, default: 0 },
+    sizeChartUrl: { type: String },
     images: { type: [String], default: [] },
     variants: { type: [VariantSchema], default: [] },
     isFeatured: { type: Boolean, default: false },

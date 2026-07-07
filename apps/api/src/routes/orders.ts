@@ -4,6 +4,8 @@ import { z } from "zod";
 import { OrderModel } from "../models/Order.js";
 import { ProductModel } from "../models/Product.js";
 import { CouponModel } from "../models/Coupon.js";
+import { getEffectivePrice } from "../lib/pricing.js";
+import { getOrderDeliveryCharge } from "../lib/delivery.js";
 import { adminRequired, authPayloadFromRequest } from "../lib/auth.js";
 import { hashUserData, newEventId, sendCapiEvent } from "../lib/fb.js";
 import { setPrivateNoStore } from "../lib/http.js";
@@ -152,7 +154,7 @@ router.post("/", async (req, res) => {
     );
   const products = productIds.length
     ? await ProductModel.find({ _id: { $in: productIds } })
-        .select("title images price stock variants")
+        .select("title images price compareAtPrice freeDelivery stock variants")
         .lean()
     : [];
   const productById = new Map(products.map((p) => [String(p._id), p]));
@@ -164,7 +166,8 @@ router.post("/", async (req, res) => {
       const p = productById.get(line.productId);
       if (!p) return line; // product was deleted; honour whatever was on the client
       const selectedVariants = line.selectedVariants ?? {};
-      let unitPrice = typeof p.price === "number" ? p.price : line.unitPrice;
+      let unitPrice =
+        typeof p.price === "number" ? getEffectivePrice(p) : line.unitPrice;
       const variantSkus: string[] = [];
 
       if (Array.isArray(p.variants) && p.variants.length > 0) {
@@ -213,7 +216,18 @@ router.post("/", async (req, res) => {
       return;
     }
   }
-  const total = Math.max(0, subtotal + data.shippingFee - discount);
+
+  // Delivery charge is never trusted from the client: it's always derived
+  // from the centralized delivery rules (free-delivery products / district).
+  const deliveryDistrict = data.customer.district || data.customer.city;
+  const deliveryItems = data.items.map((line) => {
+    if (line.custom || !line.productId) return { freeDelivery: false };
+    const p = productById.get(line.productId);
+    return { freeDelivery: p?.freeDelivery === true };
+  });
+  const shippingFee = getOrderDeliveryCharge(deliveryItems, deliveryDistrict);
+
+  const total = Math.max(0, subtotal + shippingFee - discount);
   const onlinePayment =
     data.paymentMethod === "bkash" || data.paymentMethod === "nagad";
   const paymentType = onlinePayment ? data.paymentType ?? "partial" : null;
@@ -254,7 +268,7 @@ router.post("/", async (req, res) => {
     customer: data.customer,
     items,
     subtotal,
-    shippingFee: data.shippingFee,
+    shippingFee,
     discount,
     total,
     advance: paidAmount,

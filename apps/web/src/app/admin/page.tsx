@@ -209,7 +209,7 @@ export default function AdminDashboard() {
         </UICard>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           label="Revenue"
           value={formatBDT(stats?.revenue ?? 0)}
@@ -376,6 +376,10 @@ function RevenueChart({
   const total = data.reduce((sum, day) => sum + day.total, 0);
   const orders = data.reduce((sum, day) => sum + day.orders, 0);
   const maxLabel = formatBDT(max);
+  // Scale to the number of bars instead of a fixed width, so short ranges
+  // (e.g. "This week") fit on a phone screen without forcing a scrollbar,
+  // while long ranges (e.g. "All time") still scroll horizontally.
+  const chartMinWidth = Math.max(280, data.length * 34 + 60);
 
   return (
     <div>
@@ -395,7 +399,10 @@ function RevenueChart({
       </div>
 
       <div className="overflow-x-auto pb-1">
-        <div className="grid min-w-[520px] grid-cols-[44px_1fr] gap-3">
+        <div
+          className="grid grid-cols-[44px_1fr] gap-3"
+          style={{ minWidth: chartMinWidth }}
+        >
           <div className="flex h-[190px] flex-col justify-between py-1 text-right text-[10px] text-fg-muted">
             <span>{maxLabel}</span>
             <span>{formatBDT(max / 2)}</span>

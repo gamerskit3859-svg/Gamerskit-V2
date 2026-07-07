@@ -69,8 +69,12 @@ export function Header() {
   const [mobileCategoriesOpen, setMobileCategoriesOpen] = useState(false);
   const [authDrawerOpen, setAuthDrawerOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
-  const [expandedMobileCategories, setExpandedMobileCategories] = useState<Record<string, boolean>>({});
+  const [expandedCategories, setExpandedCategories] = useState<
+    Record<string, boolean>
+  >({});
+  const [expandedMobileCategories, setExpandedMobileCategories] = useState<
+    Record<string, boolean>
+  >({});
   const [categories, setCategories] = useState<NavCategory[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesFailed, setCategoriesFailed] = useState(false);
@@ -110,10 +114,7 @@ export function Header() {
   );
 
   const setNavbarVisible = useCallback(
-    (
-      visible: boolean,
-      topOffset = getAnnouncementTopOffset(),
-    ) => {
+    (visible: boolean, topOffset = getAnnouncementTopOffset()) => {
       publishNavState(visible, topOffset);
       if (navVisibleRef.current === visible) return;
       navVisibleRef.current = visible;
@@ -128,7 +129,8 @@ export function Header() {
     api
       .me()
       .then(({ user: currentUser }) => {
-        if (!cancelled) setSession({ token: COOKIE_SESSION, user: currentUser });
+        if (!cancelled)
+          setSession({ token: COOKIE_SESSION, user: currentUser });
       })
       .catch(() => null);
     return () => {
@@ -259,8 +261,7 @@ export function Header() {
         <div key={category._id}>
           <div
             className="flex items-center gap-1"
-            style={{ paddingLeft: depth * 14 }}
-          >
+            style={{ paddingLeft: depth * 14 }}>
             <Link
               href={`/shop?category=${encodeURIComponent(category.slug)}`}
               onClick={() => setCategoriesOpen(false)}
@@ -269,8 +270,7 @@ export function Header() {
                 depth === 0
                   ? "font-semibold text-foreground"
                   : "font-medium text-fg-soft hover:text-foreground",
-              )}
-            >
+              )}>
               <span className="block truncate">{category.name}</span>
             </Link>
             {hasChildren && (
@@ -284,11 +284,13 @@ export function Header() {
                 }
                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-muted hover:bg-bg-soft hover:text-foreground"
                 aria-label={`${expanded ? "Collapse" : "Expand"} ${category.name}`}
-                aria-expanded={expanded}
-              >
+                aria-expanded={expanded}>
                 <ChevronDown
                   size={14}
-                  className={cn("transition-transform", expanded && "rotate-180")}
+                  className={cn(
+                    "transition-transform",
+                    expanded && "rotate-180",
+                  )}
                 />
               </button>
             )}
@@ -313,8 +315,7 @@ export function Header() {
         <li key={category._id}>
           <div
             className="flex items-center gap-1"
-            style={{ paddingLeft: depth * 12 }}
-          >
+            style={{ paddingLeft: depth * 12 }}>
             <Link
               href={`/shop?category=${encodeURIComponent(category.slug)}`}
               onClick={() => {
@@ -326,8 +327,7 @@ export function Header() {
                 depth === 0
                   ? "font-semibold text-foreground"
                   : "font-medium text-fg-soft",
-              )}
-            >
+              )}>
               <span className="truncate">{category.name}</span>
             </Link>
             {hasChildren && (
@@ -341,12 +341,14 @@ export function Header() {
                 }
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-fg-muted hover:bg-bg-soft"
                 aria-label={`${expanded ? "Collapse" : "Expand"} ${category.name}`}
-                aria-expanded={expanded}
-              >
+                aria-expanded={expanded}>
                 <ChevronDown
                   size={16}
                   strokeWidth={1.8}
-                  className={cn("transition-transform", expanded && "rotate-180")}
+                  className={cn(
+                    "transition-transform",
+                    expanded && "rotate-180",
+                  )}
                 />
               </button>
             )}
@@ -371,9 +373,8 @@ export function Header() {
           scrolled && "scrolled",
           !navVisible && "nav-hidden",
         )}
-        aria-label="Primary"
-      >
-        <div className="lg-inner pt-5">
+        aria-label="Primary">
+        <div className="lg-inner pt-5 backdrop-blur-xl">
           <Link href="/" className="lg-logo" aria-label="GK Shop home">
             <Image
               src="/brand/logo.png"
@@ -392,8 +393,7 @@ export function Header() {
             <ul
               className="lg-links"
               ref={navRef}
-              onMouseLeave={() => setActiveIndex(null)}
-            >
+              onMouseLeave={() => setActiveIndex(null)}>
               <div
                 className={cn("lg-pill", activeIndex !== null && "visible")}
                 style={{ left: pillStyle.left, width: pillStyle.width }}
@@ -408,8 +408,7 @@ export function Header() {
                   onMouseEnter={() => {
                     setActiveIndex(i);
                     updatePill(i);
-                  }}
-                >
+                  }}>
                   <Link href={link.href}>{link.label}</Link>
                 </li>
               ))}
@@ -418,18 +417,19 @@ export function Header() {
                   setActiveIndex(null);
                   setCategoriesOpen(true);
                 }}
-                onMouseLeave={() => setCategoriesOpen(false)}
-              >
+                onMouseLeave={() => setCategoriesOpen(false)}>
                 <button
                   type="button"
                   className="lg-nav-trigger"
                   onClick={() => setCategoriesOpen((open) => !open)}
-                  aria-expanded={categoriesOpen}
-                >
+                  aria-expanded={categoriesOpen}>
                   Categories
                   <ChevronDown
                     size={14}
-                    className={cn("transition-transform", categoriesOpen && "rotate-180")}
+                    className={cn(
+                      "transition-transform",
+                      categoriesOpen && "rotate-180",
+                    )}
                   />
                 </button>
                 <AnimatePresence>
@@ -439,8 +439,7 @@ export function Header() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 8 }}
                       transition={{ duration: 0.16 }}
-                      className="absolute left-1/2 top-full z-[70] mt-3 w-64 -translate-x-1/2 rounded-2xl border border-white/70 bg-white/95 p-2 shadow-[0_18px_60px_rgba(0,0,0,0.18)] backdrop-blur-xl"
-                    >
+                      className="absolute left-1/2 top-full z-[70] mt-3 w-64 -translate-x-1/2 rounded-2xl border border-white/70 bg-white/95 p-2 shadow-[0_18px_60px_rgba(0,0,0,0.18)] backdrop-blur-xl">
                       {categoriesLoading ? (
                         <div className="space-y-2 p-2">
                           <div className="h-8 animate-pulse rounded-xl bg-gray-100" />
@@ -470,15 +469,12 @@ export function Header() {
               <Search size={16} strokeWidth={1.8} />
             </Link>
 
-
-
             {!isMobile &&
               (user ? (
                 <Link
                   href={accountHref}
                   className="lg-icon-btn"
-                  aria-label={isAdminUser ? "Admin dashboard" : "My account"}
-                >
+                  aria-label={isAdminUser ? "Admin dashboard" : "My account"}>
                   <User size={16} strokeWidth={1.8} />
                 </Link>
               ) : (
@@ -486,8 +482,7 @@ export function Header() {
                   type="button"
                   onClick={() => openAuth("login")}
                   className="lg-icon-btn"
-                  aria-label="Sign in"
-                >
+                  aria-label="Sign in">
                   <User size={14} strokeWidth={2} />
                 </button>
               ))}
@@ -505,8 +500,7 @@ export function Header() {
                   setMobileDrawerOpen(true);
                 }}
                 className="lg-icon-btn"
-                aria-label="Open menu"
-              >
+                aria-label="Open menu">
                 <Menu size={18} strokeWidth={1.8} />
               </button>
             )}
@@ -535,14 +529,12 @@ export function Header() {
               exit={{ x: "-100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
               className="fixed bottom-0 left-0 top-0 z-[100] flex w-[min(320px,calc(100vw-24px))] flex-col bg-[linear-gradient(160deg,rgba(255,255,255,0.97),rgba(245,245,247,0.99))] shadow-[4px_0_40px_rgba(0,0,0,0.14)] backdrop-blur-[40px] backdrop-saturate-200"
-              aria-label="Mobile navigation"
-            >
+              aria-label="Mobile navigation">
               <div className="flex h-[76px] items-center justify-between border-b border-line/60 px-5">
                 <Link
                   href="/"
                   onClick={() => setMobileDrawerOpen(false)}
-                  className="flex items-center gap-2 text-foreground no-underline"
-                >
+                  className="flex items-center gap-2 text-foreground no-underline">
                   <Image
                     src="/brand/logo.png"
                     alt=""
@@ -558,8 +550,7 @@ export function Header() {
                   type="button"
                   onClick={() => setMobileDrawerOpen(false)}
                   className="lg-icon-btn"
-                  aria-label="Close menu"
-                >
+                  aria-label="Close menu">
                   <X size={18} strokeWidth={1.8} />
                 </button>
               </div>
@@ -579,8 +570,7 @@ export function Header() {
                           pathname === link.href
                             ? "bg-black text-white"
                             : "text-foreground hover:bg-bg-soft",
-                        )}
-                      >
+                        )}>
                         {link.label}
                       </Link>
                     </li>
@@ -590,8 +580,7 @@ export function Header() {
                       type="button"
                       onClick={() => setMobileCategoriesOpen((open) => !open)}
                       className="mt-1 flex min-h-12 w-full items-center justify-between rounded-xl px-4 py-3 text-left text-[15px] font-medium text-foreground hover:bg-bg-soft"
-                      aria-expanded={mobileCategoriesOpen}
-                    >
+                      aria-expanded={mobileCategoriesOpen}>
                       <span>Categories</span>
                       <ChevronDown
                         size={17}
@@ -610,8 +599,7 @@ export function Header() {
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
                           transition={{ duration: 0.22, ease: "easeOut" }}
-                          className="overflow-hidden"
-                        >
+                          className="overflow-hidden">
                           <div className="pb-1 pl-3 pt-1">
                             {categoriesLoading ? (
                               <div className="space-y-2 px-3 py-2">
@@ -646,8 +634,7 @@ export function Header() {
                     <Link
                       href={accountHref}
                       onClick={() => setMobileDrawerOpen(false)}
-                      className="flex items-center gap-3 rounded-xl bg-black/[0.04] px-4 py-3 text-[15px] font-medium text-foreground no-underline"
-                    >
+                      className="flex items-center gap-3 rounded-xl bg-black/[0.04] px-4 py-3 text-[15px] font-medium text-foreground no-underline">
                       <User size={16} strokeWidth={1.8} />
                       {isAdminUser ? "Admin Dashboard" : "My Account"}
                     </Link>
@@ -659,8 +646,7 @@ export function Header() {
                         clear();
                         setMobileDrawerOpen(false);
                       }}
-                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-[15px] font-medium text-red-500"
-                    >
+                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-[15px] font-medium text-red-500">
                       Sign out
                     </button>
                   </>
@@ -669,16 +655,14 @@ export function Header() {
                     <button
                       type="button"
                       onClick={() => openAuth("login")}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-[15px] font-medium text-white"
-                    >
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-[15px] font-medium text-white">
                       <User size={15} strokeWidth={2} />
                       Sign In
                     </button>
                     <button
                       type="button"
                       onClick={() => openAuth("register")}
-                      className="flex w-full items-center justify-center rounded-xl border border-line-strong px-4 py-3 text-[15px] font-medium text-foreground"
-                    >
+                      className="flex w-full items-center justify-center rounded-xl border border-line-strong px-4 py-3 text-[15px] font-medium text-foreground">
                       Create Account
                     </button>
                   </>

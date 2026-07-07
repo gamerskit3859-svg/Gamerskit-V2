@@ -55,6 +55,8 @@ export interface Product {
   category: string;
   price: number;
   compareAtPrice?: number;
+  freeDelivery?: boolean;
+  sizeChartUrl?: string;
   cost?: number;
   /** Buying / wholesale price per unit, used for gross profit calculations. */
   buyingPrice?: number;
