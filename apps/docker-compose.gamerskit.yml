@@ -17,7 +17,7 @@
 services:
   # ── Express API  →  host:4202 ──────────────────────────────────────────────
   api:
-    image: nasi07/gamerskit-api:1.0.0
+    image: nasi07/gamerskit-api:1.1.0
     container_name: gamerskit-api
     restart: unless-stopped
     env_file:
@@ -29,7 +29,7 @@ services:
 
   # ── Next.js frontend  →  host:4200 ────────────────────────────────────────
   web:
-    image: nasi07/gamerskit-web:1.0.1
+    image: nasi07/gamerskit-web:1.1.0
     container_name: gamerskit-web
     restart: unless-stopped
     env_file:
