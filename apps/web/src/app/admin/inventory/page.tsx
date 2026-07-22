@@ -2,7 +2,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { AlertTriangle, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
@@ -65,6 +66,7 @@ export default function InventoryPage() {
     debouncedValue: searchQuery,
   } = useDebouncedSearch("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [damageTarget, setDamageTarget] = useState<Product | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +133,30 @@ export default function InventoryPage() {
     const delta = value - product.stock;
     if (delta === 0) return;
     await adjust(id, delta);
+  }
+
+  async function markDamaged(
+    id: string,
+    quantity: number,
+    reason: string,
+  ): Promise<boolean> {
+    const token = getAdminToken();
+    if (!token) return false;
+    setBusyId(id);
+    setError(null);
+    try {
+      const r = await api.markDamaged(id, { quantity, reason: reason || undefined }, token);
+      setItems((prev) => prev.map((p) => (p._id === id ? r.item : p)));
+      const summaryResult = await api.inventorySummary(token);
+      setSummary(summaryResult);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to record damage.";
+      setError(message);
+      return false;
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function setPrice(id: string, value: number) {
@@ -219,13 +245,14 @@ export default function InventoryPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-[820px] w-full text-sm">
+            <table className="min-w-[960px] w-full text-sm">
               <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
                   <th className="px-4 py-3">Product</th>
                   <th className="px-4 py-3">Category</th>
                   <th className="w-40 px-4 py-3">Price</th>
                   <th className="w-56 px-4 py-3">Stock</th>
+                  <th className="w-40 px-4 py-3">Damaged</th>
                   <th className="w-20 px-4 py-3">View</th>
                 </tr>
               </thead>
@@ -329,6 +356,17 @@ export default function InventoryPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => setDamageTarget(p)}
+                        disabled={busyId === p._id}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-fg-soft transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        Mark damaged
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
                       <Link
                         href={`/product/${p.slug}`}
                         target="_blank"
@@ -370,6 +408,214 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
+
+      <DamageModal
+        product={damageTarget}
+        busy={damageTarget ? busyId === damageTarget._id : false}
+        onClose={() => setDamageTarget(null)}
+        onConfirm={async (quantity, reason) => {
+          if (!damageTarget) return;
+          const ok = await markDamaged(damageTarget._id, quantity, reason);
+          if (ok) setDamageTarget(null);
+        }}
+      />
     </motion.div>
+  );
+}
+
+/**
+ * Modal for writing off damaged units of a product. Shows product context and
+ * a live loss estimate; confirming decrements stock and deducts the buying
+ * cost from accounting.
+ */
+function DamageModal({
+  product,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  product: Product | null;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (quantity: number, reason: string) => void | Promise<void>;
+}) {
+  const [qty, setQty] = useState(1);
+  const [reason, setReason] = useState("");
+
+  // Reset the form whenever a different product is opened.
+  useEffect(() => {
+    if (product) {
+      setQty(1);
+      setReason("");
+    }
+  }, [product]);
+
+  // Close on Escape while the modal is open.
+  useEffect(() => {
+    if (!product) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !busy) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [product, busy, onClose]);
+
+  const onHand = product ? totalStock(product) : 0;
+  const unitCost = product?.buyingPrice ?? 0;
+  const estimatedLoss = unitCost * Math.max(0, qty);
+
+  function submit() {
+    if (!Number.isFinite(qty) || qty < 1) return;
+    void onConfirm(Math.floor(qty), reason.trim());
+  }
+
+  return (
+    <AnimatePresence>
+      {product && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !busy) onClose();
+          }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 12 }}
+            transition={{ duration: 0.18 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="damage-modal-title"
+            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl sm:p-6"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+                  <AlertTriangle className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2
+                    id="damage-modal-title"
+                    className="text-base font-semibold tracking-tight"
+                  >
+                    Mark damaged
+                  </h2>
+                  <p className="mt-0.5 text-xs text-fg-soft">
+                    Writes off stock and records the loss in accounting.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={busy}
+                aria-label="Close"
+                className="rounded-lg p-1 text-fg-muted transition-colors hover:bg-bg-soft hover:text-foreground disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 flex items-center gap-3 rounded-xl border border-line bg-bg-soft/60 p-3">
+              <div className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-lg bg-white">
+                {product.images?.[0] && (
+                  <Image
+                    src={product.images[0]}
+                    alt=""
+                    fill
+                    sizes="44px"
+                    className="object-cover"
+                  />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{product.title}</div>
+                <div className="mt-0.5 text-xs text-fg-soft">
+                  In stock: <span className="font-medium text-foreground">{onHand}</span>
+                  {unitCost > 0 && <> · Buying price {formatBDT(unitCost)}</>}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-fg-soft">
+                  Damaged quantity
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQty((n) => Math.max(1, n - 1))}
+                    disabled={busy || qty <= 1}
+                    className="h-9 w-9 rounded-lg border border-line text-lg leading-none text-fg-soft transition-colors hover:bg-bg-soft disabled:opacity-50"
+                    aria-label="Decrease quantity"
+                  >
+                    −
+                  </button>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={qty}
+                    onChange={(e) => setQty(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                    className="!w-20 text-center"
+                    aria-label="Damaged quantity"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setQty((n) => n + 1)}
+                    disabled={busy}
+                    className="h-9 w-9 rounded-lg border border-line text-lg leading-none text-fg-soft transition-colors hover:bg-bg-soft disabled:opacity-50"
+                    aria-label="Increase quantity"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-fg-soft">
+                  Reason <span className="text-fg-muted">(optional)</span>
+                </label>
+                <Input
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="e.g. broken in transit, water damage"
+                  maxLength={200}
+                  aria-label="Damage reason"
+                />
+              </div>
+
+              {unitCost > 0 && (
+                <div className="flex items-center justify-between rounded-xl bg-rose-50 px-4 py-3">
+                  <span className="text-xs font-medium uppercase tracking-wide text-rose-700">
+                    Estimated loss
+                  </span>
+                  <span className="text-lg font-semibold tabular-nums text-rose-700">
+                    −{formatBDT(estimatedLoss)}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
+                Cancel
+              </Button>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={busy || qty < 1}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-rose-700 disabled:opacity-50"
+              >
+                {busy ? "Saving…" : `Write off ${qty} unit${qty === 1 ? "" : "s"}`}
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

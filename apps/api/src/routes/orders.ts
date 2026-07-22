@@ -279,6 +279,9 @@ router.post("/", async (req, res) => {
     senderNumber: onlinePayment ? (data.senderNumber ?? "").replace(/\D/g, "") : null,
     paymentMethod: data.paymentMethod,
     paymentStatus,
+    // New orders land as "confirmed" (not "pending") so they immediately show
+    // up in the admin's actionable queue without a manual confirm step.
+    status: "confirmed",
     source: data.source,
     notes: data.notes,
     couponCode,

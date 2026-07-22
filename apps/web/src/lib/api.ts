@@ -105,6 +105,26 @@ export interface ShopBannerItem {
   updatedAt?: string;
 }
 
+/** Portfolio CMS (hidden /admin/gooblique section). */
+export interface GoobliqueHero {
+  title: string;
+  subtitle: string;
+  media: { type: "image" | "video"; url: string } | null;
+}
+
+export interface DemoVideoItem {
+  _id: string;
+  title: string;
+  video: {
+    url: string;
+    key: string;
+  };
+  orientation: "portrait" | "landscape";
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SteadfastStatusResponse {
   item: unknown;
   order?: Order;
@@ -136,7 +156,11 @@ async function request<T>(
   },
 ): Promise<T> {
   const headers = new Headers(init?.headers);
-  headers.set("content-type", "application/json");
+  // Multipart uploads must keep the browser-generated content-type, which
+  // carries the boundary — setting it by hand makes the body unparseable.
+  if (!(init?.body instanceof FormData)) {
+    headers.set("content-type", "application/json");
+  }
   const authToken =
     init?.token && init.token !== "cookie-session" ? init.token : storedAuthToken();
   if (authToken && !headers.has("authorization")) {
@@ -186,6 +210,9 @@ async function request<T>(
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
+
+/** A 100MB video on a slow uplink needs far longer than the 12s default. */
+const UPLOAD_TIMEOUT_MS = 10 * 60_000;
 
 const qs = (params: Record<string, unknown>) => {
   const u = new URLSearchParams();
@@ -377,6 +404,9 @@ export const api = {
       grossRevenue: number;
       grossCost: number;
       grossProfit: number;
+      damagedQuantity: number;
+      damagedCost: number;
+      damagedEntries: number;
       statusBreakdown: Record<string, number>;
       revenueByDay: Array<{ _id: string; total: number; orders: number }>;
     }>(`/api/admin/stats${qs(params)}`, { token }),
@@ -397,6 +427,8 @@ export const api = {
       grossCost: number;
       grossProfit: number;
       grossMargin: number;
+      damagedQuantity: number;
+      damagedCost: number;
       transactions: Array<{
         _id: string;
         orderNumber: string;
@@ -463,6 +495,43 @@ export const api = {
       body: JSON.stringify({ delta }),
       token,
     }),
+  markDamaged: (
+    id: string,
+    body: { quantity: number; reason?: string },
+    token: string,
+  ) =>
+    request<{
+      item: Product;
+      damaged: {
+        _id: string;
+        title: string;
+        quantity: number;
+        unitCost: number;
+        totalCost: number;
+        reason: string;
+        createdAt: string;
+      };
+    }>(`/api/admin/products/${id}/damage`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      token,
+    }),
+  listDamaged: (params: { from?: string; to?: string; limit?: number }, token: string) =>
+    request<{
+      items: Array<{
+        _id: string;
+        productId?: string;
+        title: string;
+        quantity: number;
+        unitCost: number;
+        totalCost: number;
+        reason: string;
+        createdAt: string;
+      }>;
+      quantity: number;
+      cost: number;
+      entries: number;
+    }>(`/api/admin/damaged${qs(params)}`, { token }),
   updateProduct: (id: string, body: Partial<Product>, token: string) =>
     request<{ item: Product }>(`/api/products/${id}`, {
       method: "PATCH",
@@ -617,6 +686,50 @@ export const api = {
     token: string,
   ) =>
     request<{ items: HeroImageItem[] }>(`/api/hero-images/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ order }),
+      token,
+    }),
+
+  // === Portfolio CMS (hidden) ===
+  // Video uploads are large, so they opt out of the default 12s request timeout.
+  getGoobliqueHero: () =>
+    request<GoobliqueHero>(`/api/v1/gooblique/hero`, { cache: "no-store" }),
+  updateGoobliqueHero: (body: FormData, token: string) =>
+    request<GoobliqueHero>(`/api/v1/gooblique/hero`, {
+      method: "PUT",
+      body,
+      token,
+      timeoutMs: UPLOAD_TIMEOUT_MS,
+    }),
+  listDemoVideos: () =>
+    request<{ items: DemoVideoItem[] }>(`/api/v1/gooblique/demo-videos`, {
+      cache: "no-store",
+    }),
+  createDemoVideo: (body: FormData, token: string) =>
+    request<{ item: DemoVideoItem }>(`/api/v1/gooblique/demo-videos`, {
+      method: "POST",
+      body,
+      token,
+      timeoutMs: UPLOAD_TIMEOUT_MS,
+    }),
+  updateDemoVideo: (id: string, body: FormData, token: string) =>
+    request<{ item: DemoVideoItem }>(`/api/v1/gooblique/demo-videos/${id}`, {
+      method: "PUT",
+      body,
+      token,
+      timeoutMs: UPLOAD_TIMEOUT_MS,
+    }),
+  deleteDemoVideo: (id: string, token: string) =>
+    request<{ item: DemoVideoItem }>(`/api/v1/gooblique/demo-videos/${id}`, {
+      method: "DELETE",
+      token,
+    }),
+  reorderDemoVideos: (
+    order: Array<{ id: string; order: number }>,
+    token: string,
+  ) =>
+    request<{ items: DemoVideoItem[] }>(`/api/v1/gooblique/demo-videos/reorder`, {
       method: "POST",
       body: JSON.stringify({ order }),
       token,

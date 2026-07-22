@@ -44,10 +44,15 @@ export default function AdminDashboard() {
     async function run() {
       const token = getAdminToken();
       if (!token) return;
+      // Wait until the session role is resolved. AdminShell populates `user`
+      // asynchronously via api.me(); firing admin-only requests while the role
+      // is still unknown (or for a non-admin session that is about to be
+      // redirected away) produces spurious 403 "admin only" responses.
+      if (!user) return;
       setLoading(true);
       setError(null);
       try {
-        if (user?.role === "staff") {
+        if (user.role === "staff") {
           const pending = await api.listOrdersAdmin(
             { status: "pending", page: 1, limit: 12 },
             token,
@@ -56,6 +61,11 @@ export default function AdminDashboard() {
           setRecent(pending.items);
           return;
         }
+
+        // Dashboard KPIs and the courier balance are admin-only. Non-admin
+        // sessions never render this view (AdminShell redirects them), so skip
+        // the requests rather than let them 403.
+        if (user.role !== "admin") return;
 
         const [statsResult, topResult, recentResult, categoriesResult] =
           await Promise.allSettled([
@@ -190,13 +200,17 @@ export default function AdminDashboard() {
           Admin
         </span>
         <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
-            <p className="mt-1 text-sm text-fg-soft">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              Dashboard
+            </h1>
+            <p className="mt-1 break-words text-sm text-fg-soft">
               {range.label} · {range.from} → {range.to}
             </p>
           </div>
-          <LinkButton href="/admin/orders/new">+ Custom order</LinkButton>
+          <LinkButton href="/admin/orders/new" className="shrink-0">
+            + Custom order
+          </LinkButton>
         </div>
         <div className="mt-5">
           <DateRangePicker value={range} onChange={setRange} />
@@ -209,7 +223,7 @@ export default function AdminDashboard() {
         </UICard>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard
           label="Revenue"
           value={formatBDT(stats?.revenue ?? 0)}
@@ -228,6 +242,13 @@ export default function AdminDashboard() {
         <StatCard
           label="Items sold"
           value={(stats?.productsSold ?? 0).toString()}
+          loading={loading}
+        />
+        <StatCard
+          label="Damaged loss"
+          value={formatBDT(stats?.damagedCost ?? 0)}
+          hint={`${stats?.damagedQuantity ?? 0} unit${(stats?.damagedQuantity ?? 0) === 1 ? "" : "s"} written off`}
+          tone={(stats?.damagedCost ?? 0) > 0 ? "negative" : "default"}
           loading={loading}
         />
         <StatCard
@@ -264,6 +285,38 @@ export default function AdminDashboard() {
           )}
         </PanelCard>
       </div>
+
+      <PanelCard title="Damaged goods" className="mt-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <DamagedStat
+            label="Units written off"
+            value={(stats?.damagedQuantity ?? 0).toLocaleString()}
+            loading={loading}
+          />
+          <DamagedStat
+            label="Buying loss"
+            value={formatBDT(stats?.damagedCost ?? 0)}
+            tone={(stats?.damagedCost ?? 0) > 0 ? "negative" : "default"}
+            loading={loading}
+          />
+          <DamagedStat
+            label="Write-offs"
+            value={(stats?.damagedEntries ?? 0).toLocaleString()}
+            loading={loading}
+          />
+        </div>
+        <p className="mt-3 text-xs text-fg-muted">
+          Buying cost of damaged units is deducted from profit in{" "}
+          <Link href="/admin/reports" className="underline underline-offset-2">
+            Accounting
+          </Link>
+          . Mark damaged stock from{" "}
+          <Link href="/admin/inventory" className="underline underline-offset-2">
+            Inventory
+          </Link>
+          .
+        </p>
+      </PanelCard>
 
       <PanelCard title="Categories" className="mt-5">
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
@@ -353,7 +406,7 @@ function PanelCard({
   className?: string;
 }) {
   return (
-    <UICard tone="soft" className={cn(className)}>
+    <UICard tone="soft" className={cn("min-w-0", className)}>
       <h3 className="mb-4 text-sm font-semibold">{title}</h3>
       {children}
     </UICard>
@@ -363,6 +416,34 @@ function PanelCard({
 function Empty() {
   return (
     <div className="text-sm text-fg-muted">No data for this range.</div>
+  );
+}
+
+function DamagedStat({
+  label,
+  value,
+  tone = "default",
+  loading,
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "negative";
+  loading?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-line bg-white p-4">
+      <div className="text-xs font-medium uppercase tracking-wide text-fg-soft">
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-1.5 text-xl font-semibold tabular-nums sm:text-2xl",
+          tone === "negative" && "text-red-600",
+        )}
+      >
+        {loading ? "…" : value}
+      </div>
+    </div>
   );
 }
 
@@ -378,11 +459,12 @@ function RevenueChart({
   const maxLabel = formatBDT(max);
   // Scale to the number of bars instead of a fixed width, so short ranges
   // (e.g. "This week") fit on a phone screen without forcing a scrollbar,
-  // while long ranges (e.g. "All time") still scroll horizontally.
-  const chartMinWidth = Math.max(280, data.length * 34 + 60);
+  // while long ranges (e.g. "All time") still scroll horizontally. Kept small
+  // enough that a ~1-week range fits inside a narrow mobile card.
+  const chartMinWidth = Math.max(220, data.length * 26 + 52);
 
   return (
-    <div>
+    <div className="min-w-0">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="text-2xl font-semibold tracking-tight">
@@ -400,7 +482,7 @@ function RevenueChart({
 
       <div className="overflow-x-auto pb-1">
         <div
-          className="grid grid-cols-[44px_1fr] gap-3"
+          className="grid grid-cols-[36px_1fr] gap-2 sm:grid-cols-[44px_1fr] sm:gap-3"
           style={{ minWidth: chartMinWidth }}
         >
           <div className="flex h-[190px] flex-col justify-between py-1 text-right text-[10px] text-fg-muted">

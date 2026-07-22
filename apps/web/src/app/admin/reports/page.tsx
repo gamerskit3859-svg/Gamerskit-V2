@@ -77,6 +77,8 @@ interface Reports {
   grossCost: number;
   grossProfit: number;
   grossMargin: number;
+  damagedQuantity: number;
+  damagedCost: number;
   transactions: Array<{
     _id: string;
     orderNumber: string;
@@ -441,6 +443,8 @@ export default function AccountingPage() {
   const grossProfit = reports?.grossProfit ?? 0;
   const grossCost = reports?.grossCost ?? 0;
   const grossRevenue = reports?.grossRevenue ?? 0;
+  const damagedCost = reports?.damagedCost ?? 0;
+  const damagedQuantity = reports?.damagedQuantity ?? 0;
 
   // Money In = top-line gross sales + shipping charged − refunds.
   // (Standard income-statement view: COGS is deducted on the Money Out side.)
@@ -451,6 +455,12 @@ export default function AccountingPage() {
   const expenseBreakdown = useMemo(
     () => [
       { key: "cogs", label: "Cost of goods sold", value: grossCost, color: "#0f172a" },
+      {
+        key: "damaged",
+        label: "Damaged goods",
+        value: damagedCost,
+        color: "#e11d48",
+      },
       {
         key: "shipping",
         label: "Shipping",
@@ -472,7 +482,7 @@ export default function AccountingPage() {
         color: CUSTOM_COLORS[i % CUSTOM_COLORS.length],
       })),
     ],
-    [grossCost, overrides],
+    [grossCost, damagedCost, overrides],
   );
   const moneyOutTotal = expenseBreakdown.reduce((n, r) => n + r.value, 0);
 
@@ -651,6 +661,17 @@ export default function AccountingPage() {
             value={grossCost}
             auto
             hint="Sum of buyingPrice × qty across paid line items"
+          />
+          <MoneyRow
+            key={`mo-dmg-${from}-${to}-${damagedCost}`}
+            label="Damaged goods"
+            value={damagedCost}
+            auto
+            hint={
+              damagedQuantity > 0
+                ? `Buying cost of ${damagedQuantity} damaged unit${damagedQuantity === 1 ? "" : "s"}`
+                : "Buying cost of units marked damaged"
+            }
           />
           <MoneyRow
             key={`mo-ship-${from}-${to}-${loadVersion}`}

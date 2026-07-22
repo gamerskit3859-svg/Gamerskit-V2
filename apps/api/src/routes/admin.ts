@@ -6,6 +6,7 @@ import { ProductModel } from "../models/Product.js";
 import { UserModel } from "../models/User.js";
 import { CouponModel } from "../models/Coupon.js";
 import { AccountingOverrideModel } from "../models/AccountingOverride.js";
+import { DamagedItemModel } from "../models/DamagedItem.js";
 import { adminOnlyRequired, adminRequired, hashPassword } from "../lib/auth.js";
 import { setPrivateNoStore } from "../lib/http.js";
 import {
@@ -60,6 +61,7 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
     lowStockCount,
     newCustomers,
     grossAgg,
+    damagedAgg,
   ] = await Promise.all([
     OrderModel.countDocuments(orderMatch),
     OrderModel.aggregate([
@@ -123,11 +125,25 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
         },
       },
     ]),
+    DamagedItemModel.aggregate([
+      ...(dateFilter ? [{ $match: { createdAt: dateFilter } }] : []),
+      {
+        $group: {
+          _id: null,
+          quantity: { $sum: "$quantity" },
+          cost: { $sum: "$totalCost" },
+          entries: { $sum: 1 },
+        },
+      },
+    ]),
   ]);
 
   const grossRevenue = grossAgg[0]?.revenue ?? 0;
   const grossCost = grossAgg[0]?.cost ?? 0;
   const grossProfit = grossRevenue - grossCost;
+  const damagedQuantity = damagedAgg[0]?.quantity ?? 0;
+  const damagedCost = damagedAgg[0]?.cost ?? 0;
+  const damagedEntries = damagedAgg[0]?.entries ?? 0;
   const revenueByDayRows = normalizeRevenueByDay(
     revenueByDay as RevenueDay[],
     from,
@@ -146,6 +162,9 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
     grossRevenue,
     grossCost,
     grossProfit,
+    damagedQuantity,
+    damagedCost,
+    damagedEntries,
     statusBreakdown: Object.fromEntries(
       (statusBreakdown as Array<{ _id: string; count: number }>).map((r) => [r._id, r.count]),
     ),
@@ -197,6 +216,7 @@ router.get("/reports", adminRequired, async (req, res) => {
     repeatBuyers,
     grossAgg,
     transactions,
+    damagedAgg,
   ] = await Promise.all([
     OrderModel.aggregate([
       { $match: match },
@@ -271,12 +291,24 @@ router.get("/reports", adminRequired, async (req, res) => {
       .limit(15)
       .select("orderNumber total status paymentMethod customer.name createdAt")
       .lean(),
+    DamagedItemModel.aggregate([
+      ...(dateFilter ? [{ $match: { createdAt: dateFilter } }] : []),
+      {
+        $group: {
+          _id: null,
+          quantity: { $sum: "$quantity" },
+          cost: { $sum: "$totalCost" },
+        },
+      },
+    ]),
   ]);
 
   const grossRevenue = grossAgg[0]?.revenue ?? 0;
   const grossCost = grossAgg[0]?.cost ?? 0;
   const grossProfit = grossRevenue - grossCost;
   const grossMargin = grossRevenue > 0 ? grossProfit / grossRevenue : 0;
+  const damagedQuantity = damagedAgg[0]?.quantity ?? 0;
+  const damagedCost = damagedAgg[0]?.cost ?? 0;
 
   res.json({
     byCategory,
@@ -289,6 +321,8 @@ router.get("/reports", adminRequired, async (req, res) => {
     grossCost,
     grossProfit,
     grossMargin,
+    damagedQuantity,
+    damagedCost,
     transactions,
   });
 });
@@ -515,6 +549,79 @@ router.post("/products/:id/stock", adminRequired, async (req, res) => {
     return;
   }
   res.json({ item: updated });
+});
+
+// === Inventory: mark units as damaged ===
+// Decrements on-hand stock and records the loss (buyingPrice × quantity) so it
+// can be deducted from accounting and summarised on the dashboard.
+const damageSchema = z.object({
+  quantity: z.number().int().min(1),
+  reason: z.string().max(200).optional(),
+});
+
+router.post("/products/:id/damage", adminRequired, async (req, res) => {
+  const parsed = damageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const product = await ProductModel.findById(req.params.id).lean();
+  if (!product) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
+  const { quantity, reason } = parsed.data;
+  const unitCost = product.buyingPrice ?? 0;
+  const totalCost = unitCost * quantity;
+
+  const [updated, damaged] = await Promise.all([
+    ProductModel.findByIdAndUpdate(
+      req.params.id,
+      { $inc: { stock: -quantity } },
+      { new: true },
+    ).lean(),
+    DamagedItemModel.create({
+      productId: product._id,
+      title: product.title,
+      quantity,
+      unitCost,
+      totalCost,
+      reason: reason ?? "",
+    }),
+  ]);
+
+  res.status(201).json({ item: updated, damaged });
+});
+
+// Recent damaged write-offs (optionally filtered by date range).
+router.get("/damaged", adminRequired, async (req, res) => {
+  const { from, to, limit = "20" } = req.query as Record<string, string>;
+  const dateFilter = buildDateFilter(from, to);
+  const filter: Record<string, unknown> = {};
+  if (dateFilter) filter.createdAt = dateFilter;
+  const [items, totals] = await Promise.all([
+    DamagedItemModel.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Number(limit) || 20, 100))
+      .lean(),
+    DamagedItemModel.aggregate([
+      ...(dateFilter ? [{ $match: { createdAt: dateFilter } }] : []),
+      {
+        $group: {
+          _id: null,
+          quantity: { $sum: "$quantity" },
+          cost: { $sum: "$totalCost" },
+          entries: { $sum: 1 },
+        },
+      },
+    ]),
+  ]);
+  res.json({
+    items,
+    quantity: totals[0]?.quantity ?? 0,
+    cost: totals[0]?.cost ?? 0,
+    entries: totals[0]?.entries ?? 0,
+  });
 });
 
 // === Coupons CRUD ===

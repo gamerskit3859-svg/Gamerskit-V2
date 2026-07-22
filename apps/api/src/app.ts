@@ -21,6 +21,7 @@ import settingsRouter from "./routes/settings.js";
 import fbRouter from "./routes/fb.js";
 import steadfastRouter from "./routes/steadfast.js";
 import feedRouter from "./routes/feed.js";
+import goobliqueRouter from "./routes/gooblique/index.js";
 
 const require = createRequire(import.meta.url);
 
@@ -189,6 +190,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use("/api/admin/users", adminUsersRouter);
   app.use("/api/fb", fbRouter);
   app.use("/api/feed", feedRouter);
+  app.use("/api/v1/gooblique", goobliqueRouter);
 
   // 7) 404 + centralized JSON error handler.
   app.use(notFoundHandler);
