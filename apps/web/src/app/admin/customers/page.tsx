@@ -7,6 +7,7 @@ import { formatBDT, formatDateTime } from "@/lib/format";
 import { useDebouncedSearch } from "@/lib/hooks";
 import type { AdminCustomer } from "@/types/shared";
 import { Button, Card, Input } from "@/components/ui";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 
 const PAGE_SIZE = 30;
 
@@ -60,18 +61,15 @@ export default function CustomersPage() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      <header className="mb-6">
-        <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
-          Admin
-        </span>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Customers</h1>
-        <p className="mt-1 text-sm text-fg-soft">
-          {total} unique customers across the order history.
-        </p>
-        <div className="mt-5">
+      <AdminPageHeader
+        title="Customers"
+        description={`${total} unique customers across the order history.`}
+      >
+        <div className="mt-4 sm:mt-5">
           <Input
             className="!w-full sm:!w-80"
             placeholder="Search by name, phone, or email…"
+            aria-label="Search customers"
             value={q}
             onChange={(e) => {
               setPage(1);
@@ -79,7 +77,7 @@ export default function CustomersPage() {
             }}
           />
         </div>
-      </header>
+      </AdminPageHeader>
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -95,7 +93,54 @@ export default function CustomersPage() {
             No customers match.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Six columns cannot survive a 390px screen, so below md each
+                customer becomes a card carrying the same figures. */}
+            <ul className="divide-y divide-line md:hidden">
+              {items.map((c, i) => (
+                <li key={`${c._id}-${i}`} className="bg-white p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {c.name || "—"}
+                      </p>
+                      <p className="truncate text-xs text-fg-soft">
+                        {c.phone ? (
+                          <a
+                            href={`tel:${c.phone}`}
+                            className="underline underline-offset-2"
+                          >
+                            {c.phone}
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                        {c.city && ` · ${c.city}`}
+                      </p>
+                      {c.email && (
+                        <p className="truncate text-[11px] text-fg-muted">
+                          {c.email}
+                        </p>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm font-semibold">
+                        {formatBDT(c.revenue)}
+                      </p>
+                      <p className="text-[11px] text-fg-muted">
+                        {c.orders} {c.orders === 1 ? "order" : "orders"}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-fg-muted">
+                    Last order{" "}
+                    {c.lastOrderAt ? formatDateTime(c.lastOrderAt) : "—"}
+                  </p>
+                </li>
+              ))}
+            </ul>
+
+            <div className="hidden overflow-x-auto md:block">
             <table className="min-w-[760px] w-full text-sm">
               <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
@@ -134,7 +179,8 @@ export default function CustomersPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </Card>
 

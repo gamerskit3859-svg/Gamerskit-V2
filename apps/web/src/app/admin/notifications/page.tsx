@@ -8,6 +8,7 @@ import { getAdminToken } from "@/lib/admin-token";
 import { formatDateTime } from "@/lib/format";
 import type { NotificationItem, NotificationType } from "@/types/shared";
 import { Button, Card } from "@/components/ui";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { cn } from "@/lib/cn";
 
 const TYPES: Array<{ key: NotificationType | "all"; label: string }> = [
@@ -122,34 +123,31 @@ export default function NotificationsPage() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
-            Admin
-          </span>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-            Notifications
-          </h1>
-          <p className="mt-1 text-sm text-fg-soft">
-            {items.length} events · {unreadCount} unread (last 14 days).
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="ghost" onClick={reload}>
-            Refresh
-          </Button>
-          <Button onClick={markAllRead} disabled={unreadCount === 0}>
-            Mark all read
-          </Button>
-        </div>
-      </header>
+      <AdminPageHeader
+        title="Notifications"
+        description={`${items.length} events · ${unreadCount} unread (last 14 days).`}
+        actions={
+          <>
+            <Button variant="ghost" onClick={reload}>
+              Refresh
+            </Button>
+            <Button onClick={markAllRead} disabled={unreadCount === 0}>
+              Mark all read
+            </Button>
+          </>
+        }
+      />
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      {/* Scrolls sideways rather than wrapping: four tabs on two rows waste a
+          row of a phone screen. */}
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
         {TYPES.map((t) => (
           <Button
             key={t.key}
             size="sm"
+            className="!shrink-0"
             variant={filter === t.key ? "primary" : "ghost"}
+            aria-pressed={filter === t.key}
             onClick={() => setFilter(t.key)}
           >
             {t.label}
@@ -178,7 +176,7 @@ export default function NotificationsPage() {
           filtered.map((n) => {
             const isRead = readIds.has(n.id);
             const body = (
-              <div className="flex items-start gap-4 p-4">
+              <div className="flex items-start gap-3 p-3 sm:gap-4 sm:p-4">
                 <div
                   className={cn(
                     "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full",
@@ -197,8 +195,13 @@ export default function NotificationsPage() {
                     {n.title}
                   </div>
                   <div className="mt-0.5 text-xs text-fg-muted">{n.body}</div>
+                  {/* On a phone the timestamp sits under the text instead of
+                      taking width away from it. */}
+                  <div className="mt-1 text-[11px] text-fg-muted sm:hidden">
+                    {formatDateTime(n.at)}
+                  </div>
                 </div>
-                <div className="flex-shrink-0 text-xs text-fg-muted">
+                <div className="hidden flex-shrink-0 text-xs text-fg-muted sm:block">
                   {formatDateTime(n.at)}
                 </div>
                 {!isRead && (

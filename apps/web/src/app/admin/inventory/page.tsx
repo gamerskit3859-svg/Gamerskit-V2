@@ -7,13 +7,21 @@ import { AlertTriangle, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatBDT } from "@/lib/format";
-import { useDebouncedSearch } from "@/lib/hooks";
+import { useDebouncedSearch, usePersistentFilters } from "@/lib/hooks";
 import type { Product } from "@/types/shared";
 import { Button, Card, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
 const LOW_THRESHOLD = 3;
 const PAGE_SIZE = 30;
+
+const FILTERS_STORAGE_KEY = "gk:admin:inventory:filters";
+
+type StockFilter = "all" | "low" | "out";
+
+// Kept in localStorage so stepping away to a product and coming back does not
+// drop the admin out of, say, the "out of stock" working set.
+const DEFAULT_FILTERS = { stock: "all" as StockFilter };
 
 function hasVariants(product: Product): boolean {
   return product.variants?.some((group) => group.options?.length) ?? false;
@@ -47,6 +55,114 @@ function stockColor(stock: number): string {
   return "text-foreground";
 }
 
+/**
+ * Price cell. Saves on blur rather than on every keystroke, and is re-keyed on
+ * the saved price so a rejected edit snaps back to what the server holds.
+ */
+function PriceField({
+  product,
+  busy,
+  onCommit,
+}: {
+  product: Product;
+  busy: boolean;
+  onCommit: (value: number) => void;
+}) {
+  return (
+    <Input
+      type="number"
+      key={product.price}
+      defaultValue={product.price}
+      aria-label={`Price for ${product.title}`}
+      onBlur={(e) => {
+        const value = Number(e.target.value);
+        if (Number.isFinite(value) && value !== product.price) onCommit(value);
+      }}
+      className="!w-28 !py-1.5 !px-2"
+      disabled={busy}
+    />
+  );
+}
+
+/**
+ * Stock cell: a stepper for a plain product, and a read-only total for one
+ * whose stock lives on its variants. Shared by the table and the phone cards so
+ * the two can never drift apart.
+ */
+function StockControl({
+  product,
+  busy,
+  onAdjust,
+  onSet,
+}: {
+  product: Product;
+  busy: boolean;
+  onAdjust: (delta: number) => void;
+  onSet: (value: number) => void;
+}) {
+  if (hasVariants(product)) {
+    const total = totalStock(product);
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <span className={cn("text-sm font-medium", stockColor(total))}>
+            stock: {total}
+          </span>
+          <BackorderBadge stock={total} />
+        </div>
+        <div className="text-xs text-fg-muted">
+          Variant stock. Edit product variants to adjust.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => onAdjust(-1)}
+        disabled={busy}
+        aria-label={`Decrease stock for ${product.title}`}
+        className="h-7 w-7 shrink-0 rounded-full border border-line bg-bg-soft hover:bg-white disabled:opacity-50"
+      >
+        −
+      </button>
+      <div className="flex flex-col gap-1">
+        <Input
+          type="number"
+          key={product.stock}
+          defaultValue={product.stock}
+          aria-label={`Stock for ${product.title}`}
+          onBlur={(e) => {
+            const value = Number(e.target.value);
+            if (Number.isFinite(value)) onSet(value);
+          }}
+          className={cn(
+            "!w-20 !py-1 !px-2 text-center",
+            product.stock <= 0
+              ? "text-red-600"
+              : product.stock <= LOW_THRESHOLD
+                ? "text-yellow-700"
+                : "",
+          )}
+          disabled={busy}
+        />
+        <BackorderBadge stock={product.stock} />
+      </div>
+      <button
+        type="button"
+        onClick={() => onAdjust(1)}
+        disabled={busy}
+        aria-label={`Increase stock for ${product.title}`}
+        className="h-7 w-7 shrink-0 rounded-full border border-line bg-bg-soft hover:bg-white disabled:opacity-50"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
 export default function InventoryPage() {
   const [items, setItems] = useState<Product[]>([]);
   const [summary, setSummary] = useState({
@@ -59,7 +175,12 @@ export default function InventoryPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | "low" | "out">("all");
+  const {
+    filters,
+    patchFilters,
+    hydrated: filtersReady,
+  } = usePersistentFilters(FILTERS_STORAGE_KEY, DEFAULT_FILTERS);
+  const filter = filters.stock;
   const {
     value: q,
     setValue: setQ,
@@ -68,7 +189,15 @@ export default function InventoryPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [damageTarget, setDamageTarget] = useState<Product | null>(null);
 
+  function selectFilter(next: StockFilter) {
+    setPage(1);
+    patchFilters({ stock: next });
+  }
+
   useEffect(() => {
+    // Wait for the saved filter, or the first page loads "all" and is thrown
+    // away a moment later.
+    if (!filtersReady) return;
     let cancelled = false;
     const token = getAdminToken();
     void (async () => {
@@ -106,7 +235,7 @@ export default function InventoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [searchQuery, filter, page]);
+  }, [filtersReady, searchQuery, filter, page]);
 
   async function adjust(id: string, delta: number) {
     const token = getAdminToken();
@@ -177,8 +306,8 @@ export default function InventoryPage() {
     }
   }
 
-  const filters = [
-    { key: "all", label: "All" },
+  const filterTabs = [
+    { key: "all", label: `All (${summary.total})` },
     { key: "low", label: `Low (${summary.low})` },
     { key: "out", label: `Out (${summary.out})` },
   ] as const;
@@ -189,14 +318,15 @@ export default function InventoryPage() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      <header className="mb-6">
-        <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
+      <header className="mb-4 sm:mb-6">
+        {/* Decorative on a phone, where vertical space is the scarce thing. */}
+        <span className="hidden text-xs font-medium uppercase tracking-[0.18em] text-fg-soft sm:block">
           Admin
         </span>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight sm:mt-2 sm:text-3xl">
           Inventory
         </h1>
-        <p className="mt-1 text-sm text-fg-soft">
+        <p className="mt-1 text-xs text-fg-soft sm:text-sm">
           {summary.total} SKUs · {summary.low} low · {summary.out} out · stock
           value{" "}
           <span className="font-medium text-foreground">
@@ -205,23 +335,27 @@ export default function InventoryPage() {
         </p>
       </header>
 
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        {filters.map(({ key, label }) => (
-          <Button
-            key={key}
-            size="sm"
-            variant={filter === key ? "primary" : "ghost"}
-            onClick={() => {
-              setPage(1);
-              setFilter(key);
-            }}
-          >
-            {label}
-          </Button>
-        ))}
+      {/* The tabs scroll sideways rather than wrapping, so the search box keeps
+          its own row on a phone instead of being pushed around by them. */}
+      <div className="mb-4 sm:mb-5 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:contents sm:overflow-visible sm:pb-0">
+          {filterTabs.map(({ key, label }) => (
+            <Button
+              key={key}
+              size="sm"
+              className="!shrink-0"
+              variant={filter === key ? "primary" : "ghost"}
+              aria-pressed={filter === key}
+              onClick={() => selectFilter(key)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
         <Input
-          className="!w-full sm:!ml-auto sm:!w-72"
+          className="mt-2 !w-full sm:!mt-0 sm:!ml-auto sm:!w-72"
           placeholder="Search…"
+          aria-label="Search products"
           value={q}
           onChange={(e) => {
             setPage(1);
@@ -244,142 +378,161 @@ export default function InventoryPage() {
             No products in this view.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-[960px] w-full text-sm">
-              <thead className="bg-white text-left text-xs text-fg-soft">
-                <tr>
-                  <th className="px-4 py-3">Product</th>
-                  <th className="px-4 py-3">Category</th>
-                  <th className="w-40 px-4 py-3">Price</th>
-                  <th className="w-56 px-4 py-3">Stock</th>
-                  <th className="w-40 px-4 py-3">Damaged</th>
-                  <th className="w-20 px-4 py-3">View</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((p) => (
-                  <tr
-                    key={p._id}
-                    className="border-t border-line bg-white align-middle"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-bg-soft">
-                          {p.images[0] && (
-                            <Image
-                              src={p.images[0]}
-                              alt=""
-                              fill
-                              sizes="40px"
-                              className="object-cover"
-                            />
-                          )}
-                        </div>
-                        <div>
-                          <div className="font-medium">{p.title}</div>
-                          <div className="font-mono text-xs text-fg-muted">
-                            {p.slug}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 capitalize text-fg-soft">
-                      {p.category.replace(/-/g, " ")}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Input
-                        type="number"
-                        defaultValue={p.price}
-                        onBlur={(e) => {
-                          const v = Number(e.target.value);
-                          if (Number.isFinite(v) && v !== p.price)
-                            void setPrice(p._id, v);
-                        }}
-                        className="!w-28 !py-1.5 !px-2"
-                        disabled={busyId === p._id}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      {hasVariants(p) ? (
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className={cn("text-sm font-medium", stockColor(totalStock(p)))}>
-                              stock: {totalStock(p)}
-                            </span>
-                            <BackorderBadge stock={totalStock(p)} />
-                          </div>
-                          <div className="text-xs text-fg-muted">
-                            Variant stock. Edit product variants to adjust.
-                          </div>
-                        </div>
-                      ) : (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => adjust(p._id, -1)}
-                          disabled={busyId === p._id}
-                          className="h-7 w-7 rounded-full border border-line bg-bg-soft hover:bg-white disabled:opacity-50"
-                        >
-                          −
-                        </button>
-                        <div className="flex flex-col gap-1">
-                          <Input
-                            type="number"
-                            defaultValue={p.stock}
-                            key={p.stock}
-                            onBlur={(e) => {
-                              const v = Number(e.target.value);
-                              if (Number.isFinite(v))
-                                void setExactStock(p._id, v);
-                            }}
-                            className={cn(
-                              "!w-20 !py-1 !px-2 text-center",
-                              p.stock <= 0
-                                ? "text-red-600"
-                                : p.stock <= LOW_THRESHOLD
-                                  ? "text-yellow-700"
-                                  : "",
-                            )}
-                            disabled={busyId === p._id}
-                          />
-                          <BackorderBadge stock={p.stock} />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => adjust(p._id, 1)}
-                          disabled={busyId === p._id}
-                          className="h-7 w-7 rounded-full border border-line bg-bg-soft hover:bg-white disabled:opacity-50"
-                        >
-                          +
-                        </button>
-                      </div>
+          <>
+            {/* A six-column table cannot survive a 390px screen, so below md
+                each product becomes a card carrying the same controls. */}
+            <ul className="divide-y divide-line md:hidden">
+              {items.map((p) => (
+                <li key={p._id} className="bg-white p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-bg-soft">
+                      {p.images[0] && (
+                        <Image
+                          src={p.images[0]}
+                          alt=""
+                          fill
+                          sizes="44px"
+                          className="object-cover"
+                        />
                       )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => setDamageTarget(p)}
-                        disabled={busyId === p._id}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-fg-soft transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                      >
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                        Mark damaged
-                      </button>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/product/${p.slug}`}
-                        target="_blank"
-                        className="text-xs underline underline-offset-4"
-                      >
-                        Open ↗
-                      </Link>
-                    </td>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{p.title}</p>
+                      <p className="truncate text-[11px] capitalize text-fg-muted">
+                        {p.category.replace(/-/g, " ")}
+                        {" · "}
+                        <span className="font-mono normal-case">{p.slug}</span>
+                      </p>
+                    </div>
+                    <Link
+                      href={`/product/${p.slug}`}
+                      target="_blank"
+                      className="shrink-0 text-xs text-fg-soft underline underline-offset-4"
+                    >
+                      Open ↗
+                    </Link>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-end gap-x-5 gap-y-3">
+                    <div>
+                      <span className="mb-1 block text-[11px] text-fg-soft">
+                        Price
+                      </span>
+                      <PriceField
+                        product={p}
+                        busy={busyId === p._id}
+                        onCommit={(value) => void setPrice(p._id, value)}
+                      />
+                    </div>
+                    <div>
+                      <span className="mb-1 block text-[11px] text-fg-soft">
+                        Stock
+                      </span>
+                      <StockControl
+                        product={p}
+                        busy={busyId === p._id}
+                        onAdjust={(delta) => void adjust(p._id, delta)}
+                        onSet={(value) => void setExactStock(p._id, value)}
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setDamageTarget(p)}
+                    disabled={busyId === p._id}
+                    className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-line px-2.5 py-2 text-xs font-medium text-fg-soft transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                  >
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Mark damaged
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            <div className="hidden overflow-x-auto md:block">
+              <table className="min-w-[960px] w-full text-sm">
+                <thead className="bg-white text-left text-xs text-fg-soft">
+                  <tr>
+                    <th className="px-4 py-3">Product</th>
+                    <th className="px-4 py-3">Category</th>
+                    <th className="w-40 px-4 py-3">Price</th>
+                    <th className="w-56 px-4 py-3">Stock</th>
+                    <th className="w-40 px-4 py-3">Damaged</th>
+                    <th className="w-20 px-4 py-3">View</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {items.map((p) => (
+                    <tr
+                      key={p._id}
+                      className="border-t border-line bg-white align-middle"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-bg-soft">
+                            {p.images[0] && (
+                              <Image
+                                src={p.images[0]}
+                                alt=""
+                                fill
+                                sizes="40px"
+                                className="object-cover"
+                              />
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-medium">{p.title}</div>
+                            <div className="font-mono text-xs text-fg-muted">
+                              {p.slug}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 capitalize text-fg-soft">
+                        {p.category.replace(/-/g, " ")}
+                      </td>
+                      <td className="px-4 py-3">
+                        <PriceField
+                          product={p}
+                          busy={busyId === p._id}
+                          onCommit={(value) => void setPrice(p._id, value)}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <StockControl
+                          product={p}
+                          busy={busyId === p._id}
+                          onAdjust={(delta) => void adjust(p._id, delta)}
+                          onSet={(value) => void setExactStock(p._id, value)}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => setDamageTarget(p)}
+                          disabled={busyId === p._id}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-fg-soft transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          Mark damaged
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/product/${p.slug}`}
+                          target="_blank"
+                          className="text-xs underline underline-offset-4"
+                        >
+                          Open ↗
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </Card>
 

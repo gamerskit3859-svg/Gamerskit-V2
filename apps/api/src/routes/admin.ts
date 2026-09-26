@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { PipelineStage } from "mongoose";
-import { OrderModel } from "../models/Order.js";
+import {
+  NON_REVENUE_ORDER_STATUSES,
+  OrderModel,
+  TERMINAL_ORDER_STATUSES,
+} from "../models/Order.js";
 import { ProductModel } from "../models/Product.js";
 import { UserModel } from "../models/User.js";
 import { CouponModel } from "../models/Coupon.js";
@@ -65,17 +69,22 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
   ] = await Promise.all([
     OrderModel.countDocuments(orderMatch),
     OrderModel.aggregate([
-      { $match: { ...orderMatch, status: { $nin: ["cancelled", "refunded"] } } },
+      { $match: { ...orderMatch, status: { $nin: NON_REVENUE_ORDER_STATUSES } } },
       { $group: { _id: null, total: { $sum: "$total" } } },
     ]),
-    OrderModel.countDocuments({ ...orderMatch, status: "pending" }),
+    // Was a count of "pending", which no longer exists. Open orders — anything
+    // that has not reached a terminal state — is the number worth surfacing.
+    OrderModel.countDocuments({
+      ...orderMatch,
+      status: { $nin: TERMINAL_ORDER_STATUSES },
+    }),
     OrderModel.countDocuments({ ...orderMatch, status: "delivered" }),
     OrderModel.aggregate([
       { $match: orderMatch },
       { $group: { _id: "$status", count: { $sum: 1 } } },
     ]),
     OrderModel.aggregate([
-      { $match: { ...orderMatch, status: { $nin: ["cancelled", "refunded"] } } },
+      { $match: { ...orderMatch, status: { $nin: NON_REVENUE_ORDER_STATUSES } } },
       {
         $group: {
           _id: {
@@ -92,7 +101,7 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
       { $sort: { _id: 1 } },
     ]),
     OrderModel.aggregate([
-      { $match: { ...orderMatch, status: { $nin: ["cancelled", "refunded"] } } },
+      { $match: { ...orderMatch, status: { $nin: NON_REVENUE_ORDER_STATUSES } } },
       { $unwind: "$items" },
       { $group: { _id: null, qty: { $sum: "$items.quantity" } } },
     ]),
@@ -102,7 +111,7 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
       ...(dateFilter ? { createdAt: dateFilter } : {}),
     }),
     OrderModel.aggregate([
-      { $match: { ...orderMatch, status: { $nin: ["cancelled", "refunded"] } } },
+      { $match: { ...orderMatch, status: { $nin: NON_REVENUE_ORDER_STATUSES } } },
       { $unwind: "$items" },
       {
         $lookup: {
@@ -175,7 +184,7 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
 router.get("/top-products", adminOnlyRequired, async (req, res) => {
   const { from, to, limit = "10" } = req.query as Record<string, string>;
   const dateFilter = buildDateFilter(from, to);
-  const match: Record<string, unknown> = { status: { $nin: ["cancelled", "refunded"] } };
+  const match: Record<string, unknown> = { status: { $nin: NON_REVENUE_ORDER_STATUSES } };
   if (dateFilter) match.createdAt = dateFilter;
   const items = await OrderModel.aggregate([
     { $match: match },
@@ -193,6 +202,55 @@ router.get("/top-products", adminOnlyRequired, async (req, res) => {
   res.json({ items });
 });
 
+/**
+ * Delivered units per product. Unlike /top-products this is neither ranked nor
+ * capped: it returns every product that reached a customer in the window, so
+ * the dashboard can show the long tail rather than the leaders. Orders carry no
+ * delivery timestamp, so the window is on when the order was placed.
+ */
+router.get("/delivered-products", adminOnlyRequired, async (req, res) => {
+  const { from, to } = req.query as Record<string, string>;
+  const dateFilter = buildDateFilter(from, to);
+  const match: Record<string, unknown> = { status: "delivered" };
+  if (dateFilter) match.createdAt = dateFilter;
+
+  const items = await OrderModel.aggregate([
+    { $match: match },
+    { $unwind: "$items" },
+    {
+      $group: {
+        // Custom line items have no productId, so they group by their own
+        // title instead of collapsing into one nameless bucket.
+        _id: { $ifNull: ["$items.productId", "$items.title"] },
+        title: { $first: "$items.title" },
+        qty: { $sum: "$items.quantity" },
+        revenue: { $sum: { $multiply: ["$items.unitPrice", "$items.quantity"] } },
+        orders: { $addToSet: "$_id" },
+      },
+    },
+    {
+      $lookup: {
+        from: "products",
+        localField: "_id",
+        foreignField: "_id",
+        as: "product",
+      },
+    },
+    {
+      $project: {
+        // Prefer the product's current name so a renamed product still reads
+        // correctly; custom items fall back to the title stored on the order.
+        title: { $ifNull: [{ $arrayElemAt: ["$product.title", 0] }, "$title"] },
+        qty: 1,
+        revenue: 1,
+        orders: { $size: "$orders" },
+      },
+    },
+    { $sort: { qty: -1, title: 1 } },
+  ]);
+  res.json({ items });
+});
+
 router.get("/recent-orders", adminOnlyRequired, async (req, res) => {
   const items = await OrderModel.find().sort({ createdAt: -1 }).limit(10).lean();
   res.json({ items });
@@ -202,7 +260,7 @@ router.get("/recent-orders", adminOnlyRequired, async (req, res) => {
 router.get("/reports", adminRequired, async (req, res) => {
   const { from, to } = req.query as Record<string, string>;
   const dateFilter = buildDateFilter(from, to);
-  const match: Record<string, unknown> = { status: { $nin: ["cancelled", "refunded"] } };
+  const match: Record<string, unknown> = { status: { $nin: NON_REVENUE_ORDER_STATUSES } };
   if (dateFilter) match.createdAt = dateFilter;
 
   const transactionsMatch: Record<string, unknown> = {};

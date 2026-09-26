@@ -4,8 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
-import { formatBDT, formatDate } from "@/lib/format";
+import { formatBDT, formatDate, formatSmartDateTime } from "@/lib/format";
 import { Button, Card, Select } from "@/components/ui";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { cn } from "@/lib/cn";
 
 type PeriodView = "monthly" | "yearly";
@@ -182,11 +183,13 @@ function MoneyRow({ label, value, sign = 1, auto, hint, onChange }: MoneyRowProp
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-line py-3 last:border-b-0">
+    <div className="flex items-center justify-between gap-3 border-b border-line py-2.5 last:border-b-0 sm:gap-4 sm:py-3">
       <div className="min-w-0">
         <div className="text-sm text-foreground">{label}</div>
         {hint && (
-          <div className="mt-0.5 text-[11px] text-fg-muted">{hint}</div>
+          <div className="mt-0.5 text-[11px] leading-snug text-fg-muted">
+            {hint}
+          </div>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -207,7 +210,7 @@ function MoneyRow({ label, value, sign = 1, auto, hint, onChange }: MoneyRowProp
               onKeyDown={(e) => {
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();
               }}
-              className="w-24 bg-transparent text-right text-sm font-medium tabular-nums outline-none"
+              className="w-16 bg-transparent text-right text-sm font-medium tabular-nums outline-none sm:w-24"
             />
           </div>
         ) : (
@@ -258,7 +261,7 @@ function CustomMoneyRow({
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-line py-3 last:border-b-0">
+    <div className="flex items-center justify-between gap-2 border-b border-line py-2.5 last:border-b-0 sm:gap-3 sm:py-3">
       <div className="min-w-0 flex-1">
         <input
           type="text"
@@ -285,7 +288,7 @@ function CustomMoneyRow({
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
-            className="w-24 bg-transparent text-right text-sm font-medium tabular-nums outline-none"
+            className="w-16 bg-transparent text-right text-sm font-medium tabular-nums outline-none sm:w-24"
           />
         </div>
         <button
@@ -510,30 +513,33 @@ export default function AccountingPage() {
       transition={{ duration: 0.4 }}
       className="print-area"
     >
-      <header className="mb-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
-              Admin
-            </span>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight">Accounting</h1>
-            <p className="mt-1 text-sm text-fg-soft">
-              {periodLabel} · live revenue + cost from orders, manual entries persist per period.
-            </p>
-          </div>
-          <div className="no-print flex items-center gap-2">
-            <Button onClick={saveNow} disabled={saving} size="sm">
+      <AdminPageHeader
+        title="Accounting"
+        description={`${periodLabel} · live revenue + cost from orders, manual entries persist per period.`}
+        actions={
+          <>
+            <Button
+              className="no-print"
+              onClick={saveNow}
+              disabled={saving}
+              size="sm"
+            >
               {saving ? "Saving…" : "Save"}
             </Button>
-            <Button variant="secondary" onClick={downloadPdf} size="sm">
+            <Button
+              className="no-print"
+              variant="secondary"
+              onClick={downloadPdf}
+              size="sm"
+            >
               Download PDF
             </Button>
-          </div>
-        </div>
-
-        <div className="no-print mt-5 flex flex-wrap items-center gap-3">
+          </>
+        }
+      >
+        <div className="no-print mt-3 flex flex-wrap items-center gap-2 sm:mt-5 sm:gap-3">
           <div
-            className="inline-flex rounded-full border border-line bg-bg-soft p-1"
+            className="inline-flex shrink-0 rounded-full border border-line bg-bg-soft p-1"
             role="tablist"
             aria-label="View by"
           >
@@ -559,11 +565,15 @@ export default function AccountingPage() {
             })}
           </div>
 
+          {/* `!` prefixes on purpose: cn() is plain clsx, not tailwind-merge, so
+              a bare `w-auto` would sit alongside the Select's base `w-full` and
+              lose on stylesheet order. Sizing the select to its content also
+              stops a percentage width resolving against a shrink-to-fit label. */}
           {period.view === "monthly" && (
             <label className="inline-flex items-center gap-2 text-xs text-fg-soft">
               Month
               <Select
-                className="h-9 py-0 text-sm"
+                className="!h-9 !w-auto !py-0 !text-sm"
                 value={period.month}
                 onChange={(e) =>
                   setPeriod((p) => ({ ...p, month: Number(e.target.value) }))
@@ -581,7 +591,7 @@ export default function AccountingPage() {
           <label className="inline-flex items-center gap-2 text-xs text-fg-soft">
             Year
             <Select
-              className="h-9 py-0 text-sm"
+              className="!h-9 !w-auto !py-0 !text-sm"
               value={period.year}
               onChange={(e) =>
                 setPeriod((p) => ({ ...p, year: Number(e.target.value) }))
@@ -596,8 +606,11 @@ export default function AccountingPage() {
           </label>
 
           {savedAt && (
-            <span className="text-[11px] text-fg-muted">
-              Saved · {new Date(savedAt).toLocaleString()}
+            <span
+              className="text-[11px] text-fg-muted"
+              title={new Date(savedAt).toLocaleString()}
+            >
+              Saved {formatSmartDateTime(savedAt)}
             </span>
           )}
           {saveFlash && (
@@ -606,10 +619,16 @@ export default function AccountingPage() {
             </span>
           )}
         </div>
-      </header>
+      </AdminPageHeader>
 
-      {/* Top row — 4 metric cards */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Top row — 4 metric cards.
+
+          Every breakpoint on this page steps up at `xl`, not `lg`, because the
+          admin sidebar is 260px wide and appears at exactly `lg`. The content
+          column is therefore NARROWER at lg (1024 − 260 − 80 = 684px) than it
+          is at md (720px), so splitting into more columns there squeezed six
+          figure taka amounts out of their cards. */}
+      <div className="mb-4 grid gap-3 sm:mb-6 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
         <MetricCard label="Revenue" value={formatBDT(revenue)} hint="Money in total" />
         <MetricCard
           label="Expenses"
@@ -628,7 +647,7 @@ export default function AccountingPage() {
         />
       </div>
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+      <div className="mb-4 grid gap-3 sm:mb-6 sm:gap-4 xl:grid-cols-2">
         <Section title="Money In" subtitle="Gross sales and other inflows">
           <MoneyRow
             key={`mi-gs-${from}-${to}-${grossRevenue}`}
@@ -719,12 +738,12 @@ export default function AccountingPage() {
         </Section>
       </div>
 
-      <Card tone="soft" padding="md" className="mb-6">
-        <div className="mb-3 flex items-center justify-between gap-3">
+      <Card tone="soft" padding="md" className="mb-4 !p-4 sm:mb-6 sm:!p-6">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h3 className="text-sm font-semibold">Profit summary</h3>
           <span className="text-xs text-fg-muted">Revenue − Expenses = Net profit</span>
         </div>
-        <div className="mb-4 grid gap-4 sm:grid-cols-3">
+        <div className="mb-4 grid gap-3 sm:grid-cols-3 sm:gap-4">
           <SummaryStat label="Revenue" value={formatBDT(revenue)} dotColor="#0f172a" />
           <SummaryStat label="Expenses" value={formatBDT(expenses)} dotColor="#dc2626" />
           <SummaryStat
@@ -758,7 +777,7 @@ export default function AccountingPage() {
         </div>
       </Card>
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+      <div className="mb-4 grid gap-3 sm:mb-6 sm:gap-4 xl:grid-cols-2">
         <Section title="Expense breakdown" subtitle="Share of total money out">
           {moneyOutTotal === 0 ? (
             <div className="py-6 text-xs text-fg-muted">
@@ -770,15 +789,18 @@ export default function AccountingPage() {
                 const share = pct(row.value, moneyOutTotal);
                 return (
                   <div key={row.key}>
-                    <div className="mb-1.5 flex items-center justify-between text-sm">
-                      <span className="flex items-center gap-2">
+                    {/* min-w-0 + truncate on the label: a custom expense can be
+                        named anything, and without this a long one pushed the
+                        amount off the right edge of the card. */}
+                    <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
+                      <span className="flex min-w-0 items-center gap-2">
                         <span
-                          className="inline-block h-2 w-2 rounded-full"
+                          className="inline-block h-2 w-2 shrink-0 rounded-full"
                           style={{ background: row.color }}
                         />
-                        {row.label}
+                        <span className="truncate">{row.label}</span>
                       </span>
-                      <span className="tabular-nums text-fg-soft">
+                      <span className="shrink-0 tabular-nums text-fg-soft">
                         {formatBDT(row.value)}{" "}
                         <span className="text-xs text-fg-muted">
                           ({(share * 100).toFixed(1)}%)
@@ -843,7 +865,9 @@ export default function AccountingPage() {
         </Section>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      {/* Three KPI cards need ~200px each before the status pill starts
+          wrapping under the value, which sm (608px of content) does not give. */}
+      <div className="grid gap-3 sm:gap-4 md:grid-cols-3">
         <KpiPill
           label="Gross margin"
           value={grossRevenue > 0 ? `${(grossMarginRate * 100).toFixed(1)}%` : "—"}
@@ -879,18 +903,21 @@ function MetricCard({
   tone?: "positive" | "negative";
 }) {
   return (
-    <Card tone="soft" padding="md">
+    <Card tone="soft" padding="md" className="!p-4 sm:!p-6">
       <div className="text-xs uppercase tracking-wider text-fg-muted">{label}</div>
       <div
         className={cn(
-          "mt-2 text-3xl font-semibold tracking-tight tabular-nums",
+          // A six-figure taka amount needs ~180px at 3xl. Four columns only
+          // leave that much from 2xl up — at xl the same four columns are
+          // ~171px of text room, which is where it used to overflow.
+          "mt-1.5 break-words text-2xl font-semibold tracking-tight tabular-nums 2xl:text-3xl",
           tone === "positive" && "text-emerald-600",
           tone === "negative" && "text-rose-600",
         )}
       >
         {value}
       </div>
-      {hint && <div className="mt-2 text-xs text-fg-muted">{hint}</div>}
+      {hint && <div className="mt-1.5 text-xs text-fg-muted">{hint}</div>}
     </Card>
   );
 }
@@ -905,7 +932,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <Card tone="soft" padding="md">
+    <Card tone="soft" padding="md" className="!p-4 sm:!p-6">
       <header className="mb-2">
         <h2 className="text-sm font-semibold">{title}</h2>
         {subtitle && (
@@ -955,7 +982,7 @@ function SummaryStat({
   return (
     <div
       className={cn(
-        "rounded-xl p-4",
+        "min-w-0 rounded-xl p-3 sm:p-4",
         highlight ? "bg-black text-white" : "border border-line bg-white",
       )}
     >
@@ -973,7 +1000,7 @@ function SummaryStat({
           {label}
         </span>
       </div>
-      <div className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
+      <div className="mt-1.5 break-words text-lg font-semibold tracking-tight tabular-nums sm:text-xl xl:text-2xl">
         {value}
       </div>
     </div>
@@ -1028,12 +1055,16 @@ function KpiPill({
   hint?: string;
 }) {
   return (
-    <Card tone="soft" padding="md" className="flex items-center justify-between gap-4">
-      <div>
+    <Card
+      tone="soft"
+      padding="md"
+      className="flex flex-wrap items-center justify-between gap-3 !p-4 sm:gap-4 sm:!p-6"
+    >
+      <div className="min-w-0">
         <div className="text-xs uppercase tracking-wider text-fg-muted">
           {label}
         </div>
-        <div className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
+        <div className="mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl">
           {value}
         </div>
         {hint && <div className="mt-1 text-[11px] text-fg-muted">{hint}</div>}

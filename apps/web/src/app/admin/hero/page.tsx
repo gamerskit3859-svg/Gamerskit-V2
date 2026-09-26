@@ -27,6 +27,7 @@ import {
 import { getAdminToken } from "@/lib/admin-token";
 import { optimizeCloudinaryImage } from "@/lib/images";
 import { Button, Card, FieldLabel, Input } from "@/components/ui";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { cn } from "@/lib/cn";
 
 type HeroForm = {
@@ -388,17 +389,10 @@ export default function AdminHeroImages() {
 
   return (
     <div className="min-h-screen pb-20">
-      <header className="mb-8">
-        <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
-          Admin
-        </span>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          Hero Section
-        </h1>
-        <p className="mt-1 text-sm text-fg-soft">
-          Manage homepage hero slides and the separate Shop banner slider.
-        </p>
-      </header>
+      <AdminPageHeader
+        title="Hero Section"
+        description="Manage homepage hero slides and the separate Shop banner slider."
+      />
 
       {error && (
         <div className="mb-6 flex items-center gap-3 rounded-lg border border-red-100 bg-red-50 p-4 text-red-700">

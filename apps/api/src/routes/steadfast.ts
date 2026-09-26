@@ -5,6 +5,13 @@ import { adminRequired } from "../lib/auth.js";
 import { setPrivateNoStore } from "../lib/http.js";
 import { OrderModel } from "../models/Order.js";
 import {
+  fetchCourierStatus,
+  getRecord,
+  nestedRecord,
+  persistCourierStatus,
+  pickString,
+} from "../lib/courier-sync.js";
+import {
   mapGamersKitOrderToSteadfast,
   steadfastService,
   SteadfastApiError,
@@ -43,28 +50,6 @@ const bulkOrderSchema = z.object({
 const bulkGamersKitOrderSchema = z.object({
   orderIds: z.array(z.string().min(1)).min(1).max(500),
 });
-
-function getRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function nestedRecord(value: unknown, key: string): Record<string, unknown> | null {
-  const nested = getRecord(value)[key];
-  if (typeof nested !== "object" || nested === null) return null;
-  const record = nested as Record<string, unknown>;
-  return Object.keys(record).length > 0 ? record : null;
-}
-
-function pickString(record: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "string" && value.trim()) return value;
-    if (typeof value === "number") return String(value);
-  }
-  return undefined;
-}
 
 function extractCourierFields(response: SteadfastJson): {
   consignmentId?: string;
@@ -138,6 +123,77 @@ router.post("/orders/:id/create", async (req, res) => {
   } catch (err) {
     sendSteadfastError(res, err);
   }
+});
+
+// Sync one order's courier status and SAVE it. The read-only /status/* routes
+// below just proxy Steadfast, which is why a synced status used to disappear on
+// reload — this is the route the admin UI calls.
+router.post("/orders/:id/sync", async (req, res) => {
+  try {
+    const order = await OrderModel.findById(req.params.id).lean();
+    if (!order) {
+      res.status(404).json({ error: "order not found" });
+      return;
+    }
+    if (!order.courier) {
+      res.status(400).json({ error: "This order has not been sent to the courier yet." });
+      return;
+    }
+
+    const result = await fetchCourierStatus(order);
+    const { order: updated, deliveryStatus } = await persistCourierStatus(order, result);
+    res.json({ item: result, order: updated, deliveryStatus });
+  } catch (err) {
+    sendSteadfastError(res, err);
+  }
+});
+
+// Bulk sync for the "Sync all" button. Runs sequentially rather than in
+// parallel to stay within Steadfast's rate limit, and reports per-order
+// failures instead of aborting the whole batch on the first error.
+router.post("/orders/bulk-sync", async (req, res) => {
+  const parsed = bulkGamersKitOrderSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const orders = await OrderModel.find({
+    _id: { $in: parsed.data.orderIds },
+  }).lean();
+
+  const updatedOrders: unknown[] = [];
+  const failures: Array<{ orderId: string; orderNumber?: string; error: string }> = [];
+  let skipped = 0;
+
+  for (const order of orders) {
+    if (!order.courier) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      const result = await fetchCourierStatus(order);
+      const { order: updated } = await persistCourierStatus(order, result);
+      if (updated) updatedOrders.push(updated);
+    } catch (err) {
+      failures.push({
+        orderId: String(order._id),
+        orderNumber: order.orderNumber,
+        error:
+          err instanceof SteadfastApiError
+            ? err.message
+            : (err as Error).message || "Steadfast request failed",
+      });
+    }
+  }
+
+  res.json({
+    orders: updatedOrders,
+    successful: updatedOrders.length,
+    failed: failures.length,
+    skipped: skipped + (parsed.data.orderIds.length - orders.length),
+    failures,
+  });
 });
 
 router.post("/orders/bulk-create", async (req, res) => {

@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import { AnnouncementBar } from "@/components/AnnouncementBar";
+import { ContactWidget } from "@/components/ContactWidget";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 
@@ -21,6 +22,7 @@ export function SiteChrome({ children }: { children: React.ReactNode }) {
       </Suspense>
       <main className="flex-1">{children}</main>
       <Footer />
+      <ContactWidget />
     </>
   );
 }

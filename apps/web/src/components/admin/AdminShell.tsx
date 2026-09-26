@@ -20,6 +20,7 @@ const NAV = [
   { href: "/admin/orders/new", label: "New custom order", roles: ["admin", "staff"] },
   { href: "/admin/products", label: "Products", roles: ["admin", "staff"] },
   { href: "/admin/hero", label: "Hero Section", roles: ["admin", "staff"] },
+  { href: "/admin/contact", label: "Contact Channels", roles: ["admin", "staff"] },
   { href: "/admin/categories", label: "Categories", roles: ["admin", "staff"] },
   { href: "/admin/inventory", label: "Inventory", roles: ["admin", "staff"] },
   { href: "/admin/customers", label: "Customers", roles: ["admin", "staff"] },

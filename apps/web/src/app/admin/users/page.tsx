@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { getAdminToken } from "@/lib/admin-token";
 import { api } from "@/lib/api";
 import { Button, Card } from "@/components/ui";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { cn } from "@/lib/cn";
 import type { AdminUserSummary } from "@/types/shared";
 
@@ -64,17 +65,10 @@ export default function AdminUsersPage() {
 
   return (
     <div>
-      <header className="mb-8">
-        <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
-          Admin
-        </span>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          Users &amp; Roles
-        </h1>
-        <p className="mt-1 text-sm text-fg-soft">
-          Manage user roles and permissions
-        </p>
-      </header>
+      <AdminPageHeader
+        title={<>Users &amp; Roles</>}
+        description="Manage user roles and permissions"
+      />
 
       {error && (
         <Card
@@ -92,7 +86,67 @@ export default function AdminUsersPage() {
         transition={{ duration: 0.3 }}
       >
         <Card tone="soft" padding="none" className="overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Below md the table becomes cards: five columns of which two are
+              long strings do not fit a phone. */}
+          <ul className="divide-y divide-line md:hidden">
+            {loading ? (
+              <li className="p-6 text-center text-sm text-fg-soft">
+                Loading users...
+              </li>
+            ) : users.length === 0 ? (
+              <li className="p-6 text-center text-sm text-fg-soft">
+                No users found
+              </li>
+            ) : (
+              users.map((user) => (
+                <li key={user._id} className="flex items-center gap-3 p-3">
+                  {user.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={user.avatar}
+                      alt=""
+                      className="h-9 w-9 shrink-0 rounded-full"
+                    />
+                  ) : (
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-soft text-xs font-medium text-fg-soft">
+                      {(user.name || user.email || "?").charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">
+                      {user.name || "Unnamed"}
+                    </p>
+                    <p className="truncate text-xs text-fg-soft">{user.email}</p>
+                    <p className="mt-1 flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                          ROLE_BADGE[user.role],
+                        )}
+                      >
+                        {user.role}
+                      </span>
+                      <span className="text-[11px] text-fg-muted">
+                        {new Date(user.createdAt).toLocaleDateString()}
+                      </span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedUser(user);
+                      setNewRole(user.role);
+                    }}
+                    className="shrink-0 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-blue-600"
+                  >
+                    Role
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+
+          <div className="hidden overflow-x-auto md:block">
             <table className="min-w-[760px] w-full">
               <thead className="border-b border-line bg-bg-soft">
                 <tr>

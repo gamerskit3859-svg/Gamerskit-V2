@@ -159,6 +159,19 @@ export function createApp(options: CreateAppOptions = {}): Express {
     }),
   );
 
+  // Public order tracking is unauthenticated and the courier refresh behind it
+  // calls a metered external API, so it gets a tighter budget than /api/*.
+  app.use(
+    "/api/orders/track",
+    rateLimit({
+      windowMs: 60_000,
+      max: 30,
+      skip: (req: Request) => req.method === "OPTIONS",
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
+  );
+
   // Health probe.
   app.get("/", (_req, res) => {
     res.json({ ok: true, service: "gamerskit-api" });

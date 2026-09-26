@@ -1,7 +1,13 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
-type Tone = "neutral" | "success" | "warning" | "info" | "danger";
+type Tone =
+  | "neutral"
+  | "success"
+  | "warning"
+  | "info"
+  | "danger"
+  | "accent";
 
 const tones: Record<Tone, string> = {
   neutral: "bg-bg-soft text-fg-soft border-line",
@@ -9,6 +15,7 @@ const tones: Record<Tone, string> = {
   warning: "bg-amber-50 text-amber-700 border-amber-200",
   info: "bg-sky-50 text-sky-700 border-sky-200",
   danger: "bg-red-50 text-red-700 border-red-200",
+  accent: "bg-violet-50 text-violet-700 border-violet-200",
 };
 
 export interface PillProps {

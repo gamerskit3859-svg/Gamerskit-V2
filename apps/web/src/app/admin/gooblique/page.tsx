@@ -17,6 +17,7 @@ import { api, type DemoVideoItem, type GoobliqueHero } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-token";
 import { formatDate } from "@/lib/format";
 import { Button, Card, FieldLabel, Input, Textarea } from "@/components/ui";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { cn } from "@/lib/cn";
 
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
@@ -347,17 +348,12 @@ export default function AdminPortfolioCms() {
 
   return (
     <div className="min-h-screen pb-20">
-      <header className="mb-8">
-        <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
-          Admin
-        </span>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          Portfolio CMS
-        </h1>
-        <p className="mt-1 text-sm text-fg-soft">
-          Manage the portfolio site&apos;s hero copy and demo showreel videos.
-        </p>
-      </header>
+      <AdminPageHeader
+        title="Portfolio CMS"
+        description={
+          <>Manage the portfolio site&apos;s hero copy and demo showreel videos.</>
+        }
+      />
 
       {error && (
         <div className="mb-6 flex items-center gap-3 rounded-lg border border-red-100 bg-red-50 p-4 text-red-700">

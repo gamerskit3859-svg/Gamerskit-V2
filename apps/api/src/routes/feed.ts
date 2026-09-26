@@ -174,7 +174,9 @@ function googleTsv(rows: ReturnType<typeof feedRows>): string {
 router.get("/", async (req, res) => {
   const format = String(req.query.format || "meta").toLowerCase();
   const [products, categories] = await Promise.all([
-    ProductModel.find({})
+    // The feed is a storefront surface, so a deactivated product must drop out
+    // of it too — otherwise Meta and Google keep advertising an unbuyable page.
+    ProductModel.find({ isActive: { $ne: false } })
       .select("slug title description category categorySlug price compareAtPrice stock images variants")
       .sort({ updatedAt: -1 })
       .lean<FeedProduct[]>(),

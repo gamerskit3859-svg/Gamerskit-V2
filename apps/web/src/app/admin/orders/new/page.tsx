@@ -18,6 +18,7 @@ import {
   Select,
   Textarea,
 } from "@/components/ui";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { cn } from "@/lib/cn";
 
 type PaymentMethod = "cod" | "bkash" | "nagad" | "card" | "manual";
@@ -229,24 +230,16 @@ export default function CustomOrderPage() {
 
   return (
     <div>
-      <header className="mb-6">
-        <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
-          Admin
-        </span>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          New custom order
-        </h1>
-        <p className="mt-1 text-sm text-fg-soft">
-          Build a manual order with custom prices, ad-hoc line items, and
-          flexible payment. Fires a Purchase event with the final value.
-        </p>
-      </header>
+      <AdminPageHeader
+        title="New custom order"
+        description="Build a manual order with custom prices, ad-hoc line items, and flexible payment. Fires a Purchase event with the final value."
+      />
 
-      <div className="grid items-start gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="grid items-start gap-4 sm:gap-6 lg:grid-cols-[1fr_360px]">
         <Card tone="soft" padding="md">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-semibold">Items</h2>
-            <div className="flex gap-2">
+            <div className="flex w-full gap-2 sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none">
               <Button
                 variant="ghost"
                 size="sm"
@@ -274,8 +267,12 @@ export default function CustomOrderPage() {
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
-                    className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-white p-3"
+                    className="rounded-lg border border-line bg-white p-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3"
                   >
+                    {/* Two stacked rows on a phone — thumbnail and title, then
+                        the numbers — and the original single row from sm, where
+                        both wrappers go display:contents. */}
+                    <div className="flex items-center gap-3 sm:contents">
                     <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded bg-bg-soft">
                       {l.image && (
                         <Image
@@ -288,13 +285,16 @@ export default function CustomOrderPage() {
                       )}
                     </div>
                     <Input
-                      className="min-w-[140px] flex-1"
+                      className="!w-full min-w-0 flex-1 sm:min-w-[140px]"
                       value={l.title}
+                      aria-label="Item title"
                       onChange={(e) =>
                         update(l.key, { title: e.target.value })
                       }
                       readOnly={!l.custom}
                     />
+                    </div>
+                    <div className="mt-2 flex items-end justify-between gap-3 sm:mt-0 sm:contents">
                     <div className="flex flex-col gap-0.5">
                       <span className={eyebrow}>Price</span>
                       <Input
@@ -329,7 +329,7 @@ export default function CustomOrderPage() {
                         }
                       />
                     </div>
-                    <div className="min-w-[80px] whitespace-nowrap text-right font-semibold">
+                    <div className="whitespace-nowrap text-right font-semibold sm:min-w-[80px]">
                       {formatBDT(l.unitPrice * l.quantity)}
                     </div>
                     <button
@@ -340,6 +340,7 @@ export default function CustomOrderPage() {
                     >
                       <Trash2 size={14} />
                     </button>
+                    </div>
                   </motion.li>
                 ))}
               </AnimatePresence>

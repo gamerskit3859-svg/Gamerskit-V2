@@ -13,6 +13,7 @@ import {
   Input,
   Select,
 } from "@/components/ui";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 
 export default function StaffPage() {
   const [items, setItems] = useState<AdminUserSummary[]>([]);
@@ -111,18 +112,13 @@ export default function StaffPage() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
-            Admin
-          </span>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Staff</h1>
-          <p className="mt-1 text-sm text-fg-soft">
-            Manage admin and staff accounts that can sign in to this dashboard.
-          </p>
-        </div>
-        <Button onClick={() => setOpenCreate(true)}>+ Invite member</Button>
-      </header>
+      <AdminPageHeader
+        title="Staff"
+        description="Manage admin and staff accounts that can sign in to this dashboard."
+        actions={
+          <Button onClick={() => setOpenCreate(true)}>+ Invite member</Button>
+        }
+      />
 
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <Select
@@ -157,7 +153,46 @@ export default function StaffPage() {
             No users.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Below md each account becomes a card: six columns, two of them
+                an email and a role control, will not fit a phone. */}
+            <ul className="divide-y divide-line md:hidden">
+              {items.map((u) => (
+                <li key={u._id} className="bg-white p-3">
+                  <p className="truncate text-sm font-medium">{u.email}</p>
+                  <p className="truncate text-xs text-fg-soft">
+                    {u.name || "—"}
+                    {u.phone && ` · ${u.phone}`}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-fg-muted">
+                    Joined {formatDateTime(u.createdAt)}
+                  </p>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <Select
+                      className="!w-auto !py-1 !text-xs"
+                      aria-label={`Role for ${u.email}`}
+                      value={u.role}
+                      onChange={(e) =>
+                        changeRole(u._id, e.target.value as UserRole)
+                      }
+                    >
+                      <option value="customer">Customer</option>
+                      <option value="staff">Staff</option>
+                      <option value="admin">Admin</option>
+                    </Select>
+                    <button
+                      type="button"
+                      onClick={() => remove(u)}
+                      className="shrink-0 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-red-600"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="hidden overflow-x-auto md:block">
             <table className="min-w-[720px] w-full text-sm">
               <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
@@ -209,7 +244,8 @@ export default function StaffPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </Card>
 
