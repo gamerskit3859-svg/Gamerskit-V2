@@ -49,4 +49,8 @@ export const env = {
   R2_ENDPOINT: process.env.R2_ENDPOINT ?? "",
   // Public base URL of the bucket (custom domain or r2.dev), no trailing slash.
   R2_PUBLIC_URL: (process.env.R2_PUBLIC_URL ?? "").replace(/\/+$/, ""),
+  // Admin AI assistant. Server-side only — never forwarded to the web app.
+  // With no key the assistant endpoints answer 503 instead of failing startup.
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "",
+  AI_MODEL: process.env.AI_MODEL || "claude-sonnet-5",
 };

@@ -22,6 +22,7 @@ import fbRouter from "./routes/fb.js";
 import steadfastRouter from "./routes/steadfast.js";
 import feedRouter from "./routes/feed.js";
 import goobliqueRouter from "./routes/gooblique/index.js";
+import aiRouter from "./routes/ai.js";
 
 const require = createRequire(import.meta.url);
 
@@ -199,6 +200,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use("/api/orders", ordersRouter);
   app.use("/api/coupons", couponsRouter);
   app.use("/api/admin/steadfast", steadfastRouter);
+  app.use("/api/admin/ai", aiRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/admin/users", adminUsersRouter);
   app.use("/api/fb", fbRouter);
