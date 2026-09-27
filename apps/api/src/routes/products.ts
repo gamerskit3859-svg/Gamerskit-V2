@@ -4,6 +4,7 @@ import { ProductModel } from "../models/Product.js";
 import { CategoryModel } from "../models/Category.js";
 import { adminRequired } from "../lib/auth.js";
 import { setPrivateNoStore } from "../lib/http.js";
+import { hasVariants, variantStock, type VariantGroup } from "../lib/variants.js";
 
 const router = Router();
 const PUBLIC_PRODUCT_FIELDS =
@@ -31,28 +32,6 @@ const PRODUCT_SORTS: Record<string, Record<string, SortOrder>> = {
   stock_asc: { stock: 1, createdAt: -1 },
   stock_desc: { stock: -1, createdAt: -1 },
 };
-
-type VariantGroup = {
-  name?: string;
-  options?: Array<{ value?: string; stock?: number; sku?: string; price?: number }>;
-};
-
-function hasVariants(product: { variants?: VariantGroup[] }) {
-  return Array.isArray(product.variants) && product.variants.some((group) => group.options?.length);
-}
-
-function variantStock(variants?: VariantGroup[]) {
-  if (!Array.isArray(variants)) return 0;
-  return variants.reduce(
-    (sum, group) =>
-      sum +
-      (group.options ?? []).reduce(
-        (optionSum, option) => optionSum + (Number(option.stock) || 0),
-        0,
-      ),
-    0,
-  );
-}
 
 function stripPublicStock<
   T extends { variants?: VariantGroup[]; stock?: number; readyStock?: boolean },

@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "seed": "tsx src/scripts/seed.ts",
     "migrate:statuses": "tsx src/scripts/migrate-order-statuses.ts"
   },
@@ -41,7 +42,9 @@
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
+    "mongodb-memory-server-core": "^11.3.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.2"
   }
 }
