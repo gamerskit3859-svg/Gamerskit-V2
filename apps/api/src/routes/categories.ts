@@ -31,13 +31,15 @@ async function withLiveProductCounts(categories: CategoryRecord[]): Promise<Cate
     .map((cat) => cat.slug)
     .filter((slug): slug is string => Boolean(slug));
 
+  // Counts shown next to a category on the storefront, so they must agree with
+  // what the listing will actually render: deactivated products are excluded.
   const [byId, bySlug] = await Promise.all([
     ProductModel.aggregate<{ _id: unknown; count: number }>([
-      { $match: { category: { $in: ids } } },
+      { $match: { category: { $in: ids }, isActive: { $ne: false } } },
       { $group: { _id: "$category", count: { $sum: 1 } } },
     ]),
     ProductModel.aggregate<{ _id: string; count: number }>([
-      { $match: { categorySlug: { $in: slugs } } },
+      { $match: { categorySlug: { $in: slugs }, isActive: { $ne: false } } },
       { $group: { _id: "$categorySlug", count: { $sum: 1 } } },
     ]),
   ]);

@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Package,
   Truck,
+  RefreshCw,
   CheckCircle,
   Clock,
   MapPin,
@@ -12,7 +13,8 @@ import {
   CreditCard,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { getCourierStatusText, getCourierTrackUrl } from "@/lib/courier";
+import {
+  formatCourierStatus, getCourierStatusText, getCourierTrackUrl } from "@/lib/courier";
 import { formatBDT, formatDateTime } from "@/lib/format";
 import { LinkButton, Card, Section, Pill } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -21,21 +23,23 @@ import type { Order } from "@/types/shared";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// Two rails, not five: the stages in between belong to the courier, whose live
+// status is shown in its own panel further down.
 const STATUSES: Array<{ key: string; label: string }> = [
-  { key: "pending", label: "Pending confirmation" },
   { key: "confirmed", label: "Confirmed" },
-  { key: "processing", label: "Processing" },
-  { key: "shipped", label: "Shipped" },
   { key: "delivered", label: "Delivered" },
 ];
 
 const STATUS_CONFIG = {
-  pending: { tone: "warning" as const, icon: Clock },
   confirmed: { tone: "info" as const, icon: CheckCircle },
-  processing: { tone: "info" as const, icon: Package },
-  shipped: { tone: "info" as const, icon: Truck },
+  called_confirmed: { tone: "info" as const, icon: CheckCircle },
+  called_no_answer: { tone: "warning" as const, icon: Clock },
+  waiting_stock: { tone: "warning" as const, icon: Clock },
+  exchange: { tone: "accent" as const, icon: RefreshCw },
   delivered: { tone: "success" as const, icon: CheckCircle },
+  returned: { tone: "danger" as const, icon: Clock },
   cancelled: { tone: "danger" as const, icon: Clock },
+  refunded: { tone: "danger" as const, icon: Clock },
 };
 
 const PAYMENT_METHOD_LABELS = {
@@ -93,7 +97,7 @@ export default async function OrderPage({
 
   const statusConfig =
     STATUS_CONFIG[order!.status as keyof typeof STATUS_CONFIG] ||
-    STATUS_CONFIG.pending;
+    STATUS_CONFIG.confirmed;
   const StatusIcon = statusConfig.icon;
   const delivery = getDeliveryInfo(order!);
   const paidAmount = order!.paidAmount ?? order!.advance ?? 0;
@@ -392,7 +396,7 @@ export default async function OrderPage({
                 <div className="flex justify-between gap-4">
                   <span className="text-fg-muted">Delivery status</span>
                   <span className="text-right font-medium">
-                    {getCourierStatusText(order!.courier)}
+                    {formatCourierStatus(getCourierStatusText(order!.courier))}
                   </span>
                 </div>
                 <div className="flex justify-between gap-4">
@@ -417,7 +421,11 @@ export default async function OrderPage({
               </div>
             ) : (
               <p className="text-sm text-fg-muted">
-                Courier tracking is not available yet.
+                {order!.status === "cancelled"
+                  ? "This order was cancelled, so it was never handed to the courier."
+                  : order!.status === "refunded"
+                    ? "This order was refunded."
+                    : "Your parcel has not reached the courier yet. Tracking appears here as soon as it is handed over."}
               </p>
             )}
           </Card>

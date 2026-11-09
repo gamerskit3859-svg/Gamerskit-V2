@@ -47,6 +47,17 @@ Fill in at minimum:
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `ADMIN_PASSWORD` | Strong password for the bootstrap admin account |
 
+Required only if you use the demo video admin (`/api/v1/gooblique/demo-videos`) —
+while these are blank, those upload routes return `503`:
+
+| Variable | What to put |
+|---|---|
+| `R2_ACCOUNT_ID` | Cloudflare account ID (R2 dashboard) |
+| `R2_ACCESS_KEY_ID` | R2 API token access key |
+| `R2_SECRET_ACCESS_KEY` | R2 API token secret |
+| `R2_BUCKET` | Bucket name, e.g. `gamerskit-media` |
+| `R2_PUBLIC_URL` | Public bucket base URL (custom domain or `r2.dev`), no trailing slash |
+
 `.env.gamerskit` is git-ignored and never committed — keep it only on the server.
 
 ### 3. Build and start

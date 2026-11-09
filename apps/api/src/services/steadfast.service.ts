@@ -31,6 +31,9 @@ export type SteadfastOrderLike = {
   deliveryAddress?: string;
   location?: string;
   customerAddress?: string;
+  status?: string;
+  /** Explicit collect-this-much, set by an admin. Null/undefined = compute it. */
+  courierCodAmount?: number | null;
   dueAmount?: number;
   remaining?: number;
   total?: number;
@@ -90,6 +93,21 @@ function asAmount(value: unknown): number {
   return Number.isFinite(amount) ? Math.max(0, amount) : 0;
 }
 
+/**
+ * How much the courier should collect on delivery.
+ *
+ * An explicit admin-set amount always wins. Otherwise an exchange collects
+ * nothing — the customer already paid for the original parcel — and every other
+ * order falls back to what is still owed on it.
+ */
+export function resolveCodAmount(order: SteadfastOrderLike): number {
+  if (order.courierCodAmount !== null && order.courierCodAmount !== undefined) {
+    return asAmount(order.courierCodAmount);
+  }
+  if (order.status === "exchange") return 0;
+  return asAmount(order.dueAmount ?? order.remaining ?? order.total);
+}
+
 function compact(parts: Array<string | undefined | null>): string {
   return parts
     .map((part) => String(part ?? "").trim())
@@ -123,7 +141,7 @@ export function mapGamersKitOrderToSteadfast(
       order.alternativePhone || customer.alternativePhone || customer.altPhone || undefined,
     recipient_email: order.email || customer.email || undefined,
     recipient_address: address || "Address not provided",
-    cod_amount: asAmount(order.dueAmount ?? order.remaining ?? order.total),
+    cod_amount: resolveCodAmount(order),
     note: order.note || order.notes || undefined,
     item_description:
       order.items

@@ -12,6 +12,7 @@ import {
   Input,
   Select,
 } from "@/components/ui";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { cn } from "@/lib/cn";
 
 interface DraftCoupon {
@@ -155,21 +156,11 @@ export default function CouponsPage() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <span className="block text-xs font-medium uppercase tracking-[0.18em] text-fg-soft">
-            Admin
-          </span>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-            Coupons
-          </h1>
-          <p className="mt-1 text-sm text-fg-soft">
-            {items.length} coupons · click a row to edit, toggle active, or
-            delete.
-          </p>
-        </div>
-        <Button onClick={startCreate}>+ New coupon</Button>
-      </header>
+      <AdminPageHeader
+        title="Coupons"
+        description={`${items.length} coupons · edit, toggle active, or delete.`}
+        actions={<Button onClick={startCreate}>+ New coupon</Button>}
+      />
 
       {error && !openCreate && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -185,7 +176,65 @@ export default function CouponsPage() {
             No coupons yet — create your first one.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Below md each coupon becomes a card: seven columns, one of them
+                a date window, will not fit a phone. */}
+            <ul className="divide-y divide-line md:hidden">
+              {items.map((c) => (
+                <li key={c._id} className="bg-white p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-mono text-sm font-medium">
+                        {c.code}
+                      </p>
+                      <p className="text-xs text-fg-soft">
+                        {c.type === "percent"
+                          ? `${c.value}% off`
+                          : `${formatBDT(c.value)} off`}
+                        {c.minOrder ? ` · min ${formatBDT(c.minOrder)}` : ""}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleActive(c)}
+                      className={cn(
+                        "shrink-0 rounded-full px-2 py-0.5 text-xs",
+                        c.active
+                          ? "bg-black text-white"
+                          : "bg-bg-soft text-fg-soft",
+                      )}
+                    >
+                      {c.active ? "Active" : "Inactive"}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-[11px] text-fg-muted">
+                    Redeemed {c.redeemed}
+                    {c.maxRedemptions ? ` / ${c.maxRedemptions}` : ""}
+                    {" · "}
+                    {c.startsAt ? formatDateTime(c.startsAt) : "any"} →{" "}
+                    {c.endsAt ? formatDateTime(c.endsAt) : "any"}
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(c)}
+                      className="flex-1 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => remove(c)}
+                      className="flex-1 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-red-600"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="hidden overflow-x-auto md:block">
             <table className="min-w-[820px] w-full text-sm">
               <thead className="bg-white text-left text-xs text-fg-soft">
                 <tr>
@@ -255,7 +304,8 @@ export default function CouponsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </Card>
 

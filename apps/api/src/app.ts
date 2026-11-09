@@ -21,6 +21,9 @@ import settingsRouter from "./routes/settings.js";
 import fbRouter from "./routes/fb.js";
 import steadfastRouter from "./routes/steadfast.js";
 import feedRouter from "./routes/feed.js";
+import goobliqueRouter from "./routes/gooblique/index.js";
+import aiRouter from "./routes/ai.js";
+import { CHOTOPAA_MOUNT, createChotopaaRouter } from "./chotopaa/router.js";
 
 const require = createRequire(import.meta.url);
 
@@ -89,8 +92,9 @@ export function createApp(options: CreateAppOptions = {}): Express {
   // 1) CORS — Simplified for Vercel compatibility
   const allowedOrigins = parseAllowedOrigins();
 
-  app.use(
-    cors({
+  // ChotoPaa's read API answers its own storefront origins (src/chotopaa),
+  // so GamersKit's CORS list is neither widened nor applied there.
+  const gamerskitCors = cors({
       origin: (origin, callback) => {
         // Allow requests with no origin (like mobile apps or curl)
         if (!origin) return callback(null, true);
@@ -116,8 +120,14 @@ export function createApp(options: CreateAppOptions = {}): Express {
       allowedHeaders: ["Authorization", "Content-Type", "X-Requested-With", "Accept"],
       optionsSuccessStatus: 204,
       preflightContinue: false,
-    }),
-  );
+    });
+  app.use((req, res, next) => {
+    if (req.path.startsWith(`${CHOTOPAA_MOUNT}/`)) {
+      next();
+      return;
+    }
+    gamerskitCors(req, res, next);
+  });
 
   // 2) Security headers.
   app.use(helmet({ 
@@ -158,6 +168,19 @@ export function createApp(options: CreateAppOptions = {}): Express {
     }),
   );
 
+  // Public order tracking is unauthenticated and the courier refresh behind it
+  // calls a metered external API, so it gets a tighter budget than /api/*.
+  app.use(
+    "/api/orders/track",
+    rateLimit({
+      windowMs: 60_000,
+      max: 30,
+      skip: (req: Request) => req.method === "OPTIONS",
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
+  );
+
   // Health probe.
   app.get("/", (_req, res) => {
     res.json({ ok: true, service: "gamerskit-api" });
@@ -170,6 +193,11 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.get("/favicon.ico", (_req, res) => {
     res.status(204).end();
   });
+
+  // ChotoPaa's storefront reads (src/chotopaa): its own database, CORS and
+  // errors. Ahead of the pre-route hook, so they never wait on — or fail
+  // with — GamersKit's own database.
+  app.use(CHOTOPAA_MOUNT, createChotopaaRouter());
 
   // 6) Optional pre-route hook.
   if (options.beforeRoutes) {
@@ -185,10 +213,12 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use("/api/orders", ordersRouter);
   app.use("/api/coupons", couponsRouter);
   app.use("/api/admin/steadfast", steadfastRouter);
+  app.use("/api/admin/ai", aiRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/admin/users", adminUsersRouter);
   app.use("/api/fb", fbRouter);
   app.use("/api/feed", feedRouter);
+  app.use("/api/v1/gooblique", goobliqueRouter);
 
   // 7) 404 + centralized JSON error handler.
   app.use(notFoundHandler);

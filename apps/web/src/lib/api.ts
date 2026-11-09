@@ -9,7 +9,12 @@ import type {
   Coupon,
   NotificationItem,
   Order,
+  OrderEditPayload,
+  OrderListSort,
+  OrderStockFilter,
   Product,
+  ProductActiveFilter,
+  ProductListSort,
   UserRole,
 } from "@/types/shared";
 
@@ -95,6 +100,49 @@ export interface HeroImageItem {
   updatedAt?: string;
 }
 
+export const CONTACT_CHANNEL_TYPES = [
+  "whatsapp",
+  "messenger",
+  "telegram",
+  "instagram",
+  "phone",
+  "email",
+  "custom",
+] as const;
+
+export type ContactChannelType = (typeof CONTACT_CHANNEL_TYPES)[number];
+
+/** What the storefront widget receives: a ready-to-open href, no raw handle. */
+export interface ContactChannel {
+  _id: string;
+  type: ContactChannelType;
+  label: string;
+  description: string;
+  href: string;
+}
+
+/** What the admin editor receives: the raw handle it has to round-trip. */
+export interface ContactChannelAdmin {
+  _id: string;
+  type: ContactChannelType;
+  label: string;
+  description: string;
+  value: string;
+  order: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type ContactChannelInput = {
+  type: ContactChannelType;
+  label: string;
+  description?: string;
+  value: string;
+  order?: number;
+  isActive?: boolean;
+};
+
 export interface ShopBannerItem {
   _id: string;
   imageUrl: string;
@@ -105,9 +153,40 @@ export interface ShopBannerItem {
   updatedAt?: string;
 }
 
+/** Portfolio CMS (hidden /admin/gooblique section). */
+export interface GoobliqueHero {
+  title: string;
+  subtitle: string;
+  media: { type: "image" | "video"; url: string } | null;
+}
+
+export interface DemoVideoItem {
+  _id: string;
+  title: string;
+  video: {
+    url: string;
+    key: string;
+  };
+  orientation: "portrait" | "landscape";
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SteadfastStatusResponse {
   item: unknown;
-  order?: Order;
+  /** The order as persisted after the sync. */
+  order: Order;
+  /** Normalized Steadfast delivery state, when the response carried one. */
+  deliveryStatus?: string;
+}
+
+export interface SteadfastBulkSyncResponse {
+  orders: Order[];
+  successful: number;
+  failed: number;
+  skipped: number;
+  failures: Array<{ orderId: string; orderNumber?: string; error: string }>;
 }
 
 type ProductListParams = {
@@ -125,6 +204,9 @@ type ProductListParams = {
 
 type AdminProductListParams = ProductListParams & {
   stock?: "low" | "out";
+  sort?: ProductListSort;
+  /** Storefront visibility. Omitted or "all" returns both sides. */
+  active?: ProductActiveFilter;
 };
 
 async function request<T>(
@@ -136,7 +218,11 @@ async function request<T>(
   },
 ): Promise<T> {
   const headers = new Headers(init?.headers);
-  headers.set("content-type", "application/json");
+  // Multipart uploads must keep the browser-generated content-type, which
+  // carries the boundary — setting it by hand makes the body unparseable.
+  if (!(init?.body instanceof FormData)) {
+    headers.set("content-type", "application/json");
+  }
   const authToken =
     init?.token && init.token !== "cookie-session" ? init.token : storedAuthToken();
   if (authToken && !headers.has("authorization")) {
@@ -186,6 +272,9 @@ async function request<T>(
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
+
+/** A 100MB video on a slow uplink needs far longer than the 12s default. */
+const UPLOAD_TIMEOUT_MS = 10 * 60_000;
 
 const qs = (params: Record<string, unknown>) => {
   const u = new URLSearchParams();
@@ -244,6 +333,22 @@ export const api = {
     request<{ orders: Order[] }>(`/api/orders/by-phone/${phone}`, {
       cache: "no-store",
     }),
+  /** Public tracking lookup: phone number, order number or courier code. */
+  trackOrders: (q: string) =>
+    request<{ orders: Order[] }>(`/api/orders/track${qs({ q })}`, {
+      cache: "no-store",
+    }),
+  /** Pulls the live courier status for one order the customer just looked up. */
+  refreshCourierStatus: (payload: { q: string; orderNumber: string }) =>
+    request<{
+      order: Order | null;
+      refreshed: boolean;
+      reason?: "not_dispatched" | "recent" | "unavailable";
+    }>(`/api/orders/track/courier-refresh`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    }),
   validateCoupon: (code: string, subtotal: number) =>
     request<{ coupon: { code: string; type: "percent" | "fixed"; value: number; discount: number } }>(
       `/api/coupons/validate`,
@@ -288,21 +393,42 @@ export const api = {
       to?: string;
       status?: string;
       source?: string;
+      /** Only orders containing this product. */
+      productId?: string;
+      /** Segment by whether the order's catalogue lines are on the shelf. */
+      readyStock?: OrderStockFilter;
+      sort?: OrderListSort;
       q?: string;
       page?: number;
       limit?: number;
     },
     token: string,
   ) =>
-    request<{ items: Order[]; total: number; page: number; limit: number; totalPages: number }>(
-      `/api/orders${qs(params)}`,
-      { token },
-    ),
+    request<{
+      items: Order[];
+      total: number;
+      /** Orders per status under every filter except status, plus an "all" sum. */
+      statusCounts: Record<string, number>;
+      page: number;
+      limit: number;
+      totalPages: number;
+    }>(`/api/orders${qs(params)}`, { token }),
   getOrderAdmin: (id: string, token: string) =>
     request<{ order: Order }>(`/api/orders/${id}`, { token }),
   updateOrder: (id: string, body: Partial<Order>, token: string) =>
     request<{ order: Order }>(`/api/orders/${id}`, {
       method: "PATCH",
+      body: JSON.stringify(body),
+      token,
+    }),
+  /**
+   * Full order edit (customer, line items, money). Recomputes totals and
+   * adjusts product stock server-side. Rejects orders already sent to the
+   * courier or in a terminal status.
+   */
+  editOrder: (id: string, body: OrderEditPayload, token: string) =>
+    request<{ order: Order }>(`/api/orders/${id}`, {
+      method: "PUT",
       body: JSON.stringify(body),
       token,
     }),
@@ -314,40 +440,26 @@ export const api = {
         token,
       },
     ),
-  getCourierStatus: async (
-    orderId: string,
-    token: string,
-  ): Promise<SteadfastStatusResponse> => {
-    const { order } = await api.getOrderAdmin(orderId, token);
-    const courier = order.courier;
-    if (!courier) {
-      throw new Error("Courier tracking is not available yet.");
-    }
-    if (courier.consignmentId) {
-      const result = await request<{ item: unknown }>(
-        `/api/admin/steadfast/status/consignment/${encodeURIComponent(courier.consignmentId)}`,
-        { token, cache: "no-store" },
-      );
-      return { ...result, order };
-    }
-    if (courier.trackingCode) {
-      const result = await request<{ item: unknown }>(
-        `/api/admin/steadfast/status/tracking/${encodeURIComponent(courier.trackingCode)}`,
-        { token, cache: "no-store" },
-      );
-      return { ...result, order };
-    }
-    if (courier.invoice || order.orderNumber) {
-      const result = await request<{ item: unknown }>(
-        `/api/admin/steadfast/status/invoice/${encodeURIComponent(courier.invoice || order.orderNumber)}`,
-        { token, cache: "no-store" },
-      );
-      return { ...result, order };
-    }
-    throw new Error("Courier tracking is missing tracking identifiers.");
-  },
+  /**
+   * Sync one order's courier status and persist it. The returned `order` is the
+   * saved document — callers should replace their copy with it rather than
+   * patching local state, otherwise the status reverts on the next reload.
+   */
   syncCourierStatus: (orderId: string, token: string) =>
-    api.getCourierStatus(orderId, token),
+    request<SteadfastStatusResponse>(
+      `/api/admin/steadfast/orders/${orderId}/sync`,
+      { method: "POST", token },
+    ),
+  /** Sync many orders in one request. Runs sequentially server-side. */
+  bulkSyncCourierStatus: (orderIds: string[], token: string) =>
+    request<SteadfastBulkSyncResponse>(`/api/admin/steadfast/orders/bulk-sync`, {
+      method: "POST",
+      body: JSON.stringify({ orderIds }),
+      token,
+      // One Steadfast round-trip per order, so a full page can outlast the
+      // 12s default by a wide margin.
+      timeoutMs: 5 * 60_000,
+    }),
   getSteadfastBalance: (token: string) =>
     request<{ item: unknown }>(`/api/admin/steadfast/balance`, {
       token,
@@ -377,6 +489,9 @@ export const api = {
       grossRevenue: number;
       grossCost: number;
       grossProfit: number;
+      damagedQuantity: number;
+      damagedCost: number;
+      damagedEntries: number;
       statusBreakdown: Record<string, number>;
       revenueByDay: Array<{ _id: string; total: number; orders: number }>;
     }>(`/api/admin/stats${qs(params)}`, { token }),
@@ -385,6 +500,16 @@ export const api = {
       `/api/admin/top-products${qs(params)}`,
       { token },
     ),
+  deliveredProducts: (params: { from?: string; to?: string }, token: string) =>
+    request<{
+      items: Array<{
+        _id: string;
+        title: string;
+        qty: number;
+        revenue: number;
+        orders: number;
+      }>;
+    }>(`/api/admin/delivered-products${qs(params)}`, { token }),
   reports: (params: { from?: string; to?: string }, token: string) =>
     request<{
       byCategory: Array<{ _id: string; qty: number; revenue: number }>;
@@ -397,6 +522,8 @@ export const api = {
       grossCost: number;
       grossProfit: number;
       grossMargin: number;
+      damagedQuantity: number;
+      damagedCost: number;
       transactions: Array<{
         _id: string;
         orderNumber: string;
@@ -463,6 +590,43 @@ export const api = {
       body: JSON.stringify({ delta }),
       token,
     }),
+  markDamaged: (
+    id: string,
+    body: { quantity: number; reason?: string },
+    token: string,
+  ) =>
+    request<{
+      item: Product;
+      damaged: {
+        _id: string;
+        title: string;
+        quantity: number;
+        unitCost: number;
+        totalCost: number;
+        reason: string;
+        createdAt: string;
+      };
+    }>(`/api/admin/products/${id}/damage`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      token,
+    }),
+  listDamaged: (params: { from?: string; to?: string; limit?: number }, token: string) =>
+    request<{
+      items: Array<{
+        _id: string;
+        productId?: string;
+        title: string;
+        quantity: number;
+        unitCost: number;
+        totalCost: number;
+        reason: string;
+        createdAt: string;
+      }>;
+      quantity: number;
+      cost: number;
+      entries: number;
+    }>(`/api/admin/damaged${qs(params)}`, { token }),
   updateProduct: (id: string, body: Partial<Product>, token: string) =>
     request<{ item: Product }>(`/api/products/${id}`, {
       method: "PATCH",
@@ -548,6 +712,35 @@ export const api = {
     request<{ items: HeroImageItem[] }>(`/api/hero-images`, {
       cache: "no-store",
     }),
+  getContactChannels: () =>
+    request<{ items: ContactChannel[] }>(`/api/settings/contact-channels`, {
+      cache: "no-store",
+    }),
+  listContactChannelsAdmin: (token: string) =>
+    request<{ items: ContactChannelAdmin[] }>(
+      `/api/settings/contact-channels/admin/all`,
+      { token },
+    ),
+  createContactChannel: (body: ContactChannelInput, token: string) =>
+    request<{ item: ContactChannelAdmin }>(`/api/settings/contact-channels`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      token,
+    }),
+  updateContactChannel: (
+    id: string,
+    body: Partial<ContactChannelInput>,
+    token: string,
+  ) =>
+    request<{ item: ContactChannelAdmin }>(
+      `/api/settings/contact-channels/${id}`,
+      { method: "PATCH", body: JSON.stringify(body), token },
+    ),
+  deleteContactChannel: (id: string, token: string) =>
+    request<void>(`/api/settings/contact-channels/${id}`, {
+      method: "DELETE",
+      token,
+    }),
   getShopBanners: () =>
     request<{ items: ShopBannerItem[] }>(`/api/settings/shop-banners`, {
       cache: "no-store",
@@ -617,6 +810,50 @@ export const api = {
     token: string,
   ) =>
     request<{ items: HeroImageItem[] }>(`/api/hero-images/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ order }),
+      token,
+    }),
+
+  // === Portfolio CMS (hidden) ===
+  // Video uploads are large, so they opt out of the default 12s request timeout.
+  getGoobliqueHero: () =>
+    request<GoobliqueHero>(`/api/v1/gooblique/hero`, { cache: "no-store" }),
+  updateGoobliqueHero: (body: FormData, token: string) =>
+    request<GoobliqueHero>(`/api/v1/gooblique/hero`, {
+      method: "PUT",
+      body,
+      token,
+      timeoutMs: UPLOAD_TIMEOUT_MS,
+    }),
+  listDemoVideos: () =>
+    request<{ items: DemoVideoItem[] }>(`/api/v1/gooblique/demo-videos`, {
+      cache: "no-store",
+    }),
+  createDemoVideo: (body: FormData, token: string) =>
+    request<{ item: DemoVideoItem }>(`/api/v1/gooblique/demo-videos`, {
+      method: "POST",
+      body,
+      token,
+      timeoutMs: UPLOAD_TIMEOUT_MS,
+    }),
+  updateDemoVideo: (id: string, body: FormData, token: string) =>
+    request<{ item: DemoVideoItem }>(`/api/v1/gooblique/demo-videos/${id}`, {
+      method: "PUT",
+      body,
+      token,
+      timeoutMs: UPLOAD_TIMEOUT_MS,
+    }),
+  deleteDemoVideo: (id: string, token: string) =>
+    request<{ item: DemoVideoItem }>(`/api/v1/gooblique/demo-videos/${id}`, {
+      method: "DELETE",
+      token,
+    }),
+  reorderDemoVideos: (
+    order: Array<{ id: string; order: number }>,
+    token: string,
+  ) =>
+    request<{ items: DemoVideoItem[] }>(`/api/v1/gooblique/demo-videos/reorder`, {
       method: "POST",
       body: JSON.stringify({ order }),
       token,

@@ -15,6 +15,7 @@ import {
   Select,
   Textarea,
 } from "@/components/ui";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { cn } from "@/lib/cn";
 
 interface Category {
@@ -160,15 +161,21 @@ export default function AdminCategories() {
     <>
       {cats.map((cat) => (
         <div key={cat._id}>
+          {/* Stacked on a phone, the seven-column grid from md up. The two
+              wrappers below go display:contents at md so the grid still sees
+              the individual cells rather than the mobile groupings. */}
           <div
             className={cn(
-              "grid min-w-[820px] grid-cols-[1fr_2fr_1fr_1fr_80px_80px_80px] items-center gap-4 border-b border-line p-3",
-              level > 0 && "bg-bg-soft pl-12",
+              "border-b border-line p-3",
+              "md:grid md:min-w-[820px] md:grid-cols-[1fr_2fr_1fr_1fr_80px_80px_80px] md:items-center md:gap-4",
+              level > 0 && "bg-bg-soft pl-6 md:pl-12",
             )}
           >
-            <span className="font-mono text-sm text-fg-muted">{cat.slug}</span>
+            <span className="font-mono text-xs text-fg-muted md:text-sm">
+              {cat.slug}
+            </span>
             <div>
-              <div className="flex items-center gap-2 font-medium">
+              <div className="flex flex-wrap items-center gap-2 font-medium">
                 {cat.name}
                 {cat.featured && (
                   <span className="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">
@@ -180,30 +187,34 @@ export default function AdminCategories() {
                 <div className="text-sm text-fg-soft">{cat.description}</div>
               )}
             </div>
-            <span className="text-sm text-fg-soft">
-              {cat.active ? "✓ Active" : "Inactive"}
-            </span>
-            <span className="text-sm text-fg-soft">
-              {cat.productCount} products
-            </span>
-            <button
-              type="button"
-              onClick={() => editCategory(cat)}
-              className="rounded bg-blue-100 px-2 py-1 text-xs text-blue-700 transition hover:bg-blue-200"
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={() => deleteCategory(cat._id)}
-              className="rounded bg-red-100 px-2 py-1 text-xs text-red-700 transition hover:bg-red-200 disabled:opacity-50"
-              disabled={
-                cat.productCount > 0 ||
-                (cat.subcategories?.length ?? 0) > 0
-              }
-            >
-              Delete
-            </button>
+            <div className="mt-1 flex items-center gap-3 md:contents">
+              <span className="text-sm text-fg-soft">
+                {cat.active ? "✓ Active" : "Inactive"}
+              </span>
+              <span className="text-sm text-fg-soft">
+                {cat.productCount} products
+              </span>
+            </div>
+            <div className="mt-2 flex gap-2 md:contents">
+              <button
+                type="button"
+                onClick={() => editCategory(cat)}
+                className="flex-1 rounded bg-blue-100 px-2 py-1.5 text-xs text-blue-700 transition hover:bg-blue-200 md:flex-none md:py-1"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteCategory(cat._id)}
+                className="flex-1 rounded bg-red-100 px-2 py-1.5 text-xs text-red-700 transition hover:bg-red-200 disabled:opacity-50 md:flex-none md:py-1"
+                disabled={
+                  cat.productCount > 0 ||
+                  (cat.subcategories?.length ?? 0) > 0
+                }
+              >
+                Delete
+              </button>
+            </div>
           </div>
           {cat.subcategories &&
             cat.subcategories.length > 0 &&
@@ -223,12 +234,10 @@ export default function AdminCategories() {
 
   return (
     <div className="min-h-screen">
-      <header className="mb-8">
-        <h1 className="mb-2 text-3xl font-bold">Categories</h1>
-        <p className="text-fg-soft">
-          Manage product categories and subcategories
-        </p>
-      </header>
+      <AdminPageHeader
+        title="Categories"
+        description="Manage product categories and subcategories"
+      />
 
       {error && (
         <motion.div
@@ -240,8 +249,9 @@ export default function AdminCategories() {
         </motion.div>
       )}
 
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <Button
+          className="!w-full sm:!w-auto"
           onClick={() => {
             resetForm();
             setShowForm(!showForm);
@@ -440,7 +450,7 @@ export default function AdminCategories() {
                 </FieldLabel>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 [&>*]:flex-1 sm:[&>*]:flex-none">
                 <Button type="submit" disabled={isCreating}>
                   {isCreating ? "Saving..." : "Save Category"}
                 </Button>
@@ -466,8 +476,9 @@ export default function AdminCategories() {
           No categories yet. Create one to get started.
         </div>
       ) : (
-        <Card padding="none" className="overflow-x-auto">
-          <div className="grid min-w-[820px] grid-cols-[1fr_2fr_1fr_1fr_80px_80px_80px] items-center gap-4 bg-bg-soft p-3 text-sm font-semibold">
+        <Card padding="none" className="overflow-hidden md:overflow-x-auto">
+          {/* Column headings only make sense once the rows are a grid. */}
+          <div className="hidden min-w-[820px] grid-cols-[1fr_2fr_1fr_1fr_80px_80px_80px] items-center gap-4 bg-bg-soft p-3 text-sm font-semibold md:grid">
             <div>Slug</div>
             <div>Name</div>
             <div>Status</div>

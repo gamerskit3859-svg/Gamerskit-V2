@@ -1,61 +1,143 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import { getCourierStatusText, getCourierTrackUrl } from "@/lib/courier";
+import {
+  formatCourierStatus,
+  getCourierStatusText,
+  getCourierTrackUrl,
+} from "@/lib/courier";
 import { formatBDT, formatDateTime } from "@/lib/format";
 import type { Order, OrderStatus } from "@/types/shared";
 import { Button, LinkButton, Card, Section, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
+// Two rails, not five: the in-between stages are the courier's, and the live
+// courier status is shown underneath rather than guessed at from order status.
 const STATUSES: Array<{ key: OrderStatus; label: string }> = [
-  { key: "pending", label: "Pending confirmation" },
   { key: "confirmed", label: "Confirmed" },
-  { key: "processing", label: "Processing" },
-  { key: "shipped", label: "Shipped" },
   { key: "delivered", label: "Delivered" },
 ];
 
+/**
+ * The call-centre statuses are steps inside confirmation rather than stages of
+ * their own, so they sit on the timeline at the point they really represent
+ * instead of leaving it blank.
+ */
+const TIMELINE_ALIASES: Partial<Record<OrderStatus, OrderStatus>> = {
+  called_confirmed: "confirmed",
+  called_no_answer: "confirmed",
+  waiting_stock: "confirmed",
+  exchange: "confirmed",
+};
+
+/** Orders that stopped before delivery: the progress rail does not apply. */
+const CLOSED_STATUSES: OrderStatus[] = ["cancelled", "refunded", "returned"];
+
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  confirmed: "Confirmed",
+  called_confirmed: "Confirmed by phone",
+  called_no_answer: "Awaiting your confirmation",
+  waiting_stock: "Waiting on stock",
+  exchange: "Exchange on the way",
+  delivered: "Delivered",
+  returned: "Returned",
+  cancelled: "Cancelled",
+  refunded: "Refunded",
+};
+
+const CLOSED_MESSAGES: Partial<Record<OrderStatus, string>> = {
+  cancelled: "This order was cancelled, so it was never handed to the courier.",
+  refunded: "This order was refunded.",
+  returned: "This parcel came back to us instead of being delivered.",
+};
+
 function statusPillColor(status: OrderStatus) {
   if (status === "delivered") return "bg-emerald-100 text-emerald-700";
-  if (status === "cancelled" || status === "refunded")
-    return "bg-red-100 text-red-700";
+  if (CLOSED_STATUSES.includes(status)) return "bg-red-100 text-red-700";
   return "bg-sky-100 text-sky-700";
 }
 
 export default function TrackPage() {
-  const [phone, setPhone] = useState("");
+  const [query, setQuery] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
+  const [syncingCourier, setSyncingCourier] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emptyMessage, setEmptyMessage] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
+  // Every lookup gets a number so a slow courier refresh from an earlier
+  // search can never overwrite the results of a later one.
+  const searchIdRef = useRef(0);
+
+  /**
+   * Ask the courier for the current state of each dispatched parcel. Orders
+   * only carry the status an admin last synced, which can be days old, so the
+   * page refreshes them itself once the customer has found their orders.
+   */
+  async function refreshCourierStatuses(
+    found: Order[],
+    lookup: string,
+    searchId: number,
+  ) {
+    const dispatched = found.filter((order) => order.courier);
+    if (dispatched.length === 0) return;
+
+    setSyncingCourier(true);
+    const results = await Promise.allSettled(
+      dispatched.map((order) =>
+        api.refreshCourierStatus({ q: lookup, orderNumber: order.orderNumber }),
+      ),
+    );
+    if (searchIdRef.current !== searchId) return;
+
+    const updated = new Map<string, Order>();
+    for (const result of results) {
+      if (result.status === "fulfilled" && result.value.order) {
+        updated.set(result.value.order.orderNumber, result.value.order);
+      }
+    }
+    if (updated.size > 0) {
+      setOrders((prev) =>
+        prev.map((order) => updated.get(order.orderNumber) ?? order),
+      );
+    }
+    setSyncingCourier(false);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const query = phone.trim();
+    const lookup = query.trim();
 
-    if (!query) {
+    if (!lookup) {
       setError(null);
-      setEmptyMessage("Please enter your order phone number to start tracking.");
+      setEmptyMessage(
+        "Enter your phone number, order number or courier tracking code to start tracking.",
+      );
       setSearched(false);
       setOrders([]);
       return;
     }
 
+    const searchId = searchIdRef.current + 1;
+    searchIdRef.current = searchId;
     setLoading(true);
+    setSyncingCourier(false);
     setError(null);
     setEmptyMessage(null);
     setSearched(true);
 
     try {
-      const result = await api.getOrdersByPhone(query);
+      const result = await api.trackOrders(lookup);
+      if (searchIdRef.current !== searchId) return;
       setOrders(result.orders);
+      void refreshCourierStatuses(result.orders, lookup, searchId);
     } catch (err) {
+      if (searchIdRef.current !== searchId) return;
       const status = (err as { status?: number }).status;
-      if (status === 404) {
+      if (status === 404 || status === 400) {
         setEmptyMessage(
-          "No order found with this tracking information. Please check your order ID or phone number and try again.",
+          "No order found. Check your phone number, order number or tracking code and try again.",
         );
       } else {
         setError(
@@ -64,16 +146,18 @@ export default function TrackPage() {
       }
       setOrders([]);
     } finally {
-      setLoading(false);
+      if (searchIdRef.current === searchId) setLoading(false);
     }
   }
 
   function resetSearch() {
-    setPhone("");
+    searchIdRef.current += 1;
+    setQuery("");
     setOrders([]);
     setError(null);
     setEmptyMessage(null);
     setSearched(false);
+    setSyncingCourier(false);
   }
 
   return (
@@ -86,29 +170,35 @@ export default function TrackPage() {
           Find your order.
         </h1>
         <p className="mt-3 text-fg-soft">
-          Enter your phone number to find all your orders.
+          Use your phone number, an order number or the courier tracking code
+          from your parcel.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="mx-auto mb-12 max-w-md">
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input
-            type="tel"
-            placeholder="01XXXXXXXXX"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            pattern="^01[3-9]\d{8}$"
-            title="Enter a valid Bangladeshi phone number (e.g., 01712345678)"
+            type="search"
+            inputMode="search"
+            autoComplete="off"
+            placeholder="01XXXXXXXXX, GK-… or tracking code"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Phone number, order number or courier tracking code"
             className="flex-1"
           />
           <Button
             type="submit"
-            disabled={loading || !phone.trim()}
+            disabled={loading || !query.trim()}
             className="w-full sm:w-auto"
           >
             {loading ? "Searching..." : "Find Orders"}
           </Button>
         </div>
+        <p className="mt-2 text-center text-xs text-fg-muted sm:text-left">
+          A phone number finds every order placed with it. An order number or
+          tracking code finds just that parcel.
+        </p>
       </form>
 
       {error && (
@@ -120,7 +210,7 @@ export default function TrackPage() {
       {(emptyMessage || (searched && !loading && orders.length === 0 && !error)) && (
         <div className="mx-auto mb-8 max-w-md rounded-lg border border-amber-200 bg-amber-50 p-4 text-center text-amber-700">
           {emptyMessage ??
-            "No order found with this tracking information. Please check your order ID or phone number and try again."}
+            "No order found. Check your phone number, order number or tracking code and try again."}
         </div>
       )}
 
@@ -135,7 +225,7 @@ export default function TrackPage() {
               onClick={resetSearch}
               className="mt-2 text-sm text-fg-soft underline hover:text-foreground"
             >
-              Search for a different number
+              Search for something else
             </button>
           </div>
 
@@ -161,8 +251,7 @@ export default function TrackPage() {
                       statusPillColor(order.status),
                     )}
                   >
-                    {STATUSES.find((s) => s.key === order.status)?.label ||
-                      order.status}
+                    {STATUS_LABELS[order.status] ?? order.status}
                   </div>
                 </div>
               </div>
@@ -170,33 +259,7 @@ export default function TrackPage() {
               {/* Status timeline */}
               <StatusTimeline status={order.status} />
 
-              <div className="mb-4 rounded-lg border border-line bg-white p-4 text-sm">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h4 className="font-semibold">Delivery Tracking</h4>
-                    <p className="mt-1 text-fg-soft">
-                      {order.courier
-                        ? `Steadfast · ${getCourierStatusText(order.courier)}`
-                        : "Courier tracking is not available yet."}
-                    </p>
-                    {order.courier?.trackingCode && (
-                      <p className="mt-1 font-mono text-xs text-fg-muted">
-                        {order.courier.trackingCode}
-                      </p>
-                    )}
-                  </div>
-                  {getCourierTrackUrl(order.courier?.trackingCode) && (
-                    <a
-                      href={getCourierTrackUrl(order.courier?.trackingCode) ?? "#"}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex h-9 items-center justify-center rounded-lg border border-black/10 px-4 text-xs font-semibold hover:bg-neutral-100"
-                    >
-                      Track Delivery
-                    </a>
-                  )}
-                </div>
-              </div>
+              <CourierPanel order={order} syncing={syncingCourier} />
 
               {/* Order items summary */}
               <div className="border-t border-line pt-4">
@@ -227,8 +290,79 @@ export default function TrackPage() {
   );
 }
 
+function CourierPanel({ order, syncing }: { order: Order; syncing: boolean }) {
+  const courier = order.courier;
+  const trackUrl = getCourierTrackUrl(courier?.trackingCode);
+  // An order is with the courier once a consignment exists, whether or not
+  // Steadfast handed back a tracking code for the public tracking page.
+  const dispatched = Boolean(
+    courier?.consignmentId || courier?.trackingCode || courier?.invoice,
+  );
+  const closedMessage = CLOSED_MESSAGES[order.status];
+
+  let detail: string;
+  if (dispatched) {
+    detail = `Steadfast · ${formatCourierStatus(getCourierStatusText(courier))}`;
+  } else if (closedMessage) {
+    detail = closedMessage;
+  } else {
+    detail =
+      "Your parcel has not reached the courier yet. Tracking appears here as soon as it is handed over.";
+  }
+
+  return (
+    <div className="mb-4 rounded-lg border border-line bg-white p-4 text-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h4 className="font-semibold">Delivery Tracking</h4>
+          <p className="mt-1 text-fg-soft">{detail}</p>
+          {dispatched && courier?.trackingCode && (
+            <p className="mt-1 font-mono text-xs text-fg-muted">
+              {courier.trackingCode}
+            </p>
+          )}
+          {dispatched && (
+            <p className="mt-1 text-xs text-fg-muted">
+              {syncing
+                ? "Checking with the courier…"
+                : courier?.updatedAt
+                  ? `Updated ${formatDateTime(courier.updatedAt)}`
+                  : "Waiting for the first courier update"}
+            </p>
+          )}
+        </div>
+        {trackUrl && (
+          <a
+            href={trackUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-black/10 px-4 text-xs font-semibold hover:bg-neutral-100"
+          >
+            Track Delivery
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StatusTimeline({ status }: { status: OrderStatus }) {
-  const currentIndex = STATUSES.findIndex((s) => s.key === status);
+  // A cancelled, refunded or returned order never walks the rest of the rail,
+  // and drawing five empty steps for it reads as a broken timeline.
+  if (CLOSED_STATUSES.includes(status)) {
+    return (
+      <div className="mb-4 rounded-lg border border-line bg-white px-4 py-3 text-sm">
+        <span className="font-medium">{STATUS_LABELS[status]}</span>
+        <span className="text-fg-soft">
+          {" "}
+          · {CLOSED_MESSAGES[status] ?? "This order is closed."}
+        </span>
+      </div>
+    );
+  }
+
+  const timelineStatus = TIMELINE_ALIASES[status] ?? status;
+  const currentIndex = STATUSES.findIndex((s) => s.key === timelineStatus);
 
   return (
     <div className="mb-4 overflow-x-auto pb-1">
@@ -263,6 +397,18 @@ function StatusTimeline({ status }: { status: OrderStatus }) {
           <span key={s.key}>{s.label}</span>
         ))}
       </div>
+      {status === "called_no_answer" && (
+        <p className="mt-2 text-xs text-amber-700">
+          We tried to reach you to confirm this order. Please expect another
+          call, or contact us to confirm it.
+        </p>
+      )}
+      {status === "waiting_stock" && (
+        <p className="mt-2 text-xs text-amber-700">
+          One of the items in this order is out of stock. It ships as soon as we
+          have it back in — we will call you if that is going to take a while.
+        </p>
+      )}
     </div>
   );
 }

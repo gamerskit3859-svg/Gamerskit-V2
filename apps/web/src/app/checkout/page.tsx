@@ -16,6 +16,7 @@ import {
   trackPurchase,
 } from "@/lib/fb-pixel";
 import { api } from "@/lib/api";
+import { getOrderDeliveryCharge } from "@/lib/delivery";
 import {
   Button,
   LinkButton,
@@ -89,7 +90,7 @@ export default function CheckoutPage() {
       phone: u?.phone ?? "",
       email: u?.email ?? "",
       address: "",
-      district: "",
+      district: "Dhaka City",
       thana: "",
       paymentMethod: "cod",
       paymentType: "full",
@@ -145,20 +146,25 @@ export default function CheckoutPage() {
     );
   }
 
+  const deliveryCharge = getOrderDeliveryCharge(
+    lines.map((l) => ({ freeDelivery: l.freeDelivery })),
+    form.district,
+  );
+  const total = subtotal + deliveryCharge;
   const isMobilePayment =
     form.paymentMethod === "bkash" || form.paymentMethod === "nagad";
   const paidAmount =
     isMobilePayment && form.paymentType === "full"
-      ? subtotal
+      ? total
       : Number(form.paidAmount || 0);
-  const dueAmount = isMobilePayment ? Math.max(0, subtotal - paidAmount) : subtotal;
+  const dueAmount = isMobilePayment ? Math.max(0, total - paidAmount) : total;
   const senderDigits = form.senderNumber.replace(/\D/g, "");
   const senderNumberValid = /^01[3-9]\d{8}$/.test(senderDigits);
   const paymentValid =
     !isMobilePayment ||
     (senderNumberValid &&
       (form.paymentType === "full" ||
-        (paidAmount > 0 && paidAmount < subtotal)));
+        (paidAmount > 0 && paidAmount < total)));
   const paymentError =
     !isMobilePayment || paymentValid
       ? null
@@ -180,7 +186,7 @@ export default function CheckoutPage() {
       track({
         event: "AddPaymentInfo",
         currency: "BDT",
-        value: subtotal,
+        value: total,
         contentIds: lines.map((l) => l.productId),
         user: {
           email: form.email || undefined,
@@ -214,13 +220,13 @@ export default function CheckoutPage() {
             variantSku: l.variantSku,
             variantPrice: l.unitPrice,
           })),
-          shippingFee: 0,
+          shippingFee: deliveryCharge,
           discount: 0,
           advance: isMobilePayment ? paidAmount : 0,
           paymentMethod: form.paymentMethod,
           paymentType: isMobilePayment ? form.paymentType : null,
           paidAmount: isMobilePayment ? paidAmount : 0,
-          dueAmount: isMobilePayment ? dueAmount : subtotal,
+          dueAmount: isMobilePayment ? dueAmount : total,
           senderNumber: isMobilePayment ? senderDigits : null,
           source: "storefront",
           notes: form.notes,
@@ -586,7 +592,7 @@ export default function CheckoutPage() {
                   onClick={submitOrder}
                   disabled={submitting}
                 >
-                  {submitting ? "Placing…" : `Place order · ${formatBDT(subtotal)}`}
+                  {submitting ? "Placing…" : `Place order · ${formatBDT(total)}`}
                 </Button>
               </div>
             </div>
@@ -625,9 +631,21 @@ export default function CheckoutPage() {
             ))}
           </ul>
 
-          <div className="mt-4 flex justify-between border-t border-line pt-4 font-semibold">
-            <span>Total</span>
-            <span>{formatBDT(subtotal)}</span>
+          <div className="mt-4 flex flex-col gap-1.5 border-t border-line pt-4 text-sm">
+            <div className="flex justify-between text-fg-soft">
+              <span>Subtotal</span>
+              <span>{formatBDT(subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-fg-soft">
+              <span>Shipping</span>
+              <span>
+                {deliveryCharge === 0 ? "Free" : formatBDT(deliveryCharge)}
+              </span>
+            </div>
+            <div className="mt-1 flex justify-between border-t border-line pt-2 font-semibold">
+              <span>Total</span>
+              <span>{formatBDT(total)}</span>
+            </div>
           </div>
         </aside>
       </div>

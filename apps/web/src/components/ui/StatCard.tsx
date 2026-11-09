@@ -30,7 +30,7 @@ export function StatCard({
   loading,
 }: StatCardProps) {
   return (
-    <Card padding="md" className={cn("flex flex-col gap-1.5", className)}>
+    <Card padding="sm" className={cn("flex min-w-0 flex-col gap-1.5", className)}>
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium uppercase tracking-wide text-fg-soft">
           {label}
@@ -39,7 +39,10 @@ export function StatCard({
       </div>
       <p
         className={cn(
-          "text-2xl font-semibold tracking-tight md:text-3xl tabular-nums",
+          // Capped at 2xl: these cards sit in a 3-to-6 column grid, and a
+          // six-figure taka amount at 3xl needs ~180px of text room, which
+          // that grid never gives once the 260px admin sidebar is on screen.
+          "break-words text-xl font-semibold tracking-tight tabular-nums sm:text-2xl",
           tone === "negative" && "text-red-600",
           tone === "positive" && "text-emerald-600",
         )}

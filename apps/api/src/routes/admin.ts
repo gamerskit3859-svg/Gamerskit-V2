@@ -1,11 +1,16 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { PipelineStage } from "mongoose";
-import { OrderModel } from "../models/Order.js";
+import {
+  NON_REVENUE_ORDER_STATUSES,
+  OrderModel,
+  TERMINAL_ORDER_STATUSES,
+} from "../models/Order.js";
 import { ProductModel } from "../models/Product.js";
 import { UserModel } from "../models/User.js";
 import { CouponModel } from "../models/Coupon.js";
 import { AccountingOverrideModel } from "../models/AccountingOverride.js";
+import { DamagedItemModel } from "../models/DamagedItem.js";
 import { adminOnlyRequired, adminRequired, hashPassword } from "../lib/auth.js";
 import { setPrivateNoStore } from "../lib/http.js";
 import {
@@ -60,20 +65,26 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
     lowStockCount,
     newCustomers,
     grossAgg,
+    damagedAgg,
   ] = await Promise.all([
     OrderModel.countDocuments(orderMatch),
     OrderModel.aggregate([
-      { $match: { ...orderMatch, status: { $nin: ["cancelled", "refunded"] } } },
+      { $match: { ...orderMatch, status: { $nin: NON_REVENUE_ORDER_STATUSES } } },
       { $group: { _id: null, total: { $sum: "$total" } } },
     ]),
-    OrderModel.countDocuments({ ...orderMatch, status: "pending" }),
+    // Was a count of "pending", which no longer exists. Open orders — anything
+    // that has not reached a terminal state — is the number worth surfacing.
+    OrderModel.countDocuments({
+      ...orderMatch,
+      status: { $nin: TERMINAL_ORDER_STATUSES },
+    }),
     OrderModel.countDocuments({ ...orderMatch, status: "delivered" }),
     OrderModel.aggregate([
       { $match: orderMatch },
       { $group: { _id: "$status", count: { $sum: 1 } } },
     ]),
     OrderModel.aggregate([
-      { $match: { ...orderMatch, status: { $nin: ["cancelled", "refunded"] } } },
+      { $match: { ...orderMatch, status: { $nin: NON_REVENUE_ORDER_STATUSES } } },
       {
         $group: {
           _id: {
@@ -90,7 +101,7 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
       { $sort: { _id: 1 } },
     ]),
     OrderModel.aggregate([
-      { $match: { ...orderMatch, status: { $nin: ["cancelled", "refunded"] } } },
+      { $match: { ...orderMatch, status: { $nin: NON_REVENUE_ORDER_STATUSES } } },
       { $unwind: "$items" },
       { $group: { _id: null, qty: { $sum: "$items.quantity" } } },
     ]),
@@ -100,7 +111,7 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
       ...(dateFilter ? { createdAt: dateFilter } : {}),
     }),
     OrderModel.aggregate([
-      { $match: { ...orderMatch, status: { $nin: ["cancelled", "refunded"] } } },
+      { $match: { ...orderMatch, status: { $nin: NON_REVENUE_ORDER_STATUSES } } },
       { $unwind: "$items" },
       {
         $lookup: {
@@ -123,11 +134,25 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
         },
       },
     ]),
+    DamagedItemModel.aggregate([
+      ...(dateFilter ? [{ $match: { createdAt: dateFilter } }] : []),
+      {
+        $group: {
+          _id: null,
+          quantity: { $sum: "$quantity" },
+          cost: { $sum: "$totalCost" },
+          entries: { $sum: 1 },
+        },
+      },
+    ]),
   ]);
 
   const grossRevenue = grossAgg[0]?.revenue ?? 0;
   const grossCost = grossAgg[0]?.cost ?? 0;
   const grossProfit = grossRevenue - grossCost;
+  const damagedQuantity = damagedAgg[0]?.quantity ?? 0;
+  const damagedCost = damagedAgg[0]?.cost ?? 0;
+  const damagedEntries = damagedAgg[0]?.entries ?? 0;
   const revenueByDayRows = normalizeRevenueByDay(
     revenueByDay as RevenueDay[],
     from,
@@ -146,6 +171,9 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
     grossRevenue,
     grossCost,
     grossProfit,
+    damagedQuantity,
+    damagedCost,
+    damagedEntries,
     statusBreakdown: Object.fromEntries(
       (statusBreakdown as Array<{ _id: string; count: number }>).map((r) => [r._id, r.count]),
     ),
@@ -156,7 +184,7 @@ router.get("/stats", adminOnlyRequired, async (req, res) => {
 router.get("/top-products", adminOnlyRequired, async (req, res) => {
   const { from, to, limit = "10" } = req.query as Record<string, string>;
   const dateFilter = buildDateFilter(from, to);
-  const match: Record<string, unknown> = { status: { $nin: ["cancelled", "refunded"] } };
+  const match: Record<string, unknown> = { status: { $nin: NON_REVENUE_ORDER_STATUSES } };
   if (dateFilter) match.createdAt = dateFilter;
   const items = await OrderModel.aggregate([
     { $match: match },
@@ -174,6 +202,55 @@ router.get("/top-products", adminOnlyRequired, async (req, res) => {
   res.json({ items });
 });
 
+/**
+ * Delivered units per product. Unlike /top-products this is neither ranked nor
+ * capped: it returns every product that reached a customer in the window, so
+ * the dashboard can show the long tail rather than the leaders. Orders carry no
+ * delivery timestamp, so the window is on when the order was placed.
+ */
+router.get("/delivered-products", adminOnlyRequired, async (req, res) => {
+  const { from, to } = req.query as Record<string, string>;
+  const dateFilter = buildDateFilter(from, to);
+  const match: Record<string, unknown> = { status: "delivered" };
+  if (dateFilter) match.createdAt = dateFilter;
+
+  const items = await OrderModel.aggregate([
+    { $match: match },
+    { $unwind: "$items" },
+    {
+      $group: {
+        // Custom line items have no productId, so they group by their own
+        // title instead of collapsing into one nameless bucket.
+        _id: { $ifNull: ["$items.productId", "$items.title"] },
+        title: { $first: "$items.title" },
+        qty: { $sum: "$items.quantity" },
+        revenue: { $sum: { $multiply: ["$items.unitPrice", "$items.quantity"] } },
+        orders: { $addToSet: "$_id" },
+      },
+    },
+    {
+      $lookup: {
+        from: "products",
+        localField: "_id",
+        foreignField: "_id",
+        as: "product",
+      },
+    },
+    {
+      $project: {
+        // Prefer the product's current name so a renamed product still reads
+        // correctly; custom items fall back to the title stored on the order.
+        title: { $ifNull: [{ $arrayElemAt: ["$product.title", 0] }, "$title"] },
+        qty: 1,
+        revenue: 1,
+        orders: { $size: "$orders" },
+      },
+    },
+    { $sort: { qty: -1, title: 1 } },
+  ]);
+  res.json({ items });
+});
+
 router.get("/recent-orders", adminOnlyRequired, async (req, res) => {
   const items = await OrderModel.find().sort({ createdAt: -1 }).limit(10).lean();
   res.json({ items });
@@ -183,7 +260,7 @@ router.get("/recent-orders", adminOnlyRequired, async (req, res) => {
 router.get("/reports", adminRequired, async (req, res) => {
   const { from, to } = req.query as Record<string, string>;
   const dateFilter = buildDateFilter(from, to);
-  const match: Record<string, unknown> = { status: { $nin: ["cancelled", "refunded"] } };
+  const match: Record<string, unknown> = { status: { $nin: NON_REVENUE_ORDER_STATUSES } };
   if (dateFilter) match.createdAt = dateFilter;
 
   const transactionsMatch: Record<string, unknown> = {};
@@ -197,6 +274,7 @@ router.get("/reports", adminRequired, async (req, res) => {
     repeatBuyers,
     grossAgg,
     transactions,
+    damagedAgg,
   ] = await Promise.all([
     OrderModel.aggregate([
       { $match: match },
@@ -271,12 +349,24 @@ router.get("/reports", adminRequired, async (req, res) => {
       .limit(15)
       .select("orderNumber total status paymentMethod customer.name createdAt")
       .lean(),
+    DamagedItemModel.aggregate([
+      ...(dateFilter ? [{ $match: { createdAt: dateFilter } }] : []),
+      {
+        $group: {
+          _id: null,
+          quantity: { $sum: "$quantity" },
+          cost: { $sum: "$totalCost" },
+        },
+      },
+    ]),
   ]);
 
   const grossRevenue = grossAgg[0]?.revenue ?? 0;
   const grossCost = grossAgg[0]?.cost ?? 0;
   const grossProfit = grossRevenue - grossCost;
   const grossMargin = grossRevenue > 0 ? grossProfit / grossRevenue : 0;
+  const damagedQuantity = damagedAgg[0]?.quantity ?? 0;
+  const damagedCost = damagedAgg[0]?.cost ?? 0;
 
   res.json({
     byCategory,
@@ -289,6 +379,8 @@ router.get("/reports", adminRequired, async (req, res) => {
     grossCost,
     grossProfit,
     grossMargin,
+    damagedQuantity,
+    damagedCost,
     transactions,
   });
 });
@@ -515,6 +607,79 @@ router.post("/products/:id/stock", adminRequired, async (req, res) => {
     return;
   }
   res.json({ item: updated });
+});
+
+// === Inventory: mark units as damaged ===
+// Decrements on-hand stock and records the loss (buyingPrice × quantity) so it
+// can be deducted from accounting and summarised on the dashboard.
+const damageSchema = z.object({
+  quantity: z.number().int().min(1),
+  reason: z.string().max(200).optional(),
+});
+
+router.post("/products/:id/damage", adminRequired, async (req, res) => {
+  const parsed = damageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const product = await ProductModel.findById(req.params.id).lean();
+  if (!product) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
+  const { quantity, reason } = parsed.data;
+  const unitCost = product.buyingPrice ?? 0;
+  const totalCost = unitCost * quantity;
+
+  const [updated, damaged] = await Promise.all([
+    ProductModel.findByIdAndUpdate(
+      req.params.id,
+      { $inc: { stock: -quantity } },
+      { new: true },
+    ).lean(),
+    DamagedItemModel.create({
+      productId: product._id,
+      title: product.title,
+      quantity,
+      unitCost,
+      totalCost,
+      reason: reason ?? "",
+    }),
+  ]);
+
+  res.status(201).json({ item: updated, damaged });
+});
+
+// Recent damaged write-offs (optionally filtered by date range).
+router.get("/damaged", adminRequired, async (req, res) => {
+  const { from, to, limit = "20" } = req.query as Record<string, string>;
+  const dateFilter = buildDateFilter(from, to);
+  const filter: Record<string, unknown> = {};
+  if (dateFilter) filter.createdAt = dateFilter;
+  const [items, totals] = await Promise.all([
+    DamagedItemModel.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Number(limit) || 20, 100))
+      .lean(),
+    DamagedItemModel.aggregate([
+      ...(dateFilter ? [{ $match: { createdAt: dateFilter } }] : []),
+      {
+        $group: {
+          _id: null,
+          quantity: { $sum: "$quantity" },
+          cost: { $sum: "$totalCost" },
+          entries: { $sum: 1 },
+        },
+      },
+    ]),
+  ]);
+  res.json({
+    items,
+    quantity: totals[0]?.quantity ?? 0,
+    cost: totals[0]?.cost ?? 0,
+    entries: totals[0]?.entries ?? 0,
+  });
 });
 
 // === Coupons CRUD ===

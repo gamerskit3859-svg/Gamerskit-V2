@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { CategoryModel } from "../models/Category.js";
 import { ProductModel } from "../models/Product.js";
+import { getEffectivePrice } from "../lib/pricing.js";
 
 const router = Router();
 const BRAND = "GamersKit";
@@ -24,6 +25,7 @@ type FeedProduct = {
   category?: unknown;
   categorySlug?: string;
   price: number;
+  compareAtPrice?: number;
   stock?: number;
   images?: string[];
   variants?: Array<{
@@ -94,7 +96,7 @@ function feedRows(products: FeedProduct[], categories: Map<string, FeedCategory>
         description,
         link: absoluteUrl(`/product/${product.slug}`),
         imageLink: product.images?.[0] || "",
-        price: `${Number(product.price).toFixed(0)} BDT`,
+        price: `${Number(getEffectivePrice(product)).toFixed(0)} BDT`,
         availability: "in stock",
         condition: "new",
         brand: BRAND,
@@ -172,8 +174,10 @@ function googleTsv(rows: ReturnType<typeof feedRows>): string {
 router.get("/", async (req, res) => {
   const format = String(req.query.format || "meta").toLowerCase();
   const [products, categories] = await Promise.all([
-    ProductModel.find({})
-      .select("slug title description category categorySlug price stock images variants")
+    // The feed is a storefront surface, so a deactivated product must drop out
+    // of it too — otherwise Meta and Google keep advertising an unbuyable page.
+    ProductModel.find({ isActive: { $ne: false } })
+      .select("slug title description category categorySlug price compareAtPrice stock images variants")
       .sort({ updatedAt: -1 })
       .lean<FeedProduct[]>(),
     CategoryModel.find({ active: true }).select("slug name").lean<FeedCategory[]>(),

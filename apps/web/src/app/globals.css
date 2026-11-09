@@ -99,6 +99,7 @@ body {
   background: rgba(20, 20, 22, 0.55);
   backdrop-filter: saturate(180%) blur(22px);
   -webkit-backdrop-filter: saturate(180%) blur(22px);
+  isolation: isolate;
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #fff;
 }
@@ -106,6 +107,7 @@ body {
   background: rgba(255, 255, 255, 0.84);
   backdrop-filter: saturate(180%) blur(28px);
   -webkit-backdrop-filter: saturate(180%) blur(28px);
+  isolation: isolate;
   border: 1px solid var(--line);
 }
 
@@ -131,6 +133,7 @@ body {
     padding 0.3s ease,
     transform 0.22s ease;
   will-change: transform;
+  isolation: isolate;
 }
 .lg-navbar.scrolled { padding: 8px 16px; }
 .lg-navbar.nav-hidden {
@@ -152,28 +155,35 @@ body {
   overflow: visible;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.82),
-    rgba(255, 255, 255, 0.46)
+    rgba(255, 255, 255, 0.40),
+    rgba(255, 255, 255, 0.25)
   );
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(28px) saturate(190%);
-  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(60px) saturate(250%) brightness(1.15);
+  -webkit-backdrop-filter: blur(60px) saturate(250%) brightness(1.15);
+  isolation: isolate;
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+  transform: translateZ(0);
+  will-change: backdrop-filter;
   box-shadow:
-    0 18px 50px rgba(0, 0, 0, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.35);
+    0 18px 50px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.1);
   transition: all 0.3s ease;
 }
 .lg-navbar.scrolled .lg-inner {
   height: 52px;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.9),
-    rgba(255, 255, 255, 0.58)
+    rgba(255, 255, 255, 0.48),
+    rgba(255, 255, 255, 0.32)
   );
+  backdrop-filter: blur(70px) saturate(260%) brightness(1.18);
+  -webkit-backdrop-filter: blur(70px) saturate(260%) brightness(1.18);
   box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    0 20px 60px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 .lg-inner::before {
   content: "";
@@ -272,12 +282,16 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  background: rgba(255, 255, 255, 0.46);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.52);
   color: #111827;
   cursor: pointer;
-  backdrop-filter: blur(16px) saturate(170%);
-  -webkit-backdrop-filter: blur(16px) saturate(170%);
+  backdrop-filter: blur(20px) saturate(180%) brightness(1.05);
+  -webkit-backdrop-filter: blur(20px) saturate(180%) brightness(1.05);
+  isolation: isolate;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  transition: all 0.2s ease;
   box-shadow:
     0 6px 18px rgba(0, 0, 0, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.75);
@@ -326,6 +340,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.65);
   backdrop-filter: blur(34px) saturate(190%);
   -webkit-backdrop-filter: blur(34px) saturate(190%);
+  isolation: isolate;
   box-shadow:
     0 30px 90px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.85);

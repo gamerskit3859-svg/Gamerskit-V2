@@ -4,38 +4,41 @@ import { ProductModel } from "../models/Product.js";
 import { CategoryModel } from "../models/Category.js";
 import { adminRequired } from "../lib/auth.js";
 import { setPrivateNoStore } from "../lib/http.js";
+import { hasVariants, variantStock, type VariantGroup } from "../lib/variants.js";
 
 const router = Router();
 const PUBLIC_PRODUCT_FIELDS =
-  "slug title description category categorySlug price compareAtPrice images variants isFeatured isBestSelling isNewArrival featured createdAt updatedAt";
+  "slug title description category categorySlug price compareAtPrice freeDelivery sizeChartUrl images variants isFeatured isBestSelling isNewArrival featured createdAt updatedAt";
 const ADMIN_PRODUCT_FIELDS =
-  "slug title description category categorySlug price compareAtPrice cost buyingPrice stock images variants isFeatured isBestSelling isNewArrival featured createdAt updatedAt";
+  "slug title description category categorySlug price compareAtPrice freeDelivery cost buyingPrice stock readyStock sizeChartUrl images variants isActive isFeatured isBestSelling isNewArrival featured createdAt updatedAt";
 
-type VariantGroup = {
-  name?: string;
-  options?: Array<{ value?: string; stock?: number; sku?: string; price?: number }>;
+/**
+ * Only products that are live on the storefront. Unset means active: the flag
+ * was added after the catalogue existed, so absence must not hide a product.
+ */
+const ACTIVE_ONLY = { isActive: { $ne: false } } as const;
+
+/**
+ * Sorts the admin product list offers. `isFeatured: -1` leads the default so
+ * the admin list keeps matching the order the storefront shows.
+ */
+const PRODUCT_SORTS: Record<string, Record<string, SortOrder>> = {
+  newest: { isFeatured: -1, createdAt: -1 },
+  oldest: { createdAt: 1 },
+  title_asc: { title: 1 },
+  title_desc: { title: -1 },
+  price_asc: { price: 1, createdAt: -1 },
+  price_desc: { price: -1, createdAt: -1 },
+  stock_asc: { stock: 1, createdAt: -1 },
+  stock_desc: { stock: -1, createdAt: -1 },
 };
 
-function hasVariants(product: { variants?: VariantGroup[] }) {
-  return Array.isArray(product.variants) && product.variants.some((group) => group.options?.length);
-}
-
-function variantStock(variants?: VariantGroup[]) {
-  if (!Array.isArray(variants)) return 0;
-  return variants.reduce(
-    (sum, group) =>
-      sum +
-      (group.options ?? []).reduce(
-        (optionSum, option) => optionSum + (Number(option.stock) || 0),
-        0,
-      ),
-    0,
-  );
-}
-
-function stripPublicStock<T extends { variants?: VariantGroup[]; stock?: number }>(product: T) {
-  const { stock: _stock, variants, ...rest } = product;
+function stripPublicStock<
+  T extends { variants?: VariantGroup[]; stock?: number; readyStock?: boolean },
+>(product: T) {
+  const { stock: _stock, readyStock: _readyStock, variants, ...rest } = product;
   void _stock;
+  void _readyStock;
   return {
     ...rest,
     variants: Array.isArray(variants)
@@ -98,11 +101,23 @@ async function listProducts(
     newArrival,
     isNewArrival,
     stock,
+    active,
+    sort: sortKey,
     page = "1",
     limit = "20",
   } = reqQuery;
   const filter: Record<string, unknown> = {};
   const andConditions: Record<string, unknown>[] = [];
+
+  // The storefront never gets a say: a deactivated product is invisible there
+  // whatever the query asks for. The admin list may ask for either side.
+  if (!options.includeStock) {
+    Object.assign(filter, ACTIVE_ONLY);
+  } else if (active === "active") {
+    Object.assign(filter, ACTIVE_ONLY);
+  } else if (active === "inactive") {
+    filter.isActive = false;
+  }
 
   if (category && category !== "all") {
     const categoryDoc = await CategoryModel.findOne({ slug: category })
@@ -154,9 +169,13 @@ async function listProducts(
   const pageNum = Math.max(1, Number(page) || 1);
   const limitNum = Math.max(1, Math.min(Number(limit) || 20, 100));
   const skip = (pageNum - 1) * limitNum;
+  const chosenSort =
+    (options.includeStock && sortKey && PRODUCT_SORTS[sortKey]) ||
+    PRODUCT_SORTS.newest;
+  // A text search is ranked by relevance first; the chosen sort then breaks ties.
   const sort: Record<string, SortOrder | { $meta: "textScore" }> = q
-    ? { score: { $meta: "textScore" }, isFeatured: -1, createdAt: -1 }
-    : { isFeatured: -1, createdAt: -1 };
+    ? { score: { $meta: "textScore" }, ...chosenSort }
+    : chosenSort;
 
   const [rawItems, total] = await Promise.all([
     ProductModel.find(filter)
@@ -193,7 +212,9 @@ router.get("/admin/all", adminRequired, async (req, res) => {
 });
 
 router.get("/:slug", async (req, res) => {
-  const item = await ProductModel.findOne({ slug: req.params.slug })
+  // A deactivated product is a 404 on the storefront, not a hidden-but-reachable
+  // page — otherwise a shared link would still sell it.
+  const item = await ProductModel.findOne({ slug: req.params.slug, ...ACTIVE_ONLY })
     .select(PUBLIC_PRODUCT_FIELDS)
     .lean();
   if (!item) {

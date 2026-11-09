@@ -4,10 +4,11 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ShoppingBag } from "lucide-react";
+import { ShoppingBag, Truck } from "lucide-react";
 import type { Product } from "@/types/shared";
 import { formatBDT } from "@/lib/format";
 import { useCart } from "@/lib/cart";
+import { getEffectivePrice } from "@/lib/pricing";
 import { trackAddToCart } from "@/lib/fb-pixel";
 import { optimizeCloudinaryImage } from "@/lib/images";
 import { Button } from "@/components/ui";
@@ -27,6 +28,8 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
   const add = useCart((s) => s.add);
   const [added, setAdded] = useState(false);
   const hasVariants = product.variants?.some((group) => group.options?.length) ?? false;
+  const effectivePrice = getEffectivePrice(product);
+  const hasDiscount = effectivePrice < product.price;
 
   function handleAddToCart(e: React.MouseEvent) {
     e.preventDefault();
@@ -36,7 +39,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
       return;
     }
     add(product, 1);
-    trackAddToCart(product, 1);
+    trackAddToCart({ ...product, price: effectivePrice }, 1);
     setAdded(true);
     setTimeout(() => setAdded(false), 1400);
   }
@@ -49,7 +52,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
       return;
     }
     add(product, 1);
-    trackAddToCart(product, 1);
+    trackAddToCart({ ...product, price: effectivePrice }, 1);
     router.push("/checkout");
   }
 
@@ -84,16 +87,33 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
               Featured
             </span>
           )}
+          {hasDiscount && (
+            <span className="absolute top-3 right-3 bg-red-500 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full">
+              SALE
+            </span>
+          )}
         </div>
         <div className="px-2 pt-2 md:px-4 md:pt-4">
-          <div className="flex items-baseline justify-between gap-3">
+          <div className="flex items-start justify-between gap-3">
             <h3 className="line-clamp-2 text-sm font-medium leading-tight text-foreground">
               {product.title}
             </h3>
-            <span className="whitespace-nowrap text-sm font-semibold">
-              {formatBDT(product.price)}
-            </span>
+            <div className="flex flex-col items-end whitespace-nowrap">
+              <span className="text-sm font-semibold">
+                {formatBDT(effectivePrice)}
+              </span>
+              {hasDiscount && (
+                <span className="text-xs text-fg-muted line-through">
+                  {formatBDT(product.price)}
+                </span>
+              )}
+            </div>
           </div>
+          {product.freeDelivery && (
+            <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+              <Truck size={10} /> Free delivery
+            </span>
+          )}
         </div>
       </Link>
 
