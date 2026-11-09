@@ -23,6 +23,7 @@ import steadfastRouter from "./routes/steadfast.js";
 import feedRouter from "./routes/feed.js";
 import goobliqueRouter from "./routes/gooblique/index.js";
 import aiRouter from "./routes/ai.js";
+import { CHOTOPAA_MOUNT, createChotopaaRouter } from "./chotopaa/router.js";
 
 const require = createRequire(import.meta.url);
 
@@ -91,8 +92,9 @@ export function createApp(options: CreateAppOptions = {}): Express {
   // 1) CORS — Simplified for Vercel compatibility
   const allowedOrigins = parseAllowedOrigins();
 
-  app.use(
-    cors({
+  // ChotoPaa's read API answers its own storefront origins (src/chotopaa),
+  // so GamersKit's CORS list is neither widened nor applied there.
+  const gamerskitCors = cors({
       origin: (origin, callback) => {
         // Allow requests with no origin (like mobile apps or curl)
         if (!origin) return callback(null, true);
@@ -118,8 +120,14 @@ export function createApp(options: CreateAppOptions = {}): Express {
       allowedHeaders: ["Authorization", "Content-Type", "X-Requested-With", "Accept"],
       optionsSuccessStatus: 204,
       preflightContinue: false,
-    }),
-  );
+    });
+  app.use((req, res, next) => {
+    if (req.path.startsWith(`${CHOTOPAA_MOUNT}/`)) {
+      next();
+      return;
+    }
+    gamerskitCors(req, res, next);
+  });
 
   // 2) Security headers.
   app.use(helmet({ 
@@ -185,6 +193,11 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.get("/favicon.ico", (_req, res) => {
     res.status(204).end();
   });
+
+  // ChotoPaa's storefront reads (src/chotopaa): its own database, CORS and
+  // errors. Ahead of the pre-route hook, so they never wait on — or fail
+  // with — GamersKit's own database.
+  app.use(CHOTOPAA_MOUNT, createChotopaaRouter());
 
   // 6) Optional pre-route hook.
   if (options.beforeRoutes) {
